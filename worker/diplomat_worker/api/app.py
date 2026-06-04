@@ -4,7 +4,13 @@ from diplomat_worker import __version__
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Diplomat Worker", version=__version__)
+    app = FastAPI(
+        title="Diplomat Worker",
+        version=__version__,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:
