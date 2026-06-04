@@ -8,6 +8,7 @@ target/
 venv/
 __pycache__/
 *.pyc
+*.egg-info/
 *.log
 *.tmp
 *.mp4
