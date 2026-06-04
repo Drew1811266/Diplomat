@@ -70,6 +70,12 @@ def test_subtitle_document_serializes_with_camel_case_aliases() -> None:
     assert payload["lines"][0]["startMs"] == 1000
 
 
+def test_empty_style_overrides_serialize_as_empty_object() -> None:
+    payload = make_document().model_dump(by_alias=True)
+
+    assert payload["lines"][0]["styleOverrides"] == {}
+
+
 def test_subtitle_line_rejects_invalid_timing() -> None:
     with pytest.raises(ValidationError):
         SubtitleLine(
@@ -83,6 +89,53 @@ def test_subtitle_line_rejects_invalid_timing() -> None:
             translated_text="bad",
             words=[],
             style_overrides={},
+            review_status="draft",
+            ai_origin=AiOrigin(engine="fake-asr", model="fake-v1"),
+            notes="",
+        )
+
+
+def test_subtitle_document_rejects_empty_project_id() -> None:
+    document = make_document()
+    payload = document.model_dump()
+    payload["project_id"] = ""
+
+    with pytest.raises(ValidationError):
+        SubtitleDocument(**payload)
+
+
+def test_subtitle_line_rejects_negative_style_override_font_size() -> None:
+    with pytest.raises(ValidationError):
+        SubtitleLine(
+            id="line-1",
+            start_ms=1000,
+            end_ms=2500,
+            speaker_id="speaker-1",
+            source_language="zh",
+            target_language="en",
+            source_text="bad",
+            translated_text="bad",
+            words=[],
+            style_overrides={"fontSize": -1},
+            review_status="draft",
+            ai_origin=AiOrigin(engine="fake-asr", model="fake-v1"),
+            notes="",
+        )
+
+
+def test_subtitle_line_rejects_unknown_style_override_fields() -> None:
+    with pytest.raises(ValidationError):
+        SubtitleLine(
+            id="line-1",
+            start_ms=1000,
+            end_ms=2500,
+            speaker_id="speaker-1",
+            source_language="zh",
+            target_language="en",
+            source_text="bad",
+            translated_text="bad",
+            words=[],
+            style_overrides={"unexpected": "value"},
             review_status="draft",
             ai_origin=AiOrigin(engine="fake-asr", model="fake-v1"),
             notes="",

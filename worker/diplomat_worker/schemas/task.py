@@ -18,7 +18,7 @@ TaskType = Literal[
 class TaskEvent(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    task_id: str = Field(alias="taskId")
+    task_id: str = Field(alias="taskId", min_length=1)
     type: TaskType
     status: TaskStatus
     progress: float = Field(ge=0, le=1)
