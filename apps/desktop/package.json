@@ -1,0 +1,18 @@
+{
+  "name": "@diplomat/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "check": "pnpm test && pnpm typecheck",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "test": "node -e \"console.log('desktop shell metadata ok')\"",
+    "typecheck": "node -e \"console.log('desktop shell has no TypeScript sources')\""
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.5.0",
+    "typescript": "^5.8.0"
+  }
+}
