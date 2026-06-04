@@ -62,4 +62,10 @@ describe("SubtitleDocumentSchema", () => {
     invalid.lines[0]!.endMs = 900;
     expect(() => SubtitleDocumentSchema.parse(invalid)).toThrow();
   });
+
+  it("rejects unknown style override keys", () => {
+    const invalid = structuredClone(validDocument);
+    invalid.lines[0]!.styleOverrides = { unexpectedKey: "value" };
+    expect(() => SubtitleDocumentSchema.parse(invalid)).toThrow();
+  });
 });

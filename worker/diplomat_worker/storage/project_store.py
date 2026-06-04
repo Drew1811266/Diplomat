@@ -87,6 +87,8 @@ class ProjectStore:
         )
 
     def save_subtitle_document(self, project_id: str, document: SubtitleDocument) -> Path:
+        if document.project_id != project_id:
+            raise ValueError("document.project_id must match project_id")
         project = self.get_project(project_id)
         path = project.project_dir / "subtitle.diplomat.json"
         payload = document.model_dump(by_alias=True)

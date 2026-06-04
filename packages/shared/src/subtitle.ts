@@ -21,7 +21,7 @@ export const StyleOverridesSchema = z.object({
   primaryColor: z.string().optional(),
   secondaryColor: z.string().optional(),
   strokeWidth: z.number().nonnegative().optional()
-});
+}).strict();
 
 export const AiOriginSchema = z.object({
   engine: z.string(),

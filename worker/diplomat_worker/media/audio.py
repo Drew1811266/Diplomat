@@ -11,6 +11,10 @@ class AudioChunk:
 
 
 def build_fixed_chunks(duration_ms: int, chunk_ms: int = 30_000, overlap_ms: int = 500) -> list[AudioChunk]:
+    if chunk_ms <= 0:
+        raise ValueError("chunk_ms must be greater than 0")
+    if overlap_ms < 0:
+        raise ValueError("overlap_ms must be greater than or equal to 0")
     if chunk_ms <= overlap_ms:
         raise ValueError("chunk_ms must be greater than overlap_ms")
     if duration_ms <= 0:

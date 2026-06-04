@@ -21,6 +21,16 @@ def test_build_fixed_chunks_rejects_invalid_overlap() -> None:
         build_fixed_chunks(duration_ms=0, chunk_ms=500, overlap_ms=500)
 
 
+def test_build_fixed_chunks_rejects_negative_overlap() -> None:
+    with pytest.raises(ValueError):
+        build_fixed_chunks(duration_ms=1_000, chunk_ms=500, overlap_ms=-1)
+
+
+def test_build_fixed_chunks_rejects_non_positive_chunk_length() -> None:
+    with pytest.raises(ValueError):
+        build_fixed_chunks(duration_ms=0, chunk_ms=0, overlap_ms=0)
+
+
 def test_extract_audio_builds_expected_ffmpeg_command(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "source.mp4"
     target = tmp_path / "audio.wav"

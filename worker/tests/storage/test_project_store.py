@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from diplomat_worker.schemas.subtitle import AiOrigin, SubtitleDocument, SubtitleLine
 from diplomat_worker.storage.project_store import ProjectStore
 
@@ -37,3 +39,17 @@ def test_project_store_creates_project_and_saves_subtitle_document(tmp_path: Pat
     assert document_path.exists()
     assert loaded.project_id == project.project_id
     assert loaded.lines[0].source_text == "你好"
+
+
+def test_save_subtitle_document_rejects_mismatched_project_id(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    project = store.create_project(name="Demo", source_video_path=tmp_path / "demo.mp4")
+    document = SubtitleDocument(
+        project_id="project-other",
+        media_id="media-1",
+        duration_ms=2500,
+        lines=[],
+    )
+
+    with pytest.raises(ValueError):
+        store.save_subtitle_document(project.project_id, document)
