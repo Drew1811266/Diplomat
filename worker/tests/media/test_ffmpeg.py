@@ -34,6 +34,32 @@ def test_probe_video_parses_duration_and_audio_stream(monkeypatch, tmp_path: Pat
     assert probe.has_audio is True
 
 
+def test_probe_video_detects_audio_stream_without_codec_name(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "demo.mp4"
+    source.write_bytes(b"fake")
+
+    def fake_run(command, capture_output, text, check):
+        assert "ffprobe" in command[0]
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "format": {"duration": "1"},
+                    "streams": [{"codec_type": "audio"}],
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    probe = probe_video(source, ffprobe_path="ffprobe")
+
+    assert probe.has_audio is True
+    assert probe.audio_codec is None
+
+
 def test_ffmpeg_check_reports_missing_source(tmp_path: Path) -> None:
     check = FfmpegCheck.for_source(tmp_path / "missing.mp4", ffmpeg_path="ffmpeg", ffprobe_path="ffprobe")
 

@@ -44,16 +44,19 @@ def probe_video(source_video: Path, ffprobe_path: str = "ffprobe") -> VideoProbe
     result = subprocess.run(command, capture_output=True, text=True, check=True)
     payload = json.loads(result.stdout)
     duration_seconds = float(payload.get("format", {}).get("duration", 0))
+    has_audio = False
     audio_codec = None
     video_codec = None
     for stream in payload.get("streams", []):
-        if stream.get("codec_type") == "audio" and audio_codec is None:
-            audio_codec = stream.get("codec_name")
+        if stream.get("codec_type") == "audio":
+            has_audio = True
+            if audio_codec is None:
+                audio_codec = stream.get("codec_name")
         if stream.get("codec_type") == "video" and video_codec is None:
             video_codec = stream.get("codec_name")
     return VideoProbe(
         duration_ms=int(duration_seconds * 1000),
-        has_audio=audio_codec is not None,
+        has_audio=has_audio,
         audio_codec=audio_codec,
         video_codec=video_codec,
     )
