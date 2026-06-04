@@ -17,3 +17,9 @@ __pycache__/
 *.srt
 *.vtt
 *.ass
+.pytest_cache/
+.ruff_cache/
+coverage/
+htmlcov/
+.mypy_cache/
+.pnpm-store/
