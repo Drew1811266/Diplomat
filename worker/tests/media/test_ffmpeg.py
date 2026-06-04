@@ -60,6 +60,63 @@ def test_probe_video_detects_audio_stream_without_codec_name(monkeypatch, tmp_pa
     assert probe.audio_codec is None
 
 
+def test_probe_video_preserves_first_audio_stream_codec_name(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "demo.mp4"
+    source.write_bytes(b"fake")
+
+    def fake_run(command, capture_output, text, check):
+        assert "ffprobe" in command[0]
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "format": {"duration": "1"},
+                    "streams": [
+                        {"codec_type": "audio"},
+                        {"codec_type": "audio", "codec_name": "aac"},
+                    ],
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    probe = probe_video(source, ffprobe_path="ffprobe")
+
+    assert probe.has_audio is True
+    assert probe.audio_codec is None
+
+
+def test_probe_video_preserves_first_video_stream_codec_name(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "demo.mp4"
+    source.write_bytes(b"fake")
+
+    def fake_run(command, capture_output, text, check):
+        assert "ffprobe" in command[0]
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "format": {"duration": "1"},
+                    "streams": [
+                        {"codec_type": "video"},
+                        {"codec_type": "video", "codec_name": "h264"},
+                    ],
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    probe = probe_video(source, ffprobe_path="ffprobe")
+
+    assert probe.video_codec is None
+
+
 def test_ffmpeg_check_reports_missing_source(tmp_path: Path) -> None:
     check = FfmpegCheck.for_source(tmp_path / "missing.mp4", ffmpeg_path="ffmpeg", ffprobe_path="ffprobe")
 
