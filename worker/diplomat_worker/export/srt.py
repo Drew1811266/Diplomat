@@ -63,7 +63,9 @@ def _render_line_text(line: SubtitleLine, mode: SrtMode) -> str:
     if mode == "target":
         return target_text or source_text
 
-    if target_text and target_text != source_text:
-        return "\n".join([source_text, target_text]) if source_text else target_text
+    if mode == "bilingual":
+        if target_text and target_text != source_text:
+            return "\n".join([source_text, target_text]) if source_text else target_text
+        return source_text
 
-    return source_text
+    raise ValueError(f"Unsupported SRT export mode: {mode}")

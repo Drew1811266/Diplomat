@@ -117,6 +117,11 @@ def test_subtitle_document_to_srt_source_mode_exports_source_text_only() -> None
     )
 
 
+def test_subtitle_document_to_srt_rejects_unsupported_mode() -> None:
+    with pytest.raises(ValueError, match="Unsupported SRT export mode: invalid"):
+        subtitle_document_to_srt(make_document(), mode="invalid")
+
+
 def test_write_srt_export_creates_parent_directories(tmp_path: Path) -> None:
     output_path = tmp_path / "nested" / "exports" / "captions.srt"
 
