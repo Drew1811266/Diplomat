@@ -26,7 +26,6 @@ def project_response(project) -> ProjectResponse:
 
 
 def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
-    active_runtime = runtime or create_default_runtime()
     app = FastAPI(
         title="Diplomat Worker",
         version=__version__,
@@ -41,6 +40,14 @@ def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.state.runtime = runtime
+
+    def get_runtime() -> WorkerRuntime:
+        active_runtime = app.state.runtime
+        if active_runtime is None:
+            active_runtime = create_default_runtime()
+            app.state.runtime = active_runtime
+        return active_runtime
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -48,6 +55,7 @@ def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
 
     @app.post("/projects", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
     def create_project(request: CreateProjectRequest) -> ProjectResponse:
+        active_runtime = get_runtime()
         try:
             probe = active_runtime.probe_video_fn(request.source_video_path)
         except Exception as exc:
@@ -66,6 +74,7 @@ def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
 
     @app.get("/projects/{project_id}", response_model=ProjectResponse)
     def get_project(project_id: str) -> ProjectResponse:
+        active_runtime = get_runtime()
         try:
             project = active_runtime.store.get_project(project_id)
         except KeyError as exc:
@@ -74,6 +83,7 @@ def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
 
     @app.post("/projects/{project_id}/analyze", response_model=AnalyzeProjectResponse)
     def analyze_project(project_id: str) -> AnalyzeProjectResponse:
+        active_runtime = get_runtime()
         try:
             project = active_runtime.store.get_project(project_id)
         except KeyError as exc:
@@ -103,6 +113,7 @@ def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
 
     @app.get("/projects/{project_id}/subtitle", response_model=SubtitleDocument)
     def get_subtitle(project_id: str) -> SubtitleDocument:
+        active_runtime = get_runtime()
         try:
             active_runtime.store.get_project(project_id)
         except KeyError as exc:
@@ -114,6 +125,7 @@ def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
 
     @app.put("/projects/{project_id}/subtitle", response_model=SubtitleDocument)
     def put_subtitle(project_id: str, request: SubtitleDocumentRequest) -> SubtitleDocument:
+        active_runtime = get_runtime()
         try:
             active_runtime.store.get_project(project_id)
         except KeyError as exc:

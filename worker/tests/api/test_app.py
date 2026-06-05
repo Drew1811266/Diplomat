@@ -1,10 +1,10 @@
+import importlib
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from diplomat_worker.api.app import create_app
 from diplomat_worker.api.runtime import default_data_dir
 from diplomat_worker.api.runtime import WorkerRuntime
 from diplomat_worker.api.schemas import CreateProjectRequest, ProjectResponse, SrtExportRequest
@@ -27,8 +27,57 @@ def make_test_runtime(tmp_path: Path) -> WorkerRuntime:
     )
 
 
-def test_health_endpoint_returns_worker_status() -> None:
-    client = TestClient(create_app())
+@pytest.fixture()
+def app_module(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("DIPLOMAT_DATA_DIR", str(tmp_path / "data"))
+    module = importlib.import_module("diplomat_worker.api.app")
+
+    return importlib.reload(module)
+
+
+def test_module_app_and_create_app_do_not_create_default_runtime(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("DIPLOMAT_DATA_DIR", str(tmp_path / "data"))
+    import diplomat_worker.api.runtime as runtime_module
+
+    calls = []
+
+    def fake_create_default_runtime() -> WorkerRuntime:
+        calls.append("created")
+        return make_test_runtime(tmp_path)
+
+    monkeypatch.setattr(runtime_module, "create_default_runtime", fake_create_default_runtime)
+    module = importlib.import_module("diplomat_worker.api.app")
+
+    module = importlib.reload(module)
+    module.create_app()
+
+    assert calls == []
+
+
+def test_default_runtime_is_created_lazily_for_project_endpoint(app_module, monkeypatch, tmp_path: Path) -> None:
+    calls = []
+
+    def fake_create_default_runtime() -> WorkerRuntime:
+        calls.append("created")
+        return make_test_runtime(tmp_path)
+
+    monkeypatch.setattr(app_module, "create_default_runtime", fake_create_default_runtime)
+    client = TestClient(app_module.create_app())
+
+    health_response = client.get("/health")
+
+    assert health_response.status_code == 200
+    assert calls == []
+
+    project_response = client.get("/projects/missing-project")
+
+    assert project_response.status_code == 404
+    assert project_response.json()["detail"] == "Project not found"
+    assert calls == ["created"]
+
+
+def test_health_endpoint_returns_worker_status(app_module) -> None:
+    client = TestClient(app_module.create_app())
 
     response = client.get("/health")
 
@@ -36,8 +85,14 @@ def test_health_endpoint_returns_worker_status() -> None:
     assert response.json() == {"name": "diplomat-worker", "status": "ok", "version": "0.1.0"}
 
 
-def test_app_exposes_worker_project_routes() -> None:
-    app = create_app()
+def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(
+        app_module,
+        "create_default_runtime",
+        lambda: calls.append("created"),
+    )
+    app = app_module.create_app()
     routes = {
         (method, route.path)
         for route in app.routes
@@ -53,12 +108,13 @@ def test_app_exposes_worker_project_routes() -> None:
         ("GET", "/projects/{project_id}/subtitle"),
         ("PUT", "/projects/{project_id}/subtitle"),
     }
+    assert calls == []
 
 
-def test_project_analyze_and_subtitle_round_trip(tmp_path: Path) -> None:
+def test_project_analyze_and_subtitle_round_trip(app_module, tmp_path: Path) -> None:
     source_video = tmp_path / "source.mp4"
     source_video.write_bytes(b"fake-video")
-    client = TestClient(create_app(make_test_runtime(tmp_path)))
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
 
     create_response = client.post(
         "/projects",
@@ -103,7 +159,7 @@ def test_project_analyze_and_subtitle_round_trip(tmp_path: Path) -> None:
     assert reloaded_response.json()["lines"][0]["sourceText"] == "Edited text"
 
 
-def test_create_project_rejects_video_without_audio(tmp_path: Path) -> None:
+def test_create_project_rejects_video_without_audio(app_module, tmp_path: Path) -> None:
     source_video = tmp_path / "source.mp4"
     source_video.write_bytes(b"fake-video")
     runtime = make_test_runtime(tmp_path)
@@ -118,7 +174,7 @@ def test_create_project_rejects_video_without_audio(tmp_path: Path) -> None:
         ),
         extract_audio_fn=runtime.extract_audio_fn,
     )
-    client = TestClient(create_app(runtime))
+    client = TestClient(app_module.create_app(runtime))
 
     response = client.post(
         "/projects",
@@ -134,8 +190,8 @@ def test_create_project_rejects_video_without_audio(tmp_path: Path) -> None:
     assert response.json()["detail"] == "Source video does not contain an audio stream"
 
 
-def test_get_missing_project_returns_404(tmp_path: Path) -> None:
-    client = TestClient(create_app(make_test_runtime(tmp_path)))
+def test_get_missing_project_returns_404(app_module, tmp_path: Path) -> None:
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
 
     response = client.get("/projects/missing-project")
 
@@ -143,10 +199,10 @@ def test_get_missing_project_returns_404(tmp_path: Path) -> None:
     assert response.json()["detail"] == "Project not found"
 
 
-def test_get_subtitle_before_analyze_returns_404(tmp_path: Path) -> None:
+def test_get_subtitle_before_analyze_returns_404(app_module, tmp_path: Path) -> None:
     source_video = tmp_path / "source.mp4"
     source_video.write_bytes(b"fake-video")
-    client = TestClient(create_app(make_test_runtime(tmp_path)))
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
     project_id = client.post(
         "/projects",
         json={
@@ -163,10 +219,10 @@ def test_get_subtitle_before_analyze_returns_404(tmp_path: Path) -> None:
     assert response.json()["detail"] == "Subtitle document not found"
 
 
-def test_put_subtitle_with_mismatched_project_id_returns_400(tmp_path: Path) -> None:
+def test_put_subtitle_with_mismatched_project_id_returns_400(app_module, tmp_path: Path) -> None:
     source_video = tmp_path / "source.mp4"
     source_video.write_bytes(b"fake-video")
-    client = TestClient(create_app(make_test_runtime(tmp_path)))
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
     project_id = client.post(
         "/projects",
         json={
