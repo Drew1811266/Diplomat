@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  type CreateProjectInput,
   createProject,
   exportSrt,
   fetchSubtitleDocument,
@@ -61,14 +62,21 @@ const subtitleDocument: SubtitleDocument = {
 };
 
 function stubJsonResponse(payload: unknown, ok = true, status = 200) {
-  const fetchMock = vi.fn(async () => ({
-    ok,
-    status,
-    json: async () => payload
-  }));
+  const fetchMock = vi.fn<typeof fetch>(
+    async () =>
+      ({
+        ok,
+        status,
+        json: async () => payload
+      }) as Response
+  );
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("worker API helpers", () => {
   it("createProject sends POST JSON and parses the response", async () => {
@@ -104,6 +112,34 @@ describe("worker API helpers", () => {
         sourceLanguage: "zh",
         targetLanguage: "en"
       })
+    });
+  });
+
+  it("createProject normalizes an omitted target language to null", async () => {
+    const response = {
+      projectId: "project-1",
+      name: "Source-only review",
+      sourceVideoPath: "D:/media/review.mp4",
+      projectDir: "D:/Diplomat/projects/project-1",
+      durationMs: 124_000,
+      sourceLanguage: "ja",
+      targetLanguage: null
+    };
+    const input: CreateProjectInput = {
+      name: "Source-only review",
+      sourceVideoPath: "D:/media/review.mp4",
+      sourceLanguage: "ja"
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(createProject(input, baseUrl)).resolves.toEqual(response);
+
+    const init = fetchMock.mock.calls[0]![1] as RequestInit;
+    expect(JSON.parse(init.body as string)).toEqual({
+      name: "Source-only review",
+      sourceVideoPath: "D:/media/review.mp4",
+      sourceLanguage: "ja",
+      targetLanguage: null
     });
   });
 
@@ -168,6 +204,18 @@ describe("worker API helpers", () => {
 
     await expect(runProjectAnalysis("project-1", baseUrl)).rejects.toThrow(
       "Worker request failed: 503"
+    );
+  });
+
+  it("includes FastAPI detail in non-OK error messages", async () => {
+    stubJsonResponse(
+      { detail: "Source video does not contain an audio stream" },
+      false,
+      400
+    );
+
+    await expect(runProjectAnalysis("project-1", baseUrl)).rejects.toThrow(
+      "Worker request failed: 400: Source video does not contain an audio stream"
     );
   });
 

@@ -1,5 +1,6 @@
 import {
   AnalyzeProjectResponseSchema,
+  CreateProjectRequestSchema,
   ProjectResponseSchema,
   SrtExportResponseSchema,
   SubtitleDocumentSchema,
@@ -19,6 +20,29 @@ export type WorkerHealth = {
   version: string;
 };
 
+export type CreateProjectInput = Omit<CreateProjectRequest, "targetLanguage"> & {
+  targetLanguage?: CreateProjectRequest["targetLanguage"];
+};
+
+async function formatWorkerError(response: Response): Promise<string> {
+  const message = `Worker request failed: ${response.status}`;
+
+  try {
+    const payload = (await response.json()) as unknown;
+    if (payload && typeof payload === "object" && "detail" in payload) {
+      const detail = (payload as { detail: unknown }).detail;
+      const formattedDetail = typeof detail === "string" ? detail : JSON.stringify(detail);
+      if (formattedDetail) {
+        return `${message}: ${formattedDetail}`;
+      }
+    }
+  } catch {
+    // Keep the status-only message when the error response is not JSON.
+  }
+
+  return message;
+}
+
 async function requestJson<T>(
   url: string,
   init: RequestInit | undefined,
@@ -26,7 +50,7 @@ async function requestJson<T>(
 ): Promise<T> {
   const response = await fetch(url, init);
   if (!response.ok) {
-    throw new Error(`Worker request failed: ${response.status}`);
+    throw new Error(await formatWorkerError(response));
   }
   return parse(await response.json());
 }
@@ -36,15 +60,17 @@ export async function fetchWorkerHealth(baseUrl = DEFAULT_WORKER_BASE_URL): Prom
 }
 
 export async function createProject(
-  input: CreateProjectRequest,
+  input: CreateProjectInput,
   baseUrl = DEFAULT_WORKER_BASE_URL
 ): Promise<ProjectResponse> {
+  const request = CreateProjectRequestSchema.parse(input);
+
   return requestJson(
     `${baseUrl}/projects`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input)
+      body: JSON.stringify(request)
     },
     (payload) => ProjectResponseSchema.parse(payload)
   );
