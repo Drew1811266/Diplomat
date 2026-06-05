@@ -1,0 +1,189 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  createProject,
+  exportSrt,
+  fetchSubtitleDocument,
+  runProjectAnalysis,
+  saveSubtitleDocument
+} from "../src/api";
+import type { SubtitleDocument } from "@diplomat/shared";
+
+const baseUrl = "http://worker.test";
+
+const subtitleDocument: SubtitleDocument = {
+  schemaVersion: "diplomat.subtitle.v1",
+  projectId: "project-1",
+  mediaId: "media-1",
+  durationMs: 10_000,
+  speakers: [
+    {
+      id: "speaker-1",
+      displayName: "Speaker 1",
+      color: "#0D9488",
+      styleId: "default",
+      mergedInto: null
+    }
+  ],
+  styles: [
+    {
+      id: "default",
+      name: "Default",
+      fontFamily: "Arial",
+      fontSize: 36,
+      primaryColor: "#FFFFFF",
+      secondaryColor: "#14B8A6",
+      strokeWidth: 3,
+      shadow: 1,
+      position: "bottom-center",
+      marginV: 48,
+      alignment: "center",
+      bilingualLayout: "source-above-target",
+      lineSpacing: 1.15
+    }
+  ],
+  lines: [
+    {
+      id: "line-1",
+      startMs: 1000,
+      endMs: 2500,
+      speakerId: "speaker-1",
+      sourceLanguage: "zh",
+      targetLanguage: "en",
+      sourceText: "你好",
+      translatedText: "Hello",
+      words: [{ text: "你好", startMs: 1000, endMs: 2500, confidence: 0.94 }],
+      styleOverrides: {},
+      reviewStatus: "draft",
+      aiOrigin: { engine: "fake-asr", model: "fake-v1" },
+      notes: ""
+    }
+  ]
+};
+
+function stubJsonResponse(payload: unknown, ok = true, status = 200) {
+  const fetchMock = vi.fn(async () => ({
+    ok,
+    status,
+    json: async () => payload
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+describe("worker API helpers", () => {
+  it("createProject sends POST JSON and parses the response", async () => {
+    const response = {
+      projectId: "project-1",
+      name: "Launch interview",
+      sourceVideoPath: "D:/media/interview.mp4",
+      projectDir: "D:/Diplomat/projects/project-1",
+      durationMs: 124_000,
+      sourceLanguage: "zh",
+      targetLanguage: "en"
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(
+      createProject(
+        {
+          name: "Launch interview",
+          sourceVideoPath: "D:/media/interview.mp4",
+          sourceLanguage: "zh",
+          targetLanguage: "en"
+        },
+        baseUrl
+      )
+    ).resolves.toEqual(response);
+
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Launch interview",
+        sourceVideoPath: "D:/media/interview.mp4",
+        sourceLanguage: "zh",
+        targetLanguage: "en"
+      })
+    });
+  });
+
+  it("runProjectAnalysis posts to the project analyze URL and parses the response", async () => {
+    const response = {
+      projectId: "project-1",
+      status: "completed",
+      subtitlePath: "D:/Diplomat/projects/project-1/subtitles.json",
+      lineCount: 1,
+      document: subtitleDocument
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(runProjectAnalysis("project-1", baseUrl)).resolves.toEqual(response);
+
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/analyze`, {
+      method: "POST"
+    });
+  });
+
+  it("fetchSubtitleDocument gets the subtitle URL and parses the response", async () => {
+    const fetchMock = stubJsonResponse(subtitleDocument);
+
+    await expect(fetchSubtitleDocument("project-1", baseUrl)).resolves.toEqual(subtitleDocument);
+
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/subtitle`, undefined);
+  });
+
+  it("saveSubtitleDocument puts JSON to the subtitle URL and parses the response", async () => {
+    const fetchMock = stubJsonResponse(subtitleDocument);
+
+    await expect(saveSubtitleDocument("project-1", subtitleDocument, baseUrl)).resolves.toEqual(
+      subtitleDocument
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/subtitle`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document: subtitleDocument })
+    });
+  });
+
+  it("exportSrt posts JSON to the SRT export URL and parses the response", async () => {
+    const response = {
+      projectId: "project-1",
+      exportPath: "D:/Diplomat/projects/project-1/export.srt",
+      mode: "target"
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(exportSrt("project-1", "target", baseUrl)).resolves.toEqual(response);
+
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/exports/srt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "target" })
+    });
+  });
+
+  it("throws the worker request status for non-OK responses", async () => {
+    stubJsonResponse({ error: "nope" }, false, 503);
+
+    await expect(runProjectAnalysis("project-1", baseUrl)).rejects.toThrow(
+      "Worker request failed: 503"
+    );
+  });
+
+  it("rejects invalid response payloads", async () => {
+    stubJsonResponse({ projectId: "", name: "Bad response" });
+
+    await expect(
+      createProject(
+        {
+          name: "Launch interview",
+          sourceVideoPath: "D:/media/interview.mp4",
+          sourceLanguage: "zh",
+          targetLanguage: "en"
+        },
+        baseUrl
+      )
+    ).rejects.toThrow();
+  });
+});
