@@ -7,7 +7,7 @@ export const CreateProjectRequestSchema = z.object({
   name: z.string().min(1),
   sourceVideoPath: z.string().min(1),
   sourceLanguage: LanguageCodeSchema,
-  targetLanguage: LanguageCodeSchema.nullable()
+  targetLanguage: LanguageCodeSchema.nullable().default(null)
 });
 
 export const ProjectResponseSchema = z.object({
@@ -16,8 +16,8 @@ export const ProjectResponseSchema = z.object({
   sourceVideoPath: z.string().min(1),
   projectDir: z.string().min(1),
   durationMs: z.number().int().nonnegative(),
-  sourceLanguage: LanguageCodeSchema,
-  targetLanguage: LanguageCodeSchema.nullable()
+  sourceLanguage: z.string(),
+  targetLanguage: z.string().nullable()
 });
 
 export const AnalyzeProjectResponseSchema = z.object({

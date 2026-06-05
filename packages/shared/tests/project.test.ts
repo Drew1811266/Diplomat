@@ -79,6 +79,16 @@ describe("CreateProjectRequestSchema", () => {
 
     expect(request.targetLanguage).toBeNull();
   });
+
+  it("defaults an omitted target language to null", () => {
+    const request = CreateProjectRequestSchema.parse({
+      name: "Source-only review",
+      sourceVideoPath: "D:/media/review.mp4",
+      sourceLanguage: "ja"
+    });
+
+    expect(request.targetLanguage).toBeNull();
+  });
 });
 
 describe("ProjectResponseSchema", () => {
@@ -95,6 +105,35 @@ describe("ProjectResponseSchema", () => {
 
     expect(response.projectId).toBe("project-1");
     expect(response.durationMs).toBe(124_000);
+  });
+
+  it("accepts a null target language", () => {
+    const response = ProjectResponseSchema.parse({
+      projectId: "project-1",
+      name: "Launch interview",
+      sourceVideoPath: "D:/media/interview.mp4",
+      projectDir: "D:/Diplomat/projects/project-1",
+      durationMs: 124_000,
+      sourceLanguage: "zh",
+      targetLanguage: null
+    });
+
+    expect(response.targetLanguage).toBeNull();
+  });
+
+  it("does not apply request language code length constraints to responses", () => {
+    const response = ProjectResponseSchema.parse({
+      projectId: "project-1",
+      name: "Launch interview",
+      sourceVideoPath: "D:/media/interview.mp4",
+      projectDir: "D:/Diplomat/projects/project-1",
+      durationMs: 124_000,
+      sourceLanguage: "z",
+      targetLanguage: "english-long-name"
+    });
+
+    expect(response.sourceLanguage).toBe("z");
+    expect(response.targetLanguage).toBe("english-long-name");
   });
 });
 
