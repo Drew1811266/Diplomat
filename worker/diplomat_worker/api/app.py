@@ -7,8 +7,11 @@ from diplomat_worker.api.schemas import (
     AnalyzeProjectResponse,
     CreateProjectRequest,
     ProjectResponse,
+    SrtExportRequest,
+    SrtExportResponse,
     SubtitleDocumentRequest,
 )
+from diplomat_worker.export.srt import write_srt_export
 from diplomat_worker.pipeline.core import CorePipelineInput, run_core_pipeline
 from diplomat_worker.schemas.subtitle import SubtitleDocument
 
@@ -135,6 +138,22 @@ def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return request.document
+
+    @app.post("/projects/{project_id}/exports/srt", response_model=SrtExportResponse)
+    def export_srt(project_id: str, request: SrtExportRequest) -> SrtExportResponse:
+        active_runtime = get_runtime()
+        try:
+            project = active_runtime.store.get_project(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        try:
+            document = active_runtime.store.load_subtitle_document(project_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Subtitle document not found") from exc
+
+        export_path = project.project_dir / "exports" / f"subtitle-{request.mode}.srt"
+        write_srt_export(document, export_path, mode=request.mode)
+        return SrtExportResponse(project_id=project_id, export_path=str(export_path), mode=request.mode)
 
     return app
 

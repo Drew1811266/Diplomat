@@ -105,6 +105,7 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("POST", "/projects"),
         ("GET", "/projects/{project_id}"),
         ("POST", "/projects/{project_id}/analyze"),
+        ("POST", "/projects/{project_id}/exports/srt"),
         ("GET", "/projects/{project_id}/subtitle"),
         ("PUT", "/projects/{project_id}/subtitle"),
     }
@@ -148,6 +149,7 @@ def test_project_analyze_and_subtitle_round_trip(app_module, tmp_path: Path) -> 
     assert subtitle_response.status_code == 200
     document = subtitle_response.json()
     document["lines"][0]["sourceText"] = "Edited text"
+    document["lines"][0]["translatedText"] = "Translated text"
 
     put_response = client.put(f"/projects/{project_id}/subtitle", json={"document": document})
 
@@ -157,6 +159,18 @@ def test_project_analyze_and_subtitle_round_trip(app_module, tmp_path: Path) -> 
 
     assert reloaded_response.status_code == 200
     assert reloaded_response.json()["lines"][0]["sourceText"] == "Edited text"
+
+    export_response = client.post(f"/projects/{project_id}/exports/srt", json={"mode": "bilingual"})
+
+    assert export_response.status_code == 200
+    export = export_response.json()
+    assert export["projectId"] == project_id
+    assert export["mode"] == "bilingual"
+    assert export["exportPath"].endswith("subtitle-bilingual.srt")
+    export_path = Path(export["exportPath"])
+    assert export_path.exists()
+    exported_srt = export_path.read_text(encoding="utf-8")
+    assert "1\n00:00:00,000 --> 00:00:30,000\nEdited text\nTranslated text" in exported_srt
 
 
 def test_create_project_rejects_video_without_audio(app_module, tmp_path: Path) -> None:
@@ -217,6 +231,54 @@ def test_get_subtitle_before_analyze_returns_404(app_module, tmp_path: Path) -> 
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Subtitle document not found"
+
+
+def test_export_srt_for_missing_project_returns_404(app_module, tmp_path: Path) -> None:
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
+
+    response = client.post("/projects/missing-project/exports/srt", json={"mode": "bilingual"})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found"
+
+
+def test_export_srt_before_subtitle_document_returns_404(app_module, tmp_path: Path) -> None:
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
+    project_id = client.post(
+        "/projects",
+        json={
+            "name": "Episode 1",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "zh",
+            "targetLanguage": "en",
+        },
+    ).json()["projectId"]
+
+    response = client.post(f"/projects/{project_id}/exports/srt", json={"mode": "bilingual"})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Subtitle document not found"
+
+
+def test_export_srt_rejects_invalid_mode(app_module, tmp_path: Path) -> None:
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
+    project_id = client.post(
+        "/projects",
+        json={
+            "name": "Episode 1",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "zh",
+            "targetLanguage": "en",
+        },
+    ).json()["projectId"]
+
+    response = client.post(f"/projects/{project_id}/exports/srt", json={"mode": "invalid"})
+
+    assert response.status_code == 422
 
 
 def test_put_subtitle_with_mismatched_project_id_returns_400(app_module, tmp_path: Path) -> None:
