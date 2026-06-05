@@ -14,11 +14,11 @@ ExtractAudioFn = Callable[[Path, Path], Path]
 
 def default_data_dir() -> Path:
     configured = os.environ.get("DIPLOMAT_DATA_DIR")
-    if configured is not None:
+    if configured and configured.strip():
         return Path(configured)
 
     local_app_data = os.environ.get("LOCALAPPDATA")
-    if local_app_data is not None:
+    if local_app_data and local_app_data.strip():
         return Path(local_app_data) / "Diplomat"
 
     return Path.home() / ".diplomat"

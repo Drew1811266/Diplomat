@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from diplomat_worker.api.app import create_app
 from diplomat_worker.api.runtime import default_data_dir
@@ -76,7 +77,7 @@ def test_create_project_request_allows_null_target_language_and_rejects_short_va
     )
 
     assert request.target_language is None
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         CreateProjectRequest(
             name="Episode 1",
             sourceVideoPath=tmp_path / "source.mp4",
@@ -88,7 +89,7 @@ def test_create_project_request_allows_null_target_language_and_rejects_short_va
 def test_srt_export_request_defaults_to_bilingual_and_rejects_unsupported_mode() -> None:
     assert SrtExportRequest().mode == "bilingual"
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         SrtExportRequest(mode="invalid")
 
 
@@ -103,3 +104,23 @@ def test_default_data_dir_uses_configured_dir_then_local_app_data(monkeypatch, t
     monkeypatch.delenv("DIPLOMAT_DATA_DIR")
 
     assert default_data_dir() == local_app_data / "Diplomat"
+
+
+def test_default_data_dir_ignores_blank_env_values(monkeypatch, tmp_path: Path) -> None:
+    local_app_data = tmp_path / "local"
+    monkeypatch.setenv("DIPLOMAT_DATA_DIR", "  ")
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+
+    assert default_data_dir() == local_app_data / "Diplomat"
+
+    monkeypatch.setenv("DIPLOMAT_DATA_DIR", "")
+    monkeypatch.setenv("LOCALAPPDATA", "\t")
+
+    assert default_data_dir() == Path.home() / ".diplomat"
+
+
+def test_default_data_dir_falls_back_to_home_when_env_unset(monkeypatch) -> None:
+    monkeypatch.delenv("DIPLOMAT_DATA_DIR", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+
+    assert default_data_dir() == Path.home() / ".diplomat"
