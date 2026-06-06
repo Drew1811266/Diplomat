@@ -4,6 +4,7 @@ type ExportPanelProps = {
   mode: SrtExportMode;
   exportResult: SrtExportResponse | null;
   canExport: boolean;
+  disabledReason: string | null;
   busy: boolean;
   onModeChange: (mode: SrtExportMode) => void;
   onExport: () => void;
@@ -15,6 +16,7 @@ export function ExportPanel({
   mode,
   exportResult,
   canExport,
+  disabledReason,
   busy,
   onModeChange,
   onExport
@@ -43,6 +45,7 @@ export function ExportPanel({
         Export SRT
       </button>
 
+      {disabledReason ? <p className="export-hint">{disabledReason}</p> : null}
       {exportResult ? <p className="export-result">SRT exported: {exportResult.exportPath}</p> : null}
     </section>
   );

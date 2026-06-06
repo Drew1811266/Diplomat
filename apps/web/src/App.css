@@ -84,6 +84,7 @@ button {
 .status-error {
   max-width: 420px;
   padding: 8px 10px;
+  overflow-wrap: anywhere;
   color: #fff1f2;
   background: #9f1239;
   border: 1px solid #fda4af;
@@ -324,6 +325,14 @@ button:disabled {
   font-size: 0.9rem;
   font-weight: 700;
   line-height: 1.45;
+}
+
+.export-hint {
+  margin: 0;
+  color: #9f1239;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .empty-state {

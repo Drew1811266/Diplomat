@@ -40,6 +40,7 @@ export function App() {
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [exportMode, setExportMode] = useState<SrtExportMode>("bilingual");
   const [exportResult, setExportResult] = useState<SrtExportResponse | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [message, setMessage] = useState("Ready");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -66,6 +67,10 @@ export function App() {
     () => document?.lines.find((line) => line.id === selectedLineId) ?? null,
     [document, selectedLineId]
   );
+  const exportDisabledReason = hasUnsavedChanges
+    ? "Save subtitle edits before exporting."
+    : null;
+  const canExport = Boolean(project && document && !hasUnsavedChanges);
 
   async function runAction(action: () => Promise<void>) {
     setBusy(true);
@@ -93,6 +98,7 @@ export function App() {
       setDocument(null);
       setSelectedLineId(null);
       setExportResult(null);
+      setHasUnsavedChanges(false);
       setMessage("Project created");
     });
   }
@@ -107,6 +113,7 @@ export function App() {
       setDocument(analysis.document);
       setSelectedLineId(analysis.document.lines[0]?.id ?? null);
       setExportResult(null);
+      setHasUnsavedChanges(false);
       setMessage("Analysis completed");
     });
   }
@@ -122,6 +129,9 @@ export function App() {
         lines: currentDocument.lines.map((line) => (line.id === nextLine.id ? nextLine : line))
       };
     });
+    setHasUnsavedChanges(true);
+    setExportResult(null);
+    setMessage("Unsaved subtitle edits");
   }
 
   function handleSaveSubtitle() {
@@ -132,12 +142,13 @@ export function App() {
     void runAction(async () => {
       const savedDocument = await saveSubtitleDocument(project.projectId, document);
       setDocument(savedDocument);
+      setHasUnsavedChanges(false);
       setMessage("Saved subtitle edits");
     });
   }
 
   function handleExportSrt() {
-    if (!project || !document) {
+    if (!project || !document || hasUnsavedChanges) {
       return;
     }
 
@@ -146,6 +157,11 @@ export function App() {
       setExportResult(result);
       setMessage("SRT export completed");
     });
+  }
+
+  function handleExportModeChange(mode: SrtExportMode) {
+    setExportMode(mode);
+    setExportResult(null);
   }
 
   return (
@@ -176,9 +192,10 @@ export function App() {
         <ExportPanel
           mode={exportMode}
           exportResult={exportResult}
-          canExport={Boolean(project && document)}
+          canExport={canExport}
+          disabledReason={exportDisabledReason}
           busy={busy}
-          onModeChange={setExportMode}
+          onModeChange={handleExportModeChange}
           onExport={handleExportSrt}
         />
       </div>
