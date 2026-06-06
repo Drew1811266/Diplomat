@@ -62,9 +62,23 @@ function jsonResponse(payload: unknown): Response {
   } as Response;
 }
 
-function stubWorkbenchFetch() {
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+};
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
+function stubWorkbenchFetch(options: { pauseSave?: boolean } = {}) {
   const savedDocuments: SubtitleDocument[] = [];
   const exportModes: string[] = [];
+  const pendingSave = options.pauseSave ? createDeferred<Response>() : null;
 
   const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
@@ -103,6 +117,9 @@ function stubWorkbenchFetch() {
     if (url.endsWith("/projects/project-demo/subtitle") && init?.method === "PUT") {
       const body = JSON.parse(init.body as string) as { document: SubtitleDocument };
       savedDocuments.push(body.document);
+      if (pendingSave) {
+        return pendingSave.promise;
+      }
       return jsonResponse(body.document);
     }
 
@@ -119,7 +136,7 @@ function stubWorkbenchFetch() {
     throw new Error(`Unexpected fetch: ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { fetchMock, savedDocuments, exportModes };
+  return { fetchMock, pendingSave, savedDocuments, exportModes };
 }
 
 async function createAndAnalyzeDemoProject() {
@@ -214,5 +231,30 @@ describe("App", () => {
     expect(await screen.findByText("Saved subtitle edits")).toBeInTheDocument();
     expect(savedDocuments.at(-1)?.lines[0]?.sourceText).toBe("Changed after export");
     expect(screen.getByRole("button", { name: "Export SRT" })).toBeEnabled();
+  });
+
+  it("locks subtitle editor fields while save is in flight", async () => {
+    const { pendingSave } = stubWorkbenchFetch({ pauseSave: true });
+    await createAndAnalyzeDemoProject();
+
+    fireEvent.change(screen.getByLabelText("Source text"), {
+      target: { value: "Queued save text" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Subtitle" }));
+
+    expect(screen.getByLabelText("Start ms")).toBeDisabled();
+    expect(screen.getByLabelText("End ms")).toBeDisabled();
+    expect(screen.getByLabelText("Source text")).toBeDisabled();
+    expect(screen.getByLabelText("Translated text")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save Subtitle" })).toBeDisabled();
+
+    pendingSave?.resolve(
+      jsonResponse({
+        ...analyzedDocument,
+        lines: [{ ...analyzedDocument.lines[0]!, sourceText: "Queued save text" }]
+      })
+    );
+
+    expect(await screen.findByText("Saved subtitle edits")).toBeInTheDocument();
   });
 });

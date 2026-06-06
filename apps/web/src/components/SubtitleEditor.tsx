@@ -38,6 +38,7 @@ export function SubtitleEditor({ line, busy, onChangeLine, onSave }: SubtitleEdi
             type="number"
             min={0}
             value={line.startMs}
+            disabled={busy}
             onChange={(event) =>
               onChangeLine({ ...line, startMs: toInteger(event.target.value, line.startMs) })
             }
@@ -49,6 +50,7 @@ export function SubtitleEditor({ line, busy, onChangeLine, onSave }: SubtitleEdi
             type="number"
             min={0}
             value={line.endMs}
+            disabled={busy}
             onChange={(event) =>
               onChangeLine({ ...line, endMs: toInteger(event.target.value, line.endMs) })
             }
@@ -61,6 +63,7 @@ export function SubtitleEditor({ line, busy, onChangeLine, onSave }: SubtitleEdi
         <textarea
           rows={5}
           value={line.sourceText}
+          disabled={busy}
           onChange={(event) => onChangeLine({ ...line, sourceText: event.target.value })}
         />
       </label>
@@ -70,6 +73,7 @@ export function SubtitleEditor({ line, busy, onChangeLine, onSave }: SubtitleEdi
         <textarea
           rows={5}
           value={line.translatedText}
+          disabled={busy}
           onChange={(event) => onChangeLine({ ...line, translatedText: event.target.value })}
         />
       </label>
