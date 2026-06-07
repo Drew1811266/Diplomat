@@ -86,6 +86,9 @@ class TranslationJobManager:
         self,
         task_id: str,
         provider_config: TranslationProviderConfig | None = None,
+        source_language: str | None = None,
+        target_language: str | None = None,
+        mode: str | None = None,
     ) -> TaskRecord:
         task = self.runtime.store.get_task(task_id)
         if task.status not in {"failed", "canceled"}:
@@ -93,9 +96,9 @@ class TranslationJobManager:
         payload = task.request_payload
         return self.create_translation_job(
             task.project_id,
-            source_language=payload["sourceLanguage"],
-            target_language=payload["targetLanguage"],
-            mode=payload["mode"],
+            source_language=source_language or payload["sourceLanguage"],
+            target_language=target_language or payload["targetLanguage"],
+            mode=mode or payload["mode"],
             provider_config=provider_config or TranslationProviderConfig.from_request_payload(payload),
         )
 

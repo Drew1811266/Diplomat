@@ -43,6 +43,24 @@ class AnalysisJobRequest(CamelModel):
     initial_prompt: str | None = Field(default=None, alias="initialPrompt")
 
 
+class TranslationSettingsRequest(CamelModel):
+    provider: Literal["fake", "libretranslate"] = "fake"
+    source_language: str = Field(alias="sourceLanguage", min_length=2, max_length=12)
+    target_language: str = Field(alias="targetLanguage", min_length=2, max_length=12)
+    mode: Literal["missing_only", "overwrite_all"] = "missing_only"
+    endpoint: str | None = None
+    api_key_env: str | None = Field(default=None, alias="apiKeyEnv")
+
+
+class TranslationSettingsResponse(TranslationSettingsRequest):
+    project_id: str = Field(alias="projectId", min_length=1)
+    updated_at: str = Field(alias="updatedAt")
+
+
+class TranslationJobRequest(TranslationSettingsRequest):
+    pass
+
+
 class AnalyzeProjectResponse(CamelModel):
     project_id: str = Field(alias="projectId")
     status: Literal["completed"]

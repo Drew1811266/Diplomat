@@ -8,11 +8,18 @@ from pydantic import ValidationError
 
 from diplomat_worker.api.runtime import default_data_dir
 from diplomat_worker.api.runtime import WorkerRuntime
-from diplomat_worker.api.schemas import AnalysisJobRequest, CreateProjectRequest, ProjectResponse, SrtExportRequest
+from diplomat_worker.api.schemas import (
+    AnalysisJobRequest,
+    CreateProjectRequest,
+    ProjectResponse,
+    SrtExportRequest,
+    TranslationSettingsRequest,
+)
 from diplomat_worker.asr.fake import FakeTranscriber
 from diplomat_worker.media.ffmpeg import FfmpegCheck, VideoProbe
 from diplomat_worker.storage.project_store import ProjectStore
 from diplomat_worker.tasks.analysis import AnalysisJobManager
+from diplomat_worker.tasks.translation import TranslationJobManager
 
 
 def make_test_runtime(tmp_path: Path) -> WorkerRuntime:
@@ -109,6 +116,9 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("GET", "/projects/{project_id}"),
         ("POST", "/projects/{project_id}/analyze"),
         ("POST", "/projects/{project_id}/analysis-jobs"),
+        ("GET", "/projects/{project_id}/translation-settings"),
+        ("PUT", "/projects/{project_id}/translation-settings"),
+        ("POST", "/projects/{project_id}/translation-jobs"),
         ("POST", "/projects/{project_id}/exports/srt"),
         ("GET", "/projects/{project_id}/subtitle"),
         ("PUT", "/projects/{project_id}/subtitle"),
@@ -117,6 +127,51 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("POST", "/tasks/{task_id}/retry"),
     }
     assert calls == []
+
+
+def create_project_with_saved_subtitle(client: TestClient, tmp_path: Path) -> str:
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    project_id = client.post(
+        "/projects",
+        json={
+            "name": "Episode 1",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "en",
+            "targetLanguage": "zh",
+        },
+    ).json()["projectId"]
+    document = {
+        "schemaVersion": "diplomat.subtitle.v1",
+        "projectId": project_id,
+        "mediaId": "media-1",
+        "durationMs": 1000,
+        "speakers": [],
+        "styles": [],
+        "lines": [
+            {
+                "id": "line-1",
+                "startMs": 0,
+                "endMs": 1000,
+                "speakerId": None,
+                "sourceLanguage": "en",
+                "targetLanguage": "zh",
+                "sourceText": "Hello world",
+                "translatedText": "",
+                "words": [],
+                "styleOverrides": {},
+                "reviewStatus": "draft",
+                "aiOrigin": {"engine": "fake-asr", "model": "fake-v1"},
+                "translationStatus": "not_requested",
+                "translationOrigin": None,
+                "translationError": None,
+                "notes": "",
+            }
+        ],
+    }
+    response = client.put(f"/projects/{project_id}/subtitle", json={"document": document})
+    assert response.status_code == 200
+    return project_id
 
 
 def test_project_list_endpoint_returns_recent_projects(app_module, tmp_path: Path) -> None:
@@ -416,6 +471,110 @@ def test_retry_failed_analysis_job_accepts_replacement_config(app_module, tmp_pa
     }
 
 
+def test_translation_settings_round_trip(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    client = TestClient(app_module.create_app(runtime))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+
+    default_response = client.get(f"/projects/{project_id}/translation-settings")
+    save_response = client.put(
+        f"/projects/{project_id}/translation-settings",
+        json={
+            "provider": "fake",
+            "sourceLanguage": "en",
+            "targetLanguage": "zh",
+            "mode": "overwrite_all",
+            "endpoint": None,
+            "apiKeyEnv": None,
+        },
+    )
+
+    assert default_response.status_code == 200
+    assert default_response.json()["projectId"] == project_id
+    assert default_response.json()["mode"] == "missing_only"
+    assert save_response.status_code == 200
+    assert save_response.json()["mode"] == "overwrite_all"
+
+
+def test_create_translation_job_returns_accepted_task(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    manager = TranslationJobManager(runtime, auto_start=False)
+    client = TestClient(app_module.create_app(runtime, translation_jobs=manager))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+
+    response = client.post(
+        f"/projects/{project_id}/translation-jobs",
+        json={
+            "provider": "fake",
+            "sourceLanguage": "en",
+            "targetLanguage": "zh",
+            "mode": "missing_only",
+        },
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["projectId"] == project_id
+    assert payload["type"] == "translation"
+    assert payload["status"] == "queued"
+    assert payload["progress"] == 0
+
+
+def test_cancel_translation_job_routes_to_translation_manager(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    manager = TranslationJobManager(runtime, auto_start=False)
+    client = TestClient(app_module.create_app(runtime, translation_jobs=manager))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+    task_id = client.post(
+        f"/projects/{project_id}/translation-jobs",
+        json={"provider": "fake", "sourceLanguage": "en", "targetLanguage": "zh"},
+    ).json()["taskId"]
+
+    response = client.post(f"/tasks/{task_id}/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["type"] == "translation"
+    assert response.json()["status"] == "canceled"
+
+
+def test_retry_translation_job_accepts_replacement_config(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    manager = TranslationJobManager(runtime, auto_start=False)
+    client = TestClient(app_module.create_app(runtime, translation_jobs=manager))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+    task_id = client.post(
+        f"/projects/{project_id}/translation-jobs",
+        json={
+            "provider": "libretranslate",
+            "sourceLanguage": "en",
+            "targetLanguage": "zh",
+            "mode": "missing_only",
+            "endpoint": "http://translate.local",
+        },
+    ).json()["taskId"]
+    client.post(f"/tasks/{task_id}/cancel")
+
+    retry_response = client.post(
+        f"/tasks/{task_id}/retry",
+        json={
+            "provider": "fake",
+            "sourceLanguage": "en",
+            "targetLanguage": "zh",
+            "mode": "overwrite_all",
+        },
+    )
+    retry_task_id = retry_response.json()["taskId"]
+
+    assert retry_response.status_code == 202
+    assert retry_response.json()["type"] == "translation"
+    assert runtime.store.get_task(retry_task_id).request_payload == {
+        "provider": "fake",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh",
+        "mode": "overwrite_all",
+    }
+
+
 def test_create_project_rejects_video_without_audio(app_module, tmp_path: Path) -> None:
     source_video = tmp_path / "source.mp4"
     source_video.write_bytes(b"fake-video")
@@ -637,6 +796,30 @@ def test_analysis_job_request_defaults_to_fake_provider() -> None:
 
     assert configured.model_name_or_path == "small"
     assert configured.source_language == "zh"
+
+
+def test_translation_settings_request_defaults_to_fake_missing_only() -> None:
+    request = TranslationSettingsRequest(sourceLanguage="en", targetLanguage="zh")
+
+    assert request.provider == "fake"
+    assert request.source_language == "en"
+    assert request.target_language == "zh"
+    assert request.mode == "missing_only"
+    assert request.endpoint is None
+    assert request.api_key_env is None
+
+    configured = TranslationSettingsRequest(
+        provider="libretranslate",
+        sourceLanguage="zh",
+        targetLanguage="en",
+        mode="overwrite_all",
+        endpoint="http://translate.local",
+        apiKeyEnv="LIBRETRANSLATE_API_KEY",
+    )
+
+    assert configured.provider == "libretranslate"
+    assert configured.mode == "overwrite_all"
+    assert configured.api_key_env == "LIBRETRANSLATE_API_KEY"
 
 
 def test_default_data_dir_uses_configured_dir_then_local_app_data(monkeypatch, tmp_path: Path) -> None:

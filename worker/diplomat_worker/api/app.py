@@ -1,4 +1,6 @@
-from fastapi import FastAPI, HTTPException, status
+import json
+
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from diplomat_worker import __version__
@@ -12,6 +14,9 @@ from diplomat_worker.api.schemas import (
     SrtExportRequest,
     SrtExportResponse,
     SubtitleDocumentRequest,
+    TranslationJobRequest,
+    TranslationSettingsRequest,
+    TranslationSettingsResponse,
 )
 from diplomat_worker.asr.config import AsrModelConfig
 from diplomat_worker.export.srt import write_srt_export
@@ -20,6 +25,8 @@ from diplomat_worker.schemas.subtitle import SubtitleDocument
 from diplomat_worker.schemas.task import TaskResponse
 from diplomat_worker.storage.project_store import TaskRecord
 from diplomat_worker.tasks.analysis import AnalysisJobManager
+from diplomat_worker.tasks.translation import TranslationJobManager
+from diplomat_worker.translation.config import TranslationProviderConfig
 
 
 def project_response(project, runtime: WorkerRuntime) -> ProjectResponse:
@@ -65,9 +72,31 @@ def analysis_config_from_request(request: AnalysisJobRequest) -> AsrModelConfig:
     )
 
 
+def translation_config_from_request(request: TranslationSettingsRequest) -> TranslationProviderConfig:
+    return TranslationProviderConfig(
+        provider=request.provider,
+        endpoint=request.endpoint,
+        api_key_env=request.api_key_env,
+    )
+
+
+def translation_settings_response(settings) -> TranslationSettingsResponse:
+    return TranslationSettingsResponse(
+        project_id=settings.project_id,
+        provider=settings.provider,
+        source_language=settings.source_language,
+        target_language=settings.target_language,
+        mode=settings.mode,
+        endpoint=settings.endpoint,
+        api_key_env=settings.api_key_env,
+        updated_at=settings.updated_at,
+    )
+
+
 def create_app(
     runtime: WorkerRuntime | None = None,
     analysis_jobs: AnalysisJobManager | None = None,
+    translation_jobs: TranslationJobManager | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Diplomat Worker",
@@ -85,6 +114,7 @@ def create_app(
     )
     app.state.runtime = runtime
     app.state.analysis_jobs = analysis_jobs
+    app.state.translation_jobs = translation_jobs
 
     def get_runtime() -> WorkerRuntime:
         active_runtime = app.state.runtime
@@ -98,6 +128,13 @@ def create_app(
         if active_jobs is None:
             active_jobs = AnalysisJobManager(get_runtime())
             app.state.analysis_jobs = active_jobs
+        return active_jobs
+
+    def get_translation_jobs() -> TranslationJobManager:
+        active_jobs = app.state.translation_jobs
+        if active_jobs is None:
+            active_jobs = TranslationJobManager(get_runtime())
+            app.state.translation_jobs = active_jobs
         return active_jobs
 
     @app.get("/health")
@@ -184,25 +221,112 @@ def create_app(
             raise HTTPException(status_code=404, detail="Project not found") from exc
         return task_response(task)
 
+    @app.get("/projects/{project_id}/translation-settings", response_model=TranslationSettingsResponse)
+    def get_translation_settings(project_id: str) -> TranslationSettingsResponse:
+        try:
+            settings = get_runtime().store.get_translation_settings(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        return translation_settings_response(settings)
+
+    @app.put("/projects/{project_id}/translation-settings", response_model=TranslationSettingsResponse)
+    def put_translation_settings(
+        project_id: str,
+        request: TranslationSettingsRequest,
+    ) -> TranslationSettingsResponse:
+        try:
+            settings = get_runtime().store.save_translation_settings(
+                project_id,
+                provider=request.provider,
+                source_language=request.source_language,
+                target_language=request.target_language,
+                mode=request.mode,
+                endpoint=request.endpoint,
+                api_key_env=request.api_key_env,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return translation_settings_response(settings)
+
+    @app.post(
+        "/projects/{project_id}/translation-jobs",
+        response_model=TaskResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def create_translation_job(project_id: str, request: TranslationJobRequest) -> TaskResponse:
+        try:
+            get_runtime().store.save_translation_settings(
+                project_id,
+                provider=request.provider,
+                source_language=request.source_language,
+                target_language=request.target_language,
+                mode=request.mode,
+                endpoint=request.endpoint,
+                api_key_env=request.api_key_env,
+            )
+            task = get_translation_jobs().create_translation_job(
+                project_id,
+                source_language=request.source_language,
+                target_language=request.target_language,
+                mode=request.mode,
+                provider_config=translation_config_from_request(request),
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return task_response(task)
+
     @app.get("/tasks/{task_id}", response_model=TaskResponse)
     def get_task(task_id: str) -> TaskResponse:
         try:
-            return task_response(get_analysis_jobs().get_task(task_id))
+            return task_response(get_runtime().store.get_task(task_id))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Task not found") from exc
 
     @app.post("/tasks/{task_id}/cancel", response_model=TaskResponse)
     def cancel_task(task_id: str) -> TaskResponse:
         try:
-            return task_response(get_analysis_jobs().cancel_task(task_id))
+            task = get_runtime().store.get_task(task_id)
+            if task.type == "analysis":
+                return task_response(get_analysis_jobs().cancel_task(task_id))
+            if task.type == "translation":
+                return task_response(get_translation_jobs().cancel_task(task_id))
+            raise HTTPException(status_code=409, detail=f"Task type cannot be canceled: {task.type}")
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Task not found") from exc
 
     @app.post("/tasks/{task_id}/retry", response_model=TaskResponse, status_code=status.HTTP_202_ACCEPTED)
-    def retry_task(task_id: str, request: AnalysisJobRequest | None = None) -> TaskResponse:
+    async def retry_task(task_id: str, request: Request) -> TaskResponse:
         try:
-            config = analysis_config_from_request(request) if request is not None else None
-            return task_response(get_analysis_jobs().retry_task(task_id, config))
+            body = await request.body()
+            payload = json.loads(body) if body else None
+            task = get_runtime().store.get_task(task_id)
+            if task.type == "analysis":
+                config = (
+                    analysis_config_from_request(AnalysisJobRequest.model_validate(payload))
+                    if payload is not None
+                    else None
+                )
+                return task_response(get_analysis_jobs().retry_task(task_id, config))
+            if task.type == "translation":
+                retry_request = TranslationJobRequest.model_validate(payload) if payload is not None else None
+                return task_response(
+                    get_translation_jobs().retry_task(
+                        task_id,
+                        provider_config=translation_config_from_request(retry_request)
+                        if retry_request is not None
+                        else None,
+                        source_language=retry_request.source_language if retry_request is not None else None,
+                        target_language=retry_request.target_language if retry_request is not None else None,
+                        mode=retry_request.mode if retry_request is not None else None,
+                    )
+                )
+            raise HTTPException(status_code=409, detail=f"Task type cannot be retried: {task.type}")
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Task not found") from exc
         except ValueError as exc:
