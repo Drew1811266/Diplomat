@@ -44,4 +44,5 @@ python -m pip install -e .\worker[dev]
 - [M0/M1 Core Pipeline](docs/development/m0-m1-core-pipeline.md)
 - [M2a Implementation Document](docs/development/m2a-implementation-document.md)
 - [M2a Workbench Loop](docs/development/m2a-workbench-loop.md)
+- [M2b-M6 Development Roadmap](docs/development/m2b-m6-development-roadmap.md)
 - [Product Design Spec](docs/superpowers/specs/2026-06-04-diplomat-ai-subtitle-editor-design.md)
