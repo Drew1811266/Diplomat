@@ -5,6 +5,7 @@ from diplomat_worker import __version__
 from diplomat_worker.api.runtime import WorkerRuntime, create_default_runtime
 from diplomat_worker.api.schemas import (
     AnalyzeProjectResponse,
+    AnalysisJobRequest,
     CreateProjectRequest,
     ProjectListResponse,
     ProjectResponse,
@@ -12,9 +13,13 @@ from diplomat_worker.api.schemas import (
     SrtExportResponse,
     SubtitleDocumentRequest,
 )
+from diplomat_worker.asr.config import AsrModelConfig
 from diplomat_worker.export.srt import write_srt_export
 from diplomat_worker.pipeline.core import CorePipelineInput, run_core_pipeline
 from diplomat_worker.schemas.subtitle import SubtitleDocument
+from diplomat_worker.schemas.task import TaskResponse
+from diplomat_worker.storage.project_store import TaskRecord
+from diplomat_worker.tasks.analysis import AnalysisJobManager
 
 
 def project_response(project, runtime: WorkerRuntime) -> ProjectResponse:
@@ -32,7 +37,38 @@ def project_response(project, runtime: WorkerRuntime) -> ProjectResponse:
     )
 
 
-def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
+def task_response(task: TaskRecord) -> TaskResponse:
+    return TaskResponse(
+        task_id=task.task_id,
+        project_id=task.project_id,
+        type=task.type,
+        status=task.status,
+        progress=task.progress,
+        message=task.message,
+        started_at=task.started_at,
+        updated_at=task.updated_at,
+        completed_at=task.completed_at,
+        error_code=task.error_code,
+        error_message=task.error_message,
+        diagnostic_log_path=task.diagnostic_log_path,
+    )
+
+
+def analysis_config_from_request(request: AnalysisJobRequest) -> AsrModelConfig:
+    return AsrModelConfig(
+        provider=request.provider,
+        model_name_or_path=request.model_name_or_path,
+        device=request.device,
+        compute_type=request.compute_type,
+        source_language=request.source_language,
+        initial_prompt=request.initial_prompt,
+    )
+
+
+def create_app(
+    runtime: WorkerRuntime | None = None,
+    analysis_jobs: AnalysisJobManager | None = None,
+) -> FastAPI:
     app = FastAPI(
         title="Diplomat Worker",
         version=__version__,
@@ -48,6 +84,7 @@ def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.state.runtime = runtime
+    app.state.analysis_jobs = analysis_jobs
 
     def get_runtime() -> WorkerRuntime:
         active_runtime = app.state.runtime
@@ -55,6 +92,13 @@ def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
             active_runtime = create_default_runtime()
             app.state.runtime = active_runtime
         return active_runtime
+
+    def get_analysis_jobs() -> AnalysisJobManager:
+        active_jobs = app.state.analysis_jobs
+        if active_jobs is None:
+            active_jobs = AnalysisJobManager(get_runtime())
+            app.state.analysis_jobs = active_jobs
+        return active_jobs
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -127,6 +171,41 @@ def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
             line_count=len(result.subtitle_document.lines),
             document=result.subtitle_document,
         )
+
+    @app.post(
+        "/projects/{project_id}/analysis-jobs",
+        response_model=TaskResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def create_analysis_job(project_id: str, request: AnalysisJobRequest) -> TaskResponse:
+        try:
+            task = get_analysis_jobs().create_analysis_job(project_id, analysis_config_from_request(request))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        return task_response(task)
+
+    @app.get("/tasks/{task_id}", response_model=TaskResponse)
+    def get_task(task_id: str) -> TaskResponse:
+        try:
+            return task_response(get_analysis_jobs().get_task(task_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Task not found") from exc
+
+    @app.post("/tasks/{task_id}/cancel", response_model=TaskResponse)
+    def cancel_task(task_id: str) -> TaskResponse:
+        try:
+            return task_response(get_analysis_jobs().cancel_task(task_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Task not found") from exc
+
+    @app.post("/tasks/{task_id}/retry", response_model=TaskResponse, status_code=status.HTTP_202_ACCEPTED)
+    def retry_task(task_id: str) -> TaskResponse:
+        try:
+            return task_response(get_analysis_jobs().retry_task(task_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Task not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.get("/projects/{project_id}/subtitle", response_model=SubtitleDocument)
     def get_subtitle(project_id: str) -> SubtitleDocument:

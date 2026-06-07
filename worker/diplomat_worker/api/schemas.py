@@ -34,6 +34,15 @@ class ProjectListResponse(CamelModel):
     projects: list[ProjectResponse]
 
 
+class AnalysisJobRequest(CamelModel):
+    provider: Literal["fake", "faster-whisper"] = "fake"
+    model_name_or_path: str | None = Field(default=None, alias="modelNameOrPath")
+    device: str = "cpu"
+    compute_type: str = Field(default="int8", alias="computeType")
+    source_language: str | None = Field(default=None, alias="sourceLanguage", min_length=2, max_length=12)
+    initial_prompt: str | None = Field(default=None, alias="initialPrompt")
+
+
 class AnalyzeProjectResponse(CamelModel):
     project_id: str = Field(alias="projectId")
     status: Literal["completed"]

@@ -8,10 +8,11 @@ from pydantic import ValidationError
 
 from diplomat_worker.api.runtime import default_data_dir
 from diplomat_worker.api.runtime import WorkerRuntime
-from diplomat_worker.api.schemas import CreateProjectRequest, ProjectResponse, SrtExportRequest
+from diplomat_worker.api.schemas import AnalysisJobRequest, CreateProjectRequest, ProjectResponse, SrtExportRequest
 from diplomat_worker.asr.fake import FakeTranscriber
-from diplomat_worker.media.ffmpeg import VideoProbe
+from diplomat_worker.media.ffmpeg import FfmpegCheck, VideoProbe
 from diplomat_worker.storage.project_store import ProjectStore
+from diplomat_worker.tasks.analysis import AnalysisJobManager
 
 
 def make_test_runtime(tmp_path: Path) -> WorkerRuntime:
@@ -107,9 +108,13 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("POST", "/projects"),
         ("GET", "/projects/{project_id}"),
         ("POST", "/projects/{project_id}/analyze"),
+        ("POST", "/projects/{project_id}/analysis-jobs"),
         ("POST", "/projects/{project_id}/exports/srt"),
         ("GET", "/projects/{project_id}/subtitle"),
         ("PUT", "/projects/{project_id}/subtitle"),
+        ("GET", "/tasks/{task_id}"),
+        ("POST", "/tasks/{task_id}/cancel"),
+        ("POST", "/tasks/{task_id}/retry"),
     }
     assert calls == []
 
@@ -264,6 +269,100 @@ def test_project_analyze_and_subtitle_round_trip(app_module, tmp_path: Path) -> 
     assert export_path.exists()
     exported_srt = export_path.read_text(encoding="utf-8")
     assert "1\n00:00:00,000 --> 00:00:30,000\nEdited text\nTranslated text" in exported_srt
+
+
+def test_create_analysis_job_returns_accepted_task(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    manager = AnalysisJobManager(runtime, auto_start=False)
+    client = TestClient(app_module.create_app(runtime, analysis_jobs=manager))
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    project_id = client.post(
+        "/projects",
+        json={
+            "name": "Episode 1",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "zh",
+            "targetLanguage": "en",
+        },
+    ).json()["projectId"]
+
+    response = client.post(
+        f"/projects/{project_id}/analysis-jobs",
+        json={"provider": "fake", "sourceLanguage": "zh"},
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["projectId"] == project_id
+    assert payload["type"] == "analysis"
+    assert payload["status"] == "queued"
+    assert payload["progress"] == 0
+
+    task_response = client.get(f"/tasks/{payload['taskId']}")
+    assert task_response.status_code == 200
+    assert task_response.json()["taskId"] == payload["taskId"]
+
+
+def test_cancel_analysis_job_returns_canceled_task(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    manager = AnalysisJobManager(runtime, auto_start=False)
+    client = TestClient(app_module.create_app(runtime, analysis_jobs=manager))
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    project_id = client.post(
+        "/projects",
+        json={
+            "name": "Episode 1",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "zh",
+            "targetLanguage": "en",
+        },
+    ).json()["projectId"]
+    task_id = client.post(f"/projects/{project_id}/analysis-jobs", json={"provider": "fake"}).json()["taskId"]
+
+    response = client.post(f"/tasks/{task_id}/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "canceled"
+
+
+def test_retry_failed_analysis_job_returns_new_task(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    runtime = WorkerRuntime(
+        store=runtime.store,
+        transcriber=runtime.transcriber,
+        probe_video_fn=runtime.probe_video_fn,
+        extract_audio_fn=runtime.extract_audio_fn,
+        ffmpeg_check_fn=lambda source, ffmpeg, ffprobe: FfmpegCheck(
+            False,
+            "FFMPEG_NOT_FOUND",
+            "FFmpeg executable not found: ffmpeg",
+        ),
+    )
+    manager = AnalysisJobManager(runtime, auto_start=False)
+    client = TestClient(app_module.create_app(runtime, analysis_jobs=manager))
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    project_id = client.post(
+        "/projects",
+        json={
+            "name": "Episode 1",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "zh",
+            "targetLanguage": "en",
+        },
+    ).json()["projectId"]
+    task_id = client.post(f"/projects/{project_id}/analysis-jobs", json={"provider": "fake"}).json()["taskId"]
+    manager.run_pending_once()
+
+    failed = client.get(f"/tasks/{task_id}").json()
+    retry_response = client.post(f"/tasks/{task_id}/retry")
+
+    assert failed["status"] == "failed"
+    assert retry_response.status_code == 202
+    assert retry_response.json()["taskId"] != task_id
+    assert retry_response.json()["status"] == "queued"
 
 
 def test_create_project_rejects_video_without_audio(app_module, tmp_path: Path) -> None:
@@ -468,6 +567,25 @@ def test_srt_export_request_defaults_to_bilingual_and_rejects_unsupported_mode()
 
     with pytest.raises(ValidationError):
         SrtExportRequest(mode="invalid")
+
+
+def test_analysis_job_request_defaults_to_fake_provider() -> None:
+    request = AnalysisJobRequest()
+
+    assert request.provider == "fake"
+    assert request.model_name_or_path is None
+    assert request.device == "cpu"
+    assert request.compute_type == "int8"
+
+    configured = AnalysisJobRequest(
+        provider="faster-whisper",
+        modelNameOrPath="small",
+        sourceLanguage="zh",
+        initialPrompt="Domain words",
+    )
+
+    assert configured.model_name_or_path == "small"
+    assert configured.source_language == "zh"
 
 
 def test_default_data_dir_uses_configured_dir_then_local_app_data(monkeypatch, tmp_path: Path) -> None:
