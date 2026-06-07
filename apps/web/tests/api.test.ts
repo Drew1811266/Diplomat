@@ -250,6 +250,32 @@ describe("worker API helpers", () => {
     });
   });
 
+  it("retryTask posts replacement analysis config when provided", async () => {
+    const response = { ...taskResponse, taskId: "task-2", status: "queued", progress: 0 };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(
+      retryTask(
+        "task-1",
+        { provider: "faster-whisper", modelNameOrPath: "tiny", sourceLanguage: "en" },
+        baseUrl
+      )
+    ).resolves.toEqual(response);
+
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/tasks/task-1/retry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "faster-whisper",
+        modelNameOrPath: "tiny",
+        device: "cpu",
+        computeType: "int8",
+        sourceLanguage: "en",
+        initialPrompt: null
+      })
+    });
+  });
+
   it("fetchSubtitleDocument gets the subtitle URL and parses the response", async () => {
     const fetchMock = stubJsonResponse(subtitleDocument);
 

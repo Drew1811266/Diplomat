@@ -77,13 +77,13 @@ class AnalysisJobManager:
             )
         return task
 
-    def retry_task(self, task_id: str) -> TaskRecord:
+    def retry_task(self, task_id: str, config: AsrModelConfig | None = None) -> TaskRecord:
         task = self.runtime.store.get_task(task_id)
         if task.status not in {"failed", "canceled"}:
             raise ValueError("Only failed or canceled tasks can be retried")
         return self.create_analysis_job(
             task.project_id,
-            AsrModelConfig.from_request_payload(task.request_payload),
+            config or AsrModelConfig.from_request_payload(task.request_payload),
         )
 
     def run_pending_once(self) -> None:

@@ -98,6 +98,7 @@ function stubWorkbenchFetch(
 ) {
   const savedDocuments: SubtitleDocument[] = [];
   const exportModes: string[] = [];
+  const retryBodies: unknown[] = [];
   const pendingSave = options.pauseSave ? createDeferred<Response>() : null;
   let projectWasCreated = false;
   let subtitleAvailable = Boolean(options.includeSubtitleFetch);
@@ -193,6 +194,7 @@ function stubWorkbenchFetch(
     }
 
     if (url.endsWith("/tasks/task-1/retry") && init?.method === "POST") {
+      retryBodies.push(init.body ? JSON.parse(init.body as string) : null);
       retryWasRequested = true;
       subtitleAvailable = true;
       return jsonResponse({ ...completedTask, taskId: "task-2" });
@@ -228,7 +230,7 @@ function stubWorkbenchFetch(
     throw new Error(`Unexpected fetch: ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { fetchMock, pendingSave, savedDocuments, exportModes };
+  return { fetchMock, pendingSave, savedDocuments, exportModes, retryBodies };
 }
 
 async function createAndAnalyzeDemoProject() {
@@ -322,7 +324,7 @@ describe("App", () => {
   });
 
   it("retries a failed analysis job", async () => {
-    stubWorkbenchFetch({ analysisJob: "failedThenCompleted" });
+    const { retryBodies } = stubWorkbenchFetch({ analysisJob: "failedThenCompleted" });
     render(<App />);
 
     expect(await screen.findByText("Worker: ok")).toBeInTheDocument();
@@ -335,10 +337,24 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Start Analysis" }));
     expect((await screen.findAllByText("FFmpeg executable not found: ffmpeg")).length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByLabelText("ASR provider"), {
+      target: { value: "faster-whisper" }
+    });
+    fireEvent.change(screen.getByLabelText("Model name or path"), {
+      target: { value: "tiny" }
+    });
     fireEvent.click(screen.getByRole("button", { name: "Retry Analysis" }));
 
     expect((await screen.findAllByText("Analysis completed")).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("原始字幕文本")).length).toBeGreaterThan(0);
+    expect(retryBodies[0]).toEqual({
+      provider: "faster-whisper",
+      modelNameOrPath: "tiny",
+      device: "cpu",
+      computeType: "int8",
+      sourceLanguage: "zh",
+      initialPrompt: null
+    });
   });
 
   it("starts the desktop Worker when initial health check is unavailable", async () => {

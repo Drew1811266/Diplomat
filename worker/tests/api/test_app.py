@@ -365,6 +365,57 @@ def test_retry_failed_analysis_job_returns_new_task(app_module, tmp_path: Path) 
     assert retry_response.json()["status"] == "queued"
 
 
+def test_retry_failed_analysis_job_accepts_replacement_config(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    runtime = WorkerRuntime(
+        store=runtime.store,
+        transcriber=runtime.transcriber,
+        probe_video_fn=runtime.probe_video_fn,
+        extract_audio_fn=runtime.extract_audio_fn,
+        ffmpeg_check_fn=lambda source, ffmpeg, ffprobe: FfmpegCheck(
+            False,
+            "FFMPEG_NOT_FOUND",
+            "FFmpeg executable not found: ffmpeg",
+        ),
+    )
+    manager = AnalysisJobManager(runtime, auto_start=False)
+    client = TestClient(app_module.create_app(runtime, analysis_jobs=manager))
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    project_id = client.post(
+        "/projects",
+        json={
+            "name": "Episode 1",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "zh",
+            "targetLanguage": "en",
+        },
+    ).json()["projectId"]
+    task_id = client.post(f"/projects/{project_id}/analysis-jobs", json={"provider": "fake"}).json()["taskId"]
+    manager.run_pending_once()
+
+    retry_response = client.post(
+        f"/tasks/{task_id}/retry",
+        json={
+            "provider": "faster-whisper",
+            "modelNameOrPath": "tiny",
+            "device": "cpu",
+            "computeType": "int8",
+            "sourceLanguage": "en",
+        },
+    )
+    retry_task_id = retry_response.json()["taskId"]
+
+    assert retry_response.status_code == 202
+    assert runtime.store.get_task(retry_task_id).request_payload == {
+        "provider": "faster-whisper",
+        "modelNameOrPath": "tiny",
+        "device": "cpu",
+        "computeType": "int8",
+        "sourceLanguage": "en",
+    }
+
+
 def test_create_project_rejects_video_without_audio(app_module, tmp_path: Path) -> None:
     source_video = tmp_path / "source.mp4"
     source_video.write_bytes(b"fake-video")

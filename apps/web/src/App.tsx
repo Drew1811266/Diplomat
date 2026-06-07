@@ -349,7 +349,10 @@ export function App() {
     }
 
     void runAction(async () => {
-      const task = await retryTask(analysisTask.taskId);
+      const task = await retryTask(analysisTask.taskId, {
+        ...analysisConfig,
+        sourceLanguage: analysisConfig.sourceLanguage ?? project?.sourceLanguage ?? null
+      });
       const runId = analysisRunRef.current + 1;
       analysisRunRef.current = runId;
       setAnalysisTask(task);

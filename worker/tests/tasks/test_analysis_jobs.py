@@ -100,6 +100,37 @@ def test_retry_failed_analysis_job_creates_new_task(tmp_path: Path) -> None:
     assert retry.request_payload == {"provider": "fake"}
 
 
+def test_retry_failed_analysis_job_can_replace_request_payload(tmp_path: Path) -> None:
+    runtime = make_runtime(
+        tmp_path,
+        check=FfmpegCheck(False, "FFMPEG_NOT_FOUND", "FFmpeg executable not found: ffmpeg"),
+    )
+    project_id = create_project(runtime, tmp_path)
+    manager = AnalysisJobManager(runtime, auto_start=False)
+    task = manager.create_analysis_job(project_id, AsrModelConfig(provider="fake"))
+    manager.run_pending_once()
+
+    retry = manager.retry_task(
+        task.task_id,
+        AsrModelConfig(
+            provider="faster-whisper",
+            model_name_or_path="tiny",
+            device="cpu",
+            compute_type="int8",
+            source_language="en",
+        ),
+    )
+
+    assert retry.task_id != task.task_id
+    assert retry.request_payload == {
+        "provider": "faster-whisper",
+        "modelNameOrPath": "tiny",
+        "device": "cpu",
+        "computeType": "int8",
+        "sourceLanguage": "en",
+    }
+
+
 def test_retry_running_analysis_job_is_rejected(tmp_path: Path) -> None:
     runtime = make_runtime(tmp_path)
     project_id = create_project(runtime, tmp_path)

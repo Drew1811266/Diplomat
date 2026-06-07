@@ -164,11 +164,24 @@ export async function cancelTask(
 
 export async function retryTask(
   taskId: string,
-  baseUrl = DEFAULT_WORKER_BASE_URL
+  inputOrBaseUrl?: AnalysisJobRequestInput | string,
+  maybeBaseUrl = DEFAULT_WORKER_BASE_URL
 ): Promise<TaskResponse> {
+  const hasReplacementConfig =
+    inputOrBaseUrl !== undefined && typeof inputOrBaseUrl !== "string";
+  const baseUrl =
+    typeof inputOrBaseUrl === "string" ? inputOrBaseUrl : maybeBaseUrl;
+  const requestInit = hasReplacementConfig
+    ? {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(AnalysisJobRequestSchema.parse(inputOrBaseUrl))
+      }
+    : { method: "POST" };
+
   return requestJson(
     `${baseUrl}/tasks/${taskId}/retry`,
-    { method: "POST" },
+    requestInit,
     (payload) => TaskResponseSchema.parse(payload)
   );
 }

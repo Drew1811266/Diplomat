@@ -199,9 +199,10 @@ def create_app(
             raise HTTPException(status_code=404, detail="Task not found") from exc
 
     @app.post("/tasks/{task_id}/retry", response_model=TaskResponse, status_code=status.HTTP_202_ACCEPTED)
-    def retry_task(task_id: str) -> TaskResponse:
+    def retry_task(task_id: str, request: AnalysisJobRequest | None = None) -> TaskResponse:
         try:
-            return task_response(get_analysis_jobs().retry_task(task_id))
+            config = analysis_config_from_request(request) if request is not None else None
+            return task_response(get_analysis_jobs().retry_task(task_id, config))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Task not found") from exc
         except ValueError as exc:
