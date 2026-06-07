@@ -230,6 +230,44 @@ describe("App", () => {
     expect(screen.getByText("Video path selected")).toBeInTheDocument();
   });
 
+  it("starts the desktop Worker when initial health check is unavailable", async () => {
+    const invoke = vi.fn(async (command: string) =>
+      command === "start_worker"
+        ? {
+            status: "running",
+            endpoint: "http://127.0.0.1:8765",
+            owner: "diplomat",
+            message: "Diplomat Worker started"
+          }
+        : null
+    );
+    vi.stubGlobal("__TAURI_INTERNALS__", { invoke });
+    let healthAttempts = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/health")) {
+          healthAttempts += 1;
+          if (healthAttempts === 1) {
+            throw new TypeError("Failed to fetch");
+          }
+          return jsonResponse({ name: "diplomat-worker", status: "ok", version: "0.1.0" });
+        }
+        if (url.endsWith("/projects") && init?.method === undefined) {
+          return jsonResponse({ projects: [] });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      })
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText("Worker: ok")).toBeInTheDocument();
+    expect(screen.getByText("Diplomat Worker started")).toBeInTheDocument();
+    expect(invoke).toHaveBeenCalledWith("start_worker", undefined);
+  });
+
   it("runs the M2a workbench loop from project creation to SRT export", async () => {
     const { savedDocuments, exportModes } = stubWorkbenchFetch();
     await createAndAnalyzeDemoProject();

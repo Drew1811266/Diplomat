@@ -17,7 +17,7 @@ import {
   saveSubtitleDocument,
   type WorkerHealth
 } from "./api";
-import { isDesktopRuntime, pickVideoFile } from "./desktop";
+import { isDesktopRuntime, pickVideoFile, startWorker } from "./desktop";
 import { ExportPanel } from "./components/ExportPanel";
 import { ProjectLibraryPanel } from "./components/ProjectLibraryPanel";
 import { ProjectImportPanel, type ProjectFormState } from "./components/ProjectImportPanel";
@@ -58,19 +58,42 @@ export function App() {
 
   useEffect(() => {
     let canceled = false;
+
+    async function loadWorkerContext() {
+      const result = await fetchWorkerHealth();
+      if (!canceled) {
+        setHealth(result);
+      }
+      const projectList = await listProjects();
+      if (!canceled) {
+        setProjects(projectList.projects);
+      }
+    }
+
     async function bootstrapWorkbench() {
       try {
-        const result = await fetchWorkerHealth();
-        if (!canceled) {
-          setHealth(result);
-        }
-        const projectList = await listProjects();
-        if (!canceled) {
-          setProjects(projectList.projects);
-        }
+        await loadWorkerContext();
       } catch (err: unknown) {
-        if (!canceled) {
-          setError(formatUnknownError(err));
+        if (!isDesktopRuntime()) {
+          if (!canceled) {
+            setError(formatUnknownError(err));
+          }
+          return;
+        }
+
+        try {
+          const status = await startWorker();
+          if (!canceled && status?.message) {
+            setMessage(status.message);
+          }
+          await loadWorkerContext();
+          if (!canceled) {
+            setError(null);
+          }
+        } catch (startError: unknown) {
+          if (!canceled) {
+            setError(formatUnknownError(startError));
+          }
         }
       }
     }
