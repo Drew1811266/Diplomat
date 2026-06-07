@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from diplomat_worker.asr.base import Transcriber
+from diplomat_worker.asr.base import AsrCanceled, CancelToken, ProgressCallback, Transcriber
 from diplomat_worker.media.audio import build_fixed_chunks, extract_audio
 from diplomat_worker.schemas.subtitle import AiOrigin, Speaker, SubtitleDocument, SubtitleLine, SubtitleStyle, WordTiming
 
@@ -58,17 +58,42 @@ def run_core_pipeline(
     request: CorePipelineInput,
     transcriber: Transcriber,
     extract_audio_fn: Callable[[Path, Path], Path] | None = None,
+    ffmpeg_path: str = "ffmpeg",
+    progress_callback: ProgressCallback | None = None,
+    cancel_token: CancelToken | None = None,
 ) -> CorePipelineResult:
+    def raise_if_canceled() -> None:
+        if cancel_token is not None and cancel_token.is_cancel_requested():
+            raise AsrCanceled("Analysis canceled")
+
     request.project_dir.mkdir(parents=True, exist_ok=True)
     cache_dir = request.project_dir / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     audio_path = cache_dir / "audio-16000-mono.wav"
 
-    extractor = extract_audio_fn or (lambda source, target: extract_audio(source, target))
+    raise_if_canceled()
+    if progress_callback is not None:
+        progress_callback(0.05, "Extracting audio")
+    extractor = extract_audio_fn or (lambda source, target: extract_audio(source, target, ffmpeg_path=ffmpeg_path))
     extractor(request.source_video, audio_path)
 
+    raise_if_canceled()
+    if progress_callback is not None:
+        progress_callback(0.25, "Chunking audio")
     chunks = build_fixed_chunks(request.duration_ms)
-    asr_result = transcriber.transcribe(audio_path=audio_path, chunks=chunks)
+    asr_result = transcriber.transcribe(
+        audio_path=audio_path,
+        chunks=chunks,
+        progress_callback=(
+            None
+            if progress_callback is None
+            else lambda progress, message: progress_callback(0.3 + (progress * 0.6), message)
+        ),
+        cancel_token=cancel_token,
+    )
+    raise_if_canceled()
+    if progress_callback is not None:
+        progress_callback(0.92, "Building subtitle document")
     origin = AiOrigin(engine=asr_result.engine, model=asr_result.model)
 
     lines = [

@@ -4,12 +4,15 @@ from pathlib import Path
 from typing import Callable
 
 from diplomat_worker.asr.base import Transcriber
+from diplomat_worker.asr.config import AsrModelConfig, create_transcriber
 from diplomat_worker.asr.fake import FakeTranscriber
-from diplomat_worker.media.ffmpeg import VideoProbe, probe_video
+from diplomat_worker.media.ffmpeg import FfmpegCheck, VideoProbe, probe_video
 from diplomat_worker.storage.project_store import ProjectStore
 
 ProbeVideoFn = Callable[[Path], VideoProbe]
 ExtractAudioFn = Callable[[Path, Path], Path]
+FfmpegCheckFn = Callable[[Path, str, str], FfmpegCheck]
+TranscriberFactory = Callable[[AsrModelConfig, str], Transcriber]
 
 
 def default_data_dir() -> Path:
@@ -30,6 +33,10 @@ class WorkerRuntime:
     transcriber: Transcriber
     probe_video_fn: ProbeVideoFn = probe_video
     extract_audio_fn: ExtractAudioFn | None = None
+    ffmpeg_path: str = "ffmpeg"
+    ffprobe_path: str = "ffprobe"
+    ffmpeg_check_fn: FfmpegCheckFn = FfmpegCheck.for_source
+    transcriber_factory: TranscriberFactory = create_transcriber
 
 
 def create_default_runtime() -> WorkerRuntime:
