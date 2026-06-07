@@ -6,6 +6,7 @@ from diplomat_worker.api.runtime import WorkerRuntime, create_default_runtime
 from diplomat_worker.api.schemas import (
     AnalyzeProjectResponse,
     CreateProjectRequest,
+    ProjectListResponse,
     ProjectResponse,
     SrtExportRequest,
     SrtExportResponse,
@@ -16,7 +17,7 @@ from diplomat_worker.pipeline.core import CorePipelineInput, run_core_pipeline
 from diplomat_worker.schemas.subtitle import SubtitleDocument
 
 
-def project_response(project) -> ProjectResponse:
+def project_response(project, runtime: WorkerRuntime) -> ProjectResponse:
     return ProjectResponse(
         project_id=project.project_id,
         name=project.name,
@@ -25,6 +26,9 @@ def project_response(project) -> ProjectResponse:
         duration_ms=project.duration_ms,
         source_language=project.source_language,
         target_language=project.target_language,
+        created_at=project.created_at,
+        updated_at=project.updated_at,
+        has_subtitle_document=runtime.store.has_subtitle_document(project.project_id),
     )
 
 
@@ -56,6 +60,16 @@ def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"name": "diplomat-worker", "status": "ok", "version": __version__}
 
+    @app.get("/projects", response_model=ProjectListResponse)
+    def list_projects() -> ProjectListResponse:
+        active_runtime = get_runtime()
+        return ProjectListResponse(
+            projects=[
+                project_response(project, active_runtime)
+                for project in active_runtime.store.list_projects()
+            ]
+        )
+
     @app.post("/projects", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
     def create_project(request: CreateProjectRequest) -> ProjectResponse:
         active_runtime = get_runtime()
@@ -73,7 +87,7 @@ def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
             source_language=request.source_language,
             target_language=request.target_language,
         )
-        return project_response(project)
+        return project_response(project, active_runtime)
 
     @app.get("/projects/{project_id}", response_model=ProjectResponse)
     def get_project(project_id: str) -> ProjectResponse:
@@ -82,7 +96,7 @@ def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
             project = active_runtime.store.get_project(project_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
-        return project_response(project)
+        return project_response(project, active_runtime)
 
     @app.post("/projects/{project_id}/analyze", response_model=AnalyzeProjectResponse)
     def analyze_project(project_id: str) -> AnalyzeProjectResponse:
@@ -153,6 +167,7 @@ def create_app(runtime: WorkerRuntime | None = None) -> FastAPI:
 
         export_path = project.project_dir / "exports" / f"subtitle-{request.mode}.srt"
         write_srt_export(document, export_path, mode=request.mode)
+        active_runtime.store.touch_project(project_id)
         return SrtExportResponse(project_id=project_id, export_path=str(export_path), mode=request.mode)
 
     return app

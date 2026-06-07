@@ -25,6 +25,13 @@ class ProjectResponse(CamelModel):
     duration_ms: int = Field(alias="durationMs", ge=0)
     source_language: str = Field(alias="sourceLanguage")
     target_language: str | None = Field(default=None, alias="targetLanguage")
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
+    has_subtitle_document: bool = Field(alias="hasSubtitleDocument")
+
+
+class ProjectListResponse(CamelModel):
+    projects: list[ProjectResponse]
 
 
 class AnalyzeProjectResponse(CamelModel):

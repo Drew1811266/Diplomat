@@ -1,4 +1,5 @@
 import importlib
+import time
 from pathlib import Path
 
 import pytest
@@ -102,6 +103,7 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
 
     assert routes == {
         ("GET", "/health"),
+        ("GET", "/projects"),
         ("POST", "/projects"),
         ("GET", "/projects/{project_id}"),
         ("POST", "/projects/{project_id}/analyze"),
@@ -110,6 +112,97 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("PUT", "/projects/{project_id}/subtitle"),
     }
     assert calls == []
+
+
+def test_project_list_endpoint_returns_recent_projects(app_module, tmp_path: Path) -> None:
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
+    first = client.post(
+        "/projects",
+        json={
+            "name": "First",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "zh",
+            "targetLanguage": "en",
+        },
+    ).json()
+    second = client.post(
+        "/projects",
+        json={
+            "name": "Second",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "en",
+            "targetLanguage": "zh",
+        },
+    ).json()
+
+    response = client.get("/projects")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["projectId"] for item in payload["projects"]] == [
+        second["projectId"],
+        first["projectId"],
+    ]
+    assert payload["projects"][0]["createdAt"]
+    assert payload["projects"][0]["updatedAt"]
+    assert payload["projects"][0]["hasSubtitleDocument"] is False
+
+
+def test_get_project_response_includes_m2b_metadata(app_module, tmp_path: Path) -> None:
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
+    project_id = client.post(
+        "/projects",
+        json={
+            "name": "Episode 1",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "zh",
+            "targetLanguage": "en",
+        },
+    ).json()["projectId"]
+
+    response = client.get(f"/projects/{project_id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["createdAt"]
+    assert payload["updatedAt"]
+    assert payload["hasSubtitleDocument"] is False
+
+
+def test_project_updated_at_changes_after_save_and_export(app_module, tmp_path: Path) -> None:
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
+    project_id = client.post(
+        "/projects",
+        json={
+            "name": "Episode 1",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "zh",
+            "targetLanguage": "en",
+        },
+    ).json()["projectId"]
+    original = client.get(f"/projects/{project_id}").json()["updatedAt"]
+
+    time.sleep(0.001)
+    document = client.post(f"/projects/{project_id}/analyze").json()["document"]
+
+    after_analyze_response = client.get(f"/projects/{project_id}")
+    after_analyze = after_analyze_response.json()["updatedAt"]
+    assert after_analyze > original
+    assert after_analyze_response.json()["hasSubtitleDocument"] is True
+
+    document["lines"][0]["sourceText"] = "Edited before export"
+    client.put(f"/projects/{project_id}/subtitle", json={"document": document})
+
+    time.sleep(0.001)
+    client.post(f"/projects/{project_id}/exports/srt", json={"mode": "source"})
+    after_export = client.get(f"/projects/{project_id}").json()["updatedAt"]
+    assert after_export > after_analyze
 
 
 def test_project_analyze_and_subtitle_round_trip(app_module, tmp_path: Path) -> None:
@@ -330,6 +423,9 @@ def test_project_response_populates_by_field_name_and_dumps_by_alias(tmp_path: P
         duration_ms=1234,
         source_language="zh",
         target_language="en",
+        created_at="2026-06-07T00:00:00+00:00",
+        updated_at="2026-06-07T00:01:00+00:00",
+        has_subtitle_document=True,
     )
 
     assert response.project_id == "project-1"
@@ -343,6 +439,9 @@ def test_project_response_populates_by_field_name_and_dumps_by_alias(tmp_path: P
         "durationMs": 1234,
         "sourceLanguage": "zh",
         "targetLanguage": "en",
+        "createdAt": "2026-06-07T00:00:00+00:00",
+        "updatedAt": "2026-06-07T00:01:00+00:00",
+        "hasSubtitleDocument": True,
     }
 
 
