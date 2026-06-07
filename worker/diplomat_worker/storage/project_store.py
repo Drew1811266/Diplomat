@@ -7,7 +7,7 @@ from pathlib import Path
 
 from diplomat_worker.schemas.subtitle import SubtitleDocument
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class StorageMigrationError(RuntimeError):
@@ -44,6 +44,18 @@ class TaskRecord:
     request_payload: dict
 
 
+@dataclass(frozen=True)
+class TranslationSettingsRecord:
+    project_id: str
+    provider: str
+    source_language: str
+    target_language: str
+    mode: str
+    endpoint: str | None
+    api_key_env: str | None
+    updated_at: str
+
+
 class ProjectStore:
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
@@ -64,6 +76,7 @@ class ProjectStore:
             else:
                 self._create_projects_table(connection)
             self._ensure_tasks_table(connection)
+            self._ensure_translation_settings_table(connection)
             self._set_schema_version(connection)
             connection.commit()
 
@@ -131,6 +144,23 @@ class ProjectStore:
                 error_message TEXT,
                 diagnostic_log_path TEXT,
                 request_json TEXT NOT NULL,
+                FOREIGN KEY(project_id) REFERENCES projects(project_id)
+            )
+            """
+        )
+
+    def _ensure_translation_settings_table(self, connection: sqlite3.Connection) -> None:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS translation_settings (
+                project_id TEXT PRIMARY KEY,
+                provider TEXT NOT NULL,
+                source_language TEXT NOT NULL,
+                target_language TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                endpoint TEXT,
+                api_key_env TEXT,
+                updated_at TEXT NOT NULL,
                 FOREIGN KEY(project_id) REFERENCES projects(project_id)
             )
             """
@@ -361,6 +391,105 @@ class ProjectStore:
     def has_subtitle_document(self, project_id: str) -> bool:
         project = self.get_project(project_id)
         return (project.project_dir / "subtitle.diplomat.json").is_file()
+
+    def get_translation_settings(self, project_id: str) -> TranslationSettingsRecord:
+        project = self.get_project(project_id)
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    project_id,
+                    provider,
+                    source_language,
+                    target_language,
+                    mode,
+                    endpoint,
+                    api_key_env,
+                    updated_at
+                FROM translation_settings
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchone()
+        if row is not None:
+            return self._translation_settings_from_row(row)
+        return TranslationSettingsRecord(
+            project_id=project.project_id,
+            provider="fake",
+            source_language=project.source_language,
+            target_language=project.target_language or "en",
+            mode="missing_only",
+            endpoint=None,
+            api_key_env=None,
+            updated_at=project.updated_at,
+        )
+
+    def save_translation_settings(
+        self,
+        project_id: str,
+        provider: str,
+        source_language: str,
+        target_language: str,
+        mode: str,
+        endpoint: str | None = None,
+        api_key_env: str | None = None,
+    ) -> TranslationSettingsRecord:
+        self.get_project(project_id)
+        if len(source_language) < 2:
+            raise ValueError("source_language must be at least 2 characters")
+        if len(target_language) < 2:
+            raise ValueError("target_language must be at least 2 characters")
+        if mode not in {"missing_only", "overwrite_all"}:
+            raise ValueError("Unsupported translation mode")
+        now = self._utc_now()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO translation_settings (
+                    project_id,
+                    provider,
+                    source_language,
+                    target_language,
+                    mode,
+                    endpoint,
+                    api_key_env,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_id) DO UPDATE SET
+                    provider = excluded.provider,
+                    source_language = excluded.source_language,
+                    target_language = excluded.target_language,
+                    mode = excluded.mode,
+                    endpoint = excluded.endpoint,
+                    api_key_env = excluded.api_key_env,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    project_id,
+                    provider,
+                    source_language,
+                    target_language,
+                    mode,
+                    endpoint,
+                    api_key_env,
+                    now,
+                ),
+            )
+            connection.commit()
+        return self.get_translation_settings(project_id)
+
+    def _translation_settings_from_row(self, row: sqlite3.Row) -> TranslationSettingsRecord:
+        return TranslationSettingsRecord(
+            project_id=row["project_id"],
+            provider=row["provider"],
+            source_language=row["source_language"],
+            target_language=row["target_language"],
+            mode=row["mode"],
+            endpoint=row["endpoint"],
+            api_key_env=row["api_key_env"],
+            updated_at=row["updated_at"],
+        )
 
     def touch_project(self, project_id: str) -> None:
         with self._connect() as connection:

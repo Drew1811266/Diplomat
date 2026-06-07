@@ -125,6 +125,52 @@ def test_project_store_tracks_subtitle_presence_and_updates_timestamp(tmp_path: 
     assert after >= before
 
 
+def test_translation_settings_default_to_project_languages(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    project = store.create_project(
+        name="Demo",
+        source_video_path=tmp_path / "demo.mp4",
+        duration_ms=1000,
+        source_language="zh",
+        target_language="en",
+    )
+
+    settings = store.get_translation_settings(project.project_id)
+
+    assert settings.project_id == project.project_id
+    assert settings.provider == "fake"
+    assert settings.source_language == "zh"
+    assert settings.target_language == "en"
+    assert settings.mode == "missing_only"
+
+
+def test_translation_settings_can_be_saved_and_reopened(tmp_path: Path) -> None:
+    database_path = tmp_path / "diplomat.db"
+    store = ProjectStore(database_path)
+    project = store.create_project(
+        name="Demo",
+        source_video_path=tmp_path / "demo.mp4",
+        duration_ms=1000,
+        source_language="en",
+        target_language="zh",
+    )
+
+    saved = store.save_translation_settings(
+        project.project_id,
+        provider="libretranslate",
+        source_language="en",
+        target_language="zh",
+        mode="overwrite_all",
+        endpoint="http://localhost:5000",
+        api_key_env="LIBRETRANSLATE_API_KEY",
+    )
+    reopened = ProjectStore(database_path).get_translation_settings(project.project_id)
+
+    assert saved.provider == "libretranslate"
+    assert reopened.endpoint == "http://localhost:5000"
+    assert reopened.api_key_env == "LIBRETRANSLATE_API_KEY"
+
+
 def test_project_store_migrates_m2a_database_without_rewriting_subtitle(tmp_path: Path) -> None:
     database_path = tmp_path / "diplomat.db"
     project_dir = tmp_path / "projects" / "project-old"
