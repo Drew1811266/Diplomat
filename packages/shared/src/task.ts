@@ -20,6 +20,23 @@ export const AnalysisJobRequestSchema = z.object({
   initialPrompt: z.string().nullable().default(null)
 });
 
+export const TranslationModeSchema = z.enum(["missing_only", "overwrite_all"]);
+export const TranslationProviderSchema = z.enum(["fake", "libretranslate"]);
+
+export const TranslationJobRequestSchema = z.object({
+  provider: TranslationProviderSchema.default("fake"),
+  sourceLanguage: z.string().min(2).max(12),
+  targetLanguage: z.string().min(2).max(12),
+  mode: TranslationModeSchema.default("missing_only"),
+  endpoint: z.string().nullable().default(null),
+  apiKeyEnv: z.string().nullable().default(null)
+});
+
+export const TranslationSettingsResponseSchema = TranslationJobRequestSchema.extend({
+  projectId: z.string().min(1),
+  updatedAt: z.string().min(1)
+});
+
 export const TaskResponseSchema = z.object({
   taskId: z.string().min(1),
   projectId: z.string().min(1),
@@ -41,5 +58,10 @@ export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 export type TaskType = z.infer<typeof TaskTypeSchema>;
 export type AnalysisJobRequestInput = z.input<typeof AnalysisJobRequestSchema>;
 export type AnalysisJobRequest = z.infer<typeof AnalysisJobRequestSchema>;
+export type TranslationMode = z.infer<typeof TranslationModeSchema>;
+export type TranslationProvider = z.infer<typeof TranslationProviderSchema>;
+export type TranslationJobRequestInput = z.input<typeof TranslationJobRequestSchema>;
+export type TranslationJobRequest = z.infer<typeof TranslationJobRequestSchema>;
+export type TranslationSettingsResponse = z.infer<typeof TranslationSettingsResponseSchema>;
 export type TaskResponse = z.infer<typeof TaskResponseSchema>;
 export type TaskEvent = TaskResponse;

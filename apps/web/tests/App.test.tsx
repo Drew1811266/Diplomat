@@ -49,6 +49,9 @@ const analyzedDocument: SubtitleDocument = {
       styleOverrides: {},
       reviewStatus: "draft",
       aiOrigin: { engine: "mock-asr", model: "mock-v1" },
+      translationStatus: "translated",
+      translationOrigin: { provider: "fake", model: "fake-v1" },
+      translationError: null,
       notes: ""
     }
   ]

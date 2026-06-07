@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { AnalysisJobRequestSchema, TaskResponseSchema } from "../src/task";
+import {
+  AnalysisJobRequestSchema,
+  TaskResponseSchema,
+  TranslationJobRequestSchema,
+  TranslationSettingsResponseSchema
+} from "../src/task";
 
 describe("TaskResponseSchema", () => {
   it("accepts a running analysis task", () => {
@@ -71,5 +76,41 @@ describe("AnalysisJobRequestSchema", () => {
       sourceLanguage: "en",
       initialPrompt: null
     });
+  });
+});
+
+describe("TranslationJobRequestSchema", () => {
+  it("parses translation job requests with defaults", () => {
+    expect(
+      TranslationJobRequestSchema.parse({
+        sourceLanguage: "en",
+        targetLanguage: "zh"
+      })
+    ).toEqual({
+      provider: "fake",
+      sourceLanguage: "en",
+      targetLanguage: "zh",
+      mode: "missing_only",
+      endpoint: null,
+      apiKeyEnv: null
+    });
+  });
+});
+
+describe("TranslationSettingsResponseSchema", () => {
+  it("parses translation settings responses", () => {
+    const settings = TranslationSettingsResponseSchema.parse({
+      projectId: "project-1",
+      provider: "fake",
+      sourceLanguage: "en",
+      targetLanguage: "zh",
+      mode: "overwrite_all",
+      endpoint: null,
+      apiKeyEnv: null,
+      updatedAt: "2026-06-07T00:00:00+00:00"
+    });
+
+    expect(settings.projectId).toBe("project-1");
+    expect(settings.mode).toBe("overwrite_all");
   });
 });

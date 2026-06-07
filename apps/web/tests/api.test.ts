@@ -4,13 +4,16 @@ import {
   cancelTask,
   createAnalysisJob,
   createProject,
+  createTranslationJob,
   exportSrt,
   fetchProject,
   fetchSubtitleDocument,
   fetchTask,
+  fetchTranslationSettings,
   listProjects,
   retryTask,
   runProjectAnalysis,
+  saveTranslationSettings,
   saveSubtitleDocument
 } from "../src/api";
 import type { SubtitleDocument } from "@diplomat/shared";
@@ -75,6 +78,9 @@ const subtitleDocument: SubtitleDocument = {
       styleOverrides: {},
       reviewStatus: "draft",
       aiOrigin: { engine: "fake-asr", model: "fake-v1" },
+      translationStatus: "not_requested",
+      translationOrigin: null,
+      translationError: null,
       notes: ""
     }
   ]
@@ -228,6 +234,83 @@ describe("worker API helpers", () => {
 
     await expect(fetchTask("task-1", baseUrl)).resolves.toEqual(taskResponse);
     expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/tasks/task-1`, undefined);
+  });
+
+  it("fetchTranslationSettings gets settings", async () => {
+    const response = {
+      projectId: "project-1",
+      provider: "fake",
+      sourceLanguage: "en",
+      targetLanguage: "zh",
+      mode: "missing_only",
+      endpoint: null,
+      apiKeyEnv: null,
+      updatedAt: "2026-06-07T00:00:00+00:00"
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(fetchTranslationSettings("project-1", baseUrl)).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${baseUrl}/projects/project-1/translation-settings`,
+      undefined
+    );
+  });
+
+  it("saveTranslationSettings puts normalized request body", async () => {
+    const response = {
+      projectId: "project-1",
+      provider: "fake",
+      sourceLanguage: "en",
+      targetLanguage: "zh",
+      mode: "missing_only",
+      endpoint: null,
+      apiKeyEnv: null,
+      updatedAt: "2026-06-07T00:00:00+00:00"
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(
+      saveTranslationSettings("project-1", { sourceLanguage: "en", targetLanguage: "zh" }, baseUrl)
+    ).resolves.toEqual(response);
+
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/translation-settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "fake",
+        sourceLanguage: "en",
+        targetLanguage: "zh",
+        mode: "missing_only",
+        endpoint: null,
+        apiKeyEnv: null
+      })
+    });
+  });
+
+  it("createTranslationJob posts request body", async () => {
+    const response = { ...taskResponse, type: "translation", status: "queued", progress: 0 };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(
+      createTranslationJob(
+        "project-1",
+        { sourceLanguage: "en", targetLanguage: "zh" },
+        baseUrl
+      )
+    ).resolves.toEqual(response);
+
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/translation-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "fake",
+        sourceLanguage: "en",
+        targetLanguage: "zh",
+        mode: "missing_only",
+        endpoint: null,
+        apiKeyEnv: null
+      })
+    });
   });
 
   it("cancelTask posts to the cancel endpoint", async () => {

@@ -7,6 +7,8 @@ import {
   SrtExportResponseSchema,
   SubtitleDocumentSchema,
   TaskResponseSchema,
+  TranslationJobRequestSchema,
+  TranslationSettingsResponseSchema,
   type AnalysisJobRequestInput,
   type AnalysisJobRequest,
   type AnalyzeProjectResponse,
@@ -16,7 +18,9 @@ import {
   type SrtExportMode,
   type SrtExportResponse,
   type SubtitleDocument,
-  type TaskResponse
+  type TaskResponse,
+  type TranslationJobRequestInput,
+  type TranslationSettingsResponse
 } from "@diplomat/shared";
 
 const DEFAULT_WORKER_BASE_URL = "http://127.0.0.1:8765";
@@ -147,6 +151,53 @@ export async function fetchTask(
   return requestJson(
     `${baseUrl}/tasks/${taskId}`,
     undefined,
+    (payload) => TaskResponseSchema.parse(payload)
+  );
+}
+
+export async function fetchTranslationSettings(
+  projectId: string,
+  baseUrl = DEFAULT_WORKER_BASE_URL
+): Promise<TranslationSettingsResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/translation-settings`,
+    undefined,
+    (payload) => TranslationSettingsResponseSchema.parse(payload)
+  );
+}
+
+export async function saveTranslationSettings(
+  projectId: string,
+  input: TranslationJobRequestInput,
+  baseUrl = DEFAULT_WORKER_BASE_URL
+): Promise<TranslationSettingsResponse> {
+  const request = TranslationJobRequestSchema.parse(input);
+
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/translation-settings`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    },
+    (payload) => TranslationSettingsResponseSchema.parse(payload)
+  );
+}
+
+export async function createTranslationJob(
+  projectId: string,
+  input: TranslationJobRequestInput,
+  baseUrl = DEFAULT_WORKER_BASE_URL
+): Promise<TaskResponse> {
+  const request = TranslationJobRequestSchema.parse(input);
+
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/translation-jobs`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    },
     (payload) => TaskResponseSchema.parse(payload)
   );
 }
