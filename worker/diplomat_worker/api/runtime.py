@@ -8,11 +8,14 @@ from diplomat_worker.asr.config import AsrModelConfig, create_transcriber
 from diplomat_worker.asr.fake import FakeTranscriber
 from diplomat_worker.media.ffmpeg import FfmpegCheck, VideoProbe, probe_video
 from diplomat_worker.storage.project_store import ProjectStore
+from diplomat_worker.translation.base import TranslationProvider
+from diplomat_worker.translation.config import TranslationProviderConfig, create_translation_provider
 
 ProbeVideoFn = Callable[[Path], VideoProbe]
 ExtractAudioFn = Callable[[Path, Path], Path]
 FfmpegCheckFn = Callable[[Path, str, str], FfmpegCheck]
 TranscriberFactory = Callable[[AsrModelConfig, str], Transcriber]
+TranslationProviderFactory = Callable[[TranslationProviderConfig], TranslationProvider]
 
 
 def default_data_dir() -> Path:
@@ -30,13 +33,14 @@ def default_data_dir() -> Path:
 @dataclass(frozen=True)
 class WorkerRuntime:
     store: ProjectStore
-    transcriber: Transcriber
+    transcriber: Transcriber | None
     probe_video_fn: ProbeVideoFn = probe_video
     extract_audio_fn: ExtractAudioFn | None = None
     ffmpeg_path: str = "ffmpeg"
     ffprobe_path: str = "ffprobe"
     ffmpeg_check_fn: FfmpegCheckFn = FfmpegCheck.for_source
     transcriber_factory: TranscriberFactory = create_transcriber
+    translation_provider_factory: TranslationProviderFactory = create_translation_provider
 
 
 def create_default_runtime() -> WorkerRuntime:
