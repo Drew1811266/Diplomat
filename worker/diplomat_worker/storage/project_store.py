@@ -7,7 +7,7 @@ from pathlib import Path
 
 from diplomat_worker.schemas.subtitle import SubtitleDocument
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class StorageMigrationError(RuntimeError):
@@ -25,6 +25,23 @@ class ProjectRecord:
     target_language: str | None
     created_at: str
     updated_at: str
+
+
+@dataclass(frozen=True)
+class TaskRecord:
+    task_id: str
+    project_id: str
+    type: str
+    status: str
+    progress: float
+    message: str
+    started_at: str | None
+    updated_at: str
+    completed_at: str | None
+    error_code: str | None
+    error_message: str | None
+    diagnostic_log_path: str | None
+    request_payload: dict
 
 
 class ProjectStore:
@@ -46,6 +63,7 @@ class ProjectStore:
                 self._migrate_projects_table(connection)
             else:
                 self._create_projects_table(connection)
+            self._ensure_tasks_table(connection)
             self._set_schema_version(connection)
             connection.commit()
 
@@ -92,6 +110,28 @@ class ProjectStore:
                 target_language TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            )
+            """
+        )
+
+    def _ensure_tasks_table(self, connection: sqlite3.Connection) -> None:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tasks (
+                task_id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                progress REAL NOT NULL,
+                message TEXT NOT NULL,
+                started_at TEXT,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT,
+                error_code TEXT,
+                error_message TEXT,
+                diagnostic_log_path TEXT,
+                request_json TEXT NOT NULL,
+                FOREIGN KEY(project_id) REFERENCES projects(project_id)
             )
             """
         )
@@ -331,6 +371,155 @@ class ProjectStore:
             connection.commit()
         if cursor.rowcount == 0:
             raise KeyError(f"Project not found: {project_id}")
+
+    def create_task(
+        self,
+        project_id: str,
+        task_type: str,
+        message: str,
+        request_payload: dict,
+    ) -> TaskRecord:
+        self.get_project(project_id)
+        task_id = f"task-{uuid.uuid4().hex}"
+        now = self._utc_now()
+        request_json = json.dumps(request_payload, ensure_ascii=False, sort_keys=True)
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO tasks (
+                    task_id,
+                    project_id,
+                    type,
+                    status,
+                    progress,
+                    message,
+                    started_at,
+                    updated_at,
+                    completed_at,
+                    error_code,
+                    error_message,
+                    diagnostic_log_path,
+                    request_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    task_id,
+                    project_id,
+                    task_type,
+                    "queued",
+                    0,
+                    message,
+                    None,
+                    now,
+                    None,
+                    None,
+                    None,
+                    None,
+                    request_json,
+                ),
+            )
+            connection.commit()
+        return self.get_task(task_id)
+
+    def get_task(self, task_id: str) -> TaskRecord:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    task_id,
+                    project_id,
+                    type,
+                    status,
+                    progress,
+                    message,
+                    started_at,
+                    updated_at,
+                    completed_at,
+                    error_code,
+                    error_message,
+                    diagnostic_log_path,
+                    request_json
+                FROM tasks
+                WHERE task_id = ?
+                """,
+                (task_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Task not found: {task_id}")
+        return self._task_from_row(row)
+
+    def update_task(
+        self,
+        task_id: str,
+        status: str | None = None,
+        progress: float | None = None,
+        message: str | None = None,
+        started: bool = False,
+        completed: bool = False,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        diagnostic_log_path: str | None = None,
+    ) -> TaskRecord:
+        current = self.get_task(task_id)
+        now = self._utc_now()
+        next_started_at = current.started_at
+        next_completed_at = current.completed_at
+        if started and next_started_at is None:
+            next_started_at = now
+        if completed and next_completed_at is None:
+            next_completed_at = now
+
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE tasks
+                SET
+                    status = ?,
+                    progress = ?,
+                    message = ?,
+                    started_at = ?,
+                    updated_at = ?,
+                    completed_at = ?,
+                    error_code = ?,
+                    error_message = ?,
+                    diagnostic_log_path = ?
+                WHERE task_id = ?
+                """,
+                (
+                    status if status is not None else current.status,
+                    progress if progress is not None else current.progress,
+                    message if message is not None else current.message,
+                    next_started_at,
+                    now,
+                    next_completed_at,
+                    error_code if error_code is not None else current.error_code,
+                    error_message if error_message is not None else current.error_message,
+                    diagnostic_log_path if diagnostic_log_path is not None else current.diagnostic_log_path,
+                    task_id,
+                ),
+            )
+            connection.commit()
+        if cursor.rowcount == 0:
+            raise KeyError(f"Task not found: {task_id}")
+        return self.get_task(task_id)
+
+    def _task_from_row(self, row: sqlite3.Row) -> TaskRecord:
+        return TaskRecord(
+            task_id=row["task_id"],
+            project_id=row["project_id"],
+            type=row["type"],
+            status=row["status"],
+            progress=row["progress"],
+            message=row["message"],
+            started_at=row["started_at"],
+            updated_at=row["updated_at"],
+            completed_at=row["completed_at"],
+            error_code=row["error_code"],
+            error_message=row["error_message"],
+            diagnostic_log_path=row["diagnostic_log_path"],
+            request_payload=json.loads(row["request_json"]),
+        )
 
     def _utc_now(self) -> str:
         return datetime.now(UTC).isoformat()

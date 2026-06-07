@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from diplomat_worker.schemas.task import TaskEvent
+from diplomat_worker.schemas.task import TaskEvent, TaskResponse
 
 
 def make_task_event() -> TaskEvent:
@@ -48,3 +48,27 @@ def test_task_event_rejects_empty_task_id() -> None:
             error_code=None,
             diagnostic_log_path=None,
         )
+
+
+def test_task_response_serializes_m3_fields() -> None:
+    task = TaskResponse(
+        task_id="task-1",
+        project_id="project-1",
+        type="analysis",
+        status="running",
+        progress=0.4,
+        message="Transcribing audio",
+        started_at="2026-06-07T00:00:00+00:00",
+        updated_at="2026-06-07T00:00:01+00:00",
+        completed_at=None,
+        error_code=None,
+        error_message=None,
+        diagnostic_log_path="D:/logs/task-1.log",
+    )
+
+    payload = task.model_dump(by_alias=True)
+
+    assert payload["taskId"] == "task-1"
+    assert payload["projectId"] == "project-1"
+    assert payload["diagnosticLogPath"] == "D:/logs/task-1.log"
+    assert payload["errorMessage"] is None
