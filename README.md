@@ -4,15 +4,17 @@ Diplomat is a Windows-first local AI subtitle editor. It imports video files, ru
 
 This repository contains the MIT-licensed application source code. AI model weights are not part of this repository and keep their upstream licenses.
 
-## M0/M1 Development Targets
+## Current Development Targets
 
 - Monorepo foundation.
 - Shared subtitle and task schemas.
 - Python Worker core pipeline.
 - FFmpeg preflight and audio extraction helpers.
 - Pluggable ASR interface with deterministic fake tests.
-- Minimal Worker API.
-- Minimal React and Tauri shells.
+- Local background analysis jobs with progress, cancellation, and retry.
+- Optional faster-whisper ASR provider for real local transcription.
+- React subtitle workbench with project reopen, analysis job controls, editing, saving, and SRT export.
+- Tauri development shell with Worker lifecycle support.
 
 ## Requirements
 
@@ -30,7 +32,9 @@ corepack enable
 pnpm install
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e .\worker[dev]
+python -m pip install -e ".\worker[dev]"
+# Optional faster-whisper support
+python -m pip install -e ".\worker[dev,asr]"
 ```
 
 ## Verify
@@ -45,5 +49,6 @@ python -m pip install -e .\worker[dev]
 - [M2a Implementation Document](docs/development/m2a-implementation-document.md)
 - [M2a Workbench Loop](docs/development/m2a-workbench-loop.md)
 - [M2b Usability Foundation](docs/development/m2b-usability-foundation.md)
+- [M3 Real ASR MVP](docs/development/m3-real-asr-mvp.md)
 - [M2b-M6 Development Roadmap](docs/development/m2b-m6-development-roadmap.md)
 - [Product Design Spec](docs/superpowers/specs/2026-06-04-diplomat-ai-subtitle-editor-design.md)

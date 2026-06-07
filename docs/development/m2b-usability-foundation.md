@@ -2,6 +2,8 @@
 
 M2b turns the M2a developer workbench into a more usable local desktop workflow. It keeps fake ASR and the existing subtitle editor, but removes several early-stage obstacles around Worker startup, file selection, project reopening, and storage migration.
 
+M3 supersedes M2b's synchronous fake analysis path with background analysis jobs and optional faster-whisper transcription. Keep this document as the M2b stage record; use [M3 Real ASR MVP](m3-real-asr-mvp.md) for the current analysis workflow.
+
 ## Included
 
 - Worker project listing through `GET /projects`.
