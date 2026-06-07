@@ -22,6 +22,9 @@ importers:
       '@diplomat/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@tauri-apps/api':
+        specifier: 2.5.0
+        version: 2.5.0
       '@vitejs/plugin-react':
         specifier: ^4.5.0
         version: 4.7.0(vite@6.4.3(@types/node@24.13.0))
@@ -651,6 +654,9 @@ packages:
     resolution: {integrity: sha512-X+zaP2x+j4RXGfbp/seSoRHWnPxzApilDszisZxbYH5C/jTxFhCtDNdPGZb9lJyYPs24wGxruPF7Y+sIXt9Gzw==}
     cpu: [x64]
     os: [win32]
+
+  '@tauri-apps/api@2.5.0':
+    resolution: {integrity: sha512-Ldux4ip+HGAcPUmuLT8EIkk6yafl5vK0P0c0byzAKzxJh7vxelVtdPONjfgTm96PbN24yjZNESY8CKo8qniluA==}
 
   '@tauri-apps/cli-darwin-arm64@2.11.2':
     resolution: {integrity: sha512-+4UZzLt+eOAEQCwgd+TqKgyUJMrvx+BgdXLLaqJYmPqzP+nE6YZr/hY6CWLYGQb8jFn99jEkmC6uA3tNvamA1w==}
@@ -1745,6 +1751,8 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.61.1':
     optional: true
+
+  '@tauri-apps/api@2.5.0': {}
 
   '@tauri-apps/cli-darwin-arm64@2.11.2':
     optional: true

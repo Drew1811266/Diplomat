@@ -54,10 +54,23 @@ const analyzedDocument: SubtitleDocument = {
   ]
 };
 
-function jsonResponse(payload: unknown): Response {
+const projectMetadata = {
+  projectId: "project-demo",
+  name: "Demo",
+  sourceVideoPath: "D:/media/demo.mp4",
+  projectDir: "D:/Diplomat/projects/project-demo",
+  durationMs: 12_000,
+  sourceLanguage: "zh",
+  targetLanguage: "en",
+  createdAt: "2026-06-07T00:00:00+00:00",
+  updatedAt: "2026-06-07T00:01:00+00:00",
+  hasSubtitleDocument: false
+};
+
+function jsonResponse(payload: unknown, ok = true, status = 200): Response {
   return {
-    ok: true,
-    status: 200,
+    ok,
+    status,
     json: async () => payload
   } as Response;
 }
@@ -75,15 +88,28 @@ function createDeferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 
-function stubWorkbenchFetch(options: { pauseSave?: boolean } = {}) {
+function stubWorkbenchFetch(
+  options: { pauseSave?: boolean; includeRecentProject?: boolean; includeSubtitleFetch?: boolean } = {}
+) {
   const savedDocuments: SubtitleDocument[] = [];
   const exportModes: string[] = [];
   const pendingSave = options.pauseSave ? createDeferred<Response>() : null;
+  let projectWasCreated = false;
+  let subtitleAvailable = Boolean(options.includeSubtitleFetch);
 
   const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
     if (url.endsWith("/health")) {
       return jsonResponse({ name: "diplomat-worker", status: "ok", version: "0.1.0" });
+    }
+
+    if (url.endsWith("/projects") && init?.method === undefined) {
+      const shouldShowProject = options.includeRecentProject || projectWasCreated;
+      return jsonResponse({
+        projects: shouldShowProject
+          ? [{ ...projectMetadata, hasSubtitleDocument: subtitleAvailable }]
+          : []
+      });
     }
 
     if (url.endsWith("/projects") && init?.method === "POST") {
@@ -93,18 +119,16 @@ function stubWorkbenchFetch(options: { pauseSave?: boolean } = {}) {
         sourceLanguage: "zh",
         targetLanguage: "en"
       });
-      return jsonResponse({
-        projectId: "project-demo",
-        name: "Demo",
-        sourceVideoPath: "D:/media/demo.mp4",
-        projectDir: "D:/Diplomat/projects/project-demo",
-        durationMs: 12_000,
-        sourceLanguage: "zh",
-        targetLanguage: "en"
-      });
+      projectWasCreated = true;
+      return jsonResponse(projectMetadata);
+    }
+
+    if (url.endsWith("/projects/project-demo") && init?.method === undefined) {
+      return jsonResponse({ ...projectMetadata, hasSubtitleDocument: subtitleAvailable });
     }
 
     if (url.endsWith("/projects/project-demo/analyze") && init?.method === "POST") {
+      subtitleAvailable = true;
       return jsonResponse({
         projectId: "project-demo",
         status: "completed",
@@ -117,10 +141,18 @@ function stubWorkbenchFetch(options: { pauseSave?: boolean } = {}) {
     if (url.endsWith("/projects/project-demo/subtitle") && init?.method === "PUT") {
       const body = JSON.parse(init.body as string) as { document: SubtitleDocument };
       savedDocuments.push(body.document);
+      subtitleAvailable = true;
       if (pendingSave) {
         return pendingSave.promise;
       }
       return jsonResponse(body.document);
+    }
+
+    if (url.endsWith("/projects/project-demo/subtitle") && init?.method === undefined) {
+      if (!subtitleAvailable) {
+        return jsonResponse({ detail: "Subtitle document not found" }, false, 404);
+      }
+      return jsonResponse(analyzedDocument);
     }
 
     if (url.endsWith("/projects/project-demo/exports/srt") && init?.method === "POST") {
@@ -163,6 +195,41 @@ afterEach(() => {
 });
 
 describe("App", () => {
+  it("loads recent projects and reopens a project with saved subtitles", async () => {
+    stubWorkbenchFetch({ includeRecentProject: true, includeSubtitleFetch: true });
+    render(<App />);
+
+    expect(await screen.findByText("Recent Projects")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Reopen Demo/ }));
+
+    expect(await screen.findByText(/Project: Demo/)).toBeInTheDocument();
+    expect(screen.getByText("Project reopened with subtitles")).toBeInTheDocument();
+    expect((await screen.findAllByText("原始字幕文本")).length).toBeGreaterThan(0);
+  });
+
+  it("keeps manual path entry available when desktop file picker is unavailable", async () => {
+    stubWorkbenchFetch();
+    render(<App />);
+
+    expect(await screen.findByLabelText("Source video path")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pick Video" })).not.toBeInTheDocument();
+  });
+
+  it("uses desktop file picker when Tauri runtime is available", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {
+      invoke: vi.fn(async (command: string) =>
+        command === "pick_video_file" ? "D:/media/picked.mp4" : null
+      )
+    });
+    stubWorkbenchFetch();
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Pick Video" }));
+
+    expect(await screen.findByDisplayValue("D:/media/picked.mp4")).toBeInTheDocument();
+    expect(screen.getByText("Video path selected")).toBeInTheDocument();
+  });
+
   it("runs the M2a workbench loop from project creation to SRT export", async () => {
     const { savedDocuments, exportModes } = stubWorkbenchFetch();
     await createAndAnalyzeDemoProject();

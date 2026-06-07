@@ -9,12 +9,17 @@ import type {
 import {
   createProject,
   exportSrt,
+  fetchProject,
+  fetchSubtitleDocument,
   fetchWorkerHealth,
+  listProjects,
   runProjectAnalysis,
   saveSubtitleDocument,
   type WorkerHealth
 } from "./api";
+import { isDesktopRuntime, pickVideoFile } from "./desktop";
 import { ExportPanel } from "./components/ExportPanel";
+import { ProjectLibraryPanel } from "./components/ProjectLibraryPanel";
 import { ProjectImportPanel, type ProjectFormState } from "./components/ProjectImportPanel";
 import { SubtitleEditor } from "./components/SubtitleEditor";
 import { SubtitleLineList } from "./components/SubtitleLineList";
@@ -32,9 +37,14 @@ function formatUnknownError(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown worker error";
 }
 
+function isMissingSubtitleError(error: unknown): boolean {
+  return formatUnknownError(error).includes("Subtitle document not found");
+}
+
 export function App() {
   const [health, setHealth] = useState<WorkerHealth | null>(null);
   const [projectForm, setProjectForm] = useState<ProjectFormState>(initialProjectForm);
+  const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [project, setProject] = useState<ProjectResponse | null>(null);
   const [document, setDocument] = useState<SubtitleDocument | null>(null);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
@@ -44,20 +54,28 @@ export function App() {
   const [message, setMessage] = useState("Ready");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [canPickVideo] = useState(() => isDesktopRuntime());
 
   useEffect(() => {
     let canceled = false;
-    fetchWorkerHealth()
-      .then((result) => {
+    async function bootstrapWorkbench() {
+      try {
+        const result = await fetchWorkerHealth();
         if (!canceled) {
           setHealth(result);
         }
-      })
-      .catch((err: unknown) => {
+        const projectList = await listProjects();
+        if (!canceled) {
+          setProjects(projectList.projects);
+        }
+      } catch (err: unknown) {
         if (!canceled) {
           setError(formatUnknownError(err));
         }
-      });
+      }
+    }
+
+    void bootstrapWorkbench();
     return () => {
       canceled = true;
     };
@@ -84,6 +102,21 @@ export function App() {
     }
   }
 
+  async function refreshProjects() {
+    const projectList = await listProjects();
+    setProjects(projectList.projects);
+  }
+
+  function handlePickVideo() {
+    void runAction(async () => {
+      const selectedPath = await pickVideoFile();
+      if (selectedPath) {
+        setProjectForm((currentForm) => ({ ...currentForm, sourceVideoPath: selectedPath }));
+        setMessage("Video path selected");
+      }
+    });
+  }
+
   function handleCreateProject() {
     void runAction(async () => {
       const createdProject = await createProject({
@@ -100,6 +133,38 @@ export function App() {
       setExportResult(null);
       setHasUnsavedChanges(false);
       setMessage("Project created");
+      await refreshProjects();
+    });
+  }
+
+  function handleReopenProject(projectId: string) {
+    void runAction(async () => {
+      const reopenedProject = await fetchProject(projectId);
+      setProject(reopenedProject);
+      setProjectForm({
+        projectName: reopenedProject.name,
+        sourceVideoPath: reopenedProject.sourceVideoPath,
+        sourceLanguage: reopenedProject.sourceLanguage,
+        targetLanguage: reopenedProject.targetLanguage ?? ""
+      });
+      setExportResult(null);
+      setHasUnsavedChanges(false);
+
+      try {
+        const loadedDocument = await fetchSubtitleDocument(projectId);
+        setDocument(loadedDocument);
+        setSelectedLineId(loadedDocument.lines[0]?.id ?? null);
+        setMessage("Project reopened with subtitles");
+      } catch (err: unknown) {
+        if (!isMissingSubtitleError(err)) {
+          throw err;
+        }
+        setDocument(null);
+        setSelectedLineId(null);
+        setMessage("Project reopened");
+      }
+
+      await refreshProjects();
     });
   }
 
@@ -115,6 +180,7 @@ export function App() {
       setExportResult(null);
       setHasUnsavedChanges(false);
       setMessage("Analysis completed");
+      await refreshProjects();
     });
   }
 
@@ -144,6 +210,7 @@ export function App() {
       setDocument(savedDocument);
       setHasUnsavedChanges(false);
       setMessage("Saved subtitle edits");
+      await refreshProjects();
     });
   }
 
@@ -156,6 +223,7 @@ export function App() {
       const result = await exportSrt(project.projectId, exportMode);
       setExportResult(result);
       setMessage("SRT export completed");
+      await refreshProjects();
     });
   }
 
@@ -168,36 +236,49 @@ export function App() {
     <main className="app-shell">
       <TaskStatusBar health={health} message={message} error={error} busy={busy} />
 
-      <ProjectImportPanel
-        form={projectForm}
-        project={project}
-        busy={busy}
-        onFormChange={setProjectForm}
-        onCreateProject={handleCreateProject}
-        onAnalyzeProject={handleAnalyzeProject}
-      />
+      <div className="workspace-layout">
+        <ProjectLibraryPanel
+          projects={projects}
+          selectedProjectId={project?.projectId ?? null}
+          busy={busy}
+          onReopenProject={handleReopenProject}
+        />
 
-      <div className="workbench-grid" aria-label="Subtitle workbench">
-        <SubtitleLineList
-          lines={document?.lines ?? []}
-          selectedLineId={selectedLineId}
-          onSelectLine={setSelectedLineId}
-        />
-        <SubtitleEditor
-          line={selectedLine}
-          busy={busy}
-          onChangeLine={handleUpdateLine}
-          onSave={handleSaveSubtitle}
-        />
-        <ExportPanel
-          mode={exportMode}
-          exportResult={exportResult}
-          canExport={canExport}
-          disabledReason={exportDisabledReason}
-          busy={busy}
-          onModeChange={handleExportModeChange}
-          onExport={handleExportSrt}
-        />
+        <div className="workspace-main">
+          <ProjectImportPanel
+            form={projectForm}
+            project={project}
+            busy={busy}
+            canPickVideo={canPickVideo}
+            onFormChange={setProjectForm}
+            onPickVideo={handlePickVideo}
+            onCreateProject={handleCreateProject}
+            onAnalyzeProject={handleAnalyzeProject}
+          />
+
+          <div className="workbench-grid" aria-label="Subtitle workbench">
+            <SubtitleLineList
+              lines={document?.lines ?? []}
+              selectedLineId={selectedLineId}
+              onSelectLine={setSelectedLineId}
+            />
+            <SubtitleEditor
+              line={selectedLine}
+              busy={busy}
+              onChangeLine={handleUpdateLine}
+              onSave={handleSaveSubtitle}
+            />
+            <ExportPanel
+              mode={exportMode}
+              exportResult={exportResult}
+              canExport={canExport}
+              disabledReason={exportDisabledReason}
+              busy={busy}
+              onModeChange={handleExportModeChange}
+              onExport={handleExportSrt}
+            />
+          </div>
+        </div>
       </div>
     </main>
   );

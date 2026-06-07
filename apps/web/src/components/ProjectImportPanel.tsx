@@ -11,7 +11,9 @@ type ProjectImportPanelProps = {
   form: ProjectFormState;
   project: ProjectResponse | null;
   busy: boolean;
+  canPickVideo: boolean;
   onFormChange: (form: ProjectFormState) => void;
+  onPickVideo: () => void;
   onCreateProject: () => void;
   onAnalyzeProject: () => void;
 };
@@ -20,7 +22,9 @@ export function ProjectImportPanel({
   form,
   project,
   busy,
+  canPickVideo,
   onFormChange,
+  onPickVideo,
   onCreateProject,
   onAnalyzeProject
 }: ProjectImportPanelProps) {
@@ -46,6 +50,11 @@ export function ProjectImportPanel({
             onChange={(event) => updateField("sourceVideoPath", event.target.value)}
           />
         </label>
+        {canPickVideo ? (
+          <button type="button" className="field-button" onClick={onPickVideo} disabled={busy}>
+            Pick Video
+          </button>
+        ) : null}
         <label>
           Source language
           <input
@@ -63,7 +72,11 @@ export function ProjectImportPanel({
       </div>
 
       <div className="project-actions">
-        <button type="button" onClick={onCreateProject} disabled={busy}>
+        <button
+          type="button"
+          onClick={onCreateProject}
+          disabled={busy || !form.sourceVideoPath.trim()}
+        >
           Create Project
         </button>
         <button type="button" onClick={onAnalyzeProject} disabled={busy || !project}>
