@@ -3,6 +3,8 @@ import type { SubtitleLine } from "@diplomat/shared";
 type SubtitleLineListProps = {
   lines: SubtitleLine[];
   selectedLineId: string | null;
+  filter: "all" | "missing";
+  onFilterChange: (filter: "all" | "missing") => void;
   onSelectLine: (lineId: string) => void;
 };
 
@@ -20,17 +22,46 @@ function formatTimestamp(ms: number) {
   ).padStart(3, "0")}`;
 }
 
-export function SubtitleLineList({ lines, selectedLineId, onSelectLine }: SubtitleLineListProps) {
+function isMissingTranslation(line: SubtitleLine) {
+  return !line.translatedText.trim() || line.translationStatus === "failed";
+}
+
+export function SubtitleLineList({
+  lines,
+  selectedLineId,
+  filter,
+  onFilterChange,
+  onSelectLine
+}: SubtitleLineListProps) {
+  const visibleLines = filter === "missing" ? lines.filter(isMissingTranslation) : lines;
+
   return (
     <section className="panel line-list-panel" aria-labelledby="subtitle-lines-title">
       <div className="panel-heading">
         <h2 id="subtitle-lines-title">Subtitle Lines</h2>
-        <span>{lines.length} rows</span>
+        <span>{visibleLines.length} rows</span>
       </div>
 
-      {lines.length ? (
+      <div className="line-filter-row" aria-label="Subtitle filters">
+        <button
+          type="button"
+          className={filter === "all" ? "line-filter-button active" : "line-filter-button"}
+          onClick={() => onFilterChange("all")}
+        >
+          All lines
+        </button>
+        <button
+          type="button"
+          className={filter === "missing" ? "line-filter-button active" : "line-filter-button"}
+          onClick={() => onFilterChange("missing")}
+        >
+          Missing translations
+        </button>
+      </div>
+
+      {visibleLines.length ? (
         <ul className="line-list" aria-label="Subtitle lines">
-          {lines.map((line) => {
+          {visibleLines.map((line) => {
             const selected = line.id === selectedLineId;
             return (
               <li key={line.id}>
@@ -45,13 +76,21 @@ export function SubtitleLineList({ lines, selectedLineId, onSelectLine }: Subtit
                     <span>{formatTiming(line.startMs, line.endMs)}</span>
                   </span>
                   <span className="line-source">{line.sourceText || "No source text"}</span>
+                  <span className="line-target">
+                    {line.translatedText || "No translated text"}
+                  </span>
+                  <span className={`line-status-chip status-${line.translationStatus}`}>
+                    {line.translationStatus}
+                  </span>
                 </button>
               </li>
             );
           })}
         </ul>
       ) : (
-        <p className="empty-state">Analyze a project to generate subtitle rows.</p>
+        <p className="empty-state">
+          {lines.length ? "No subtitle rows match the current filter." : "Analyze a project to generate subtitle rows."}
+        </p>
       )}
     </section>
   );

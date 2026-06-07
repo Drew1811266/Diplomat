@@ -44,15 +44,28 @@ const analyzedDocument: SubtitleDocument = {
       sourceLanguage: "zh",
       targetLanguage: "en",
       sourceText: "原始字幕文本",
-      translatedText: "Original subtitle text",
+      translatedText: "",
       words: [{ text: "原始字幕文本", startMs: 1000, endMs: 2400, confidence: 0.95 }],
       styleOverrides: {},
       reviewStatus: "draft",
       aiOrigin: { engine: "mock-asr", model: "mock-v1" },
-      translationStatus: "translated",
-      translationOrigin: { provider: "fake", model: "fake-v1" },
+      translationStatus: "not_requested",
+      translationOrigin: null,
       translationError: null,
       notes: ""
+    }
+  ]
+};
+
+const translatedDocument: SubtitleDocument = {
+  ...analyzedDocument,
+  lines: [
+    {
+      ...analyzedDocument.lines[0]!,
+      translatedText: "[en] 原始字幕文本",
+      translationStatus: "translated",
+      translationOrigin: { provider: "fake", model: "fake-v1" },
+      translationError: null
     }
   ]
 };
@@ -96,7 +109,9 @@ function stubWorkbenchFetch(
     pauseSave?: boolean;
     includeRecentProject?: boolean;
     includeSubtitleFetch?: boolean;
+    includeTranslatedSubtitleFetch?: boolean;
     analysisJob?: "completed" | "running" | "failedThenCompleted";
+    translationJob?: "completed" | "running";
   } = {}
 ) {
   const savedDocuments: SubtitleDocument[] = [];
@@ -104,8 +119,11 @@ function stubWorkbenchFetch(
   const retryBodies: unknown[] = [];
   const pendingSave = options.pauseSave ? createDeferred<Response>() : null;
   let projectWasCreated = false;
-  let subtitleAvailable = Boolean(options.includeSubtitleFetch);
+  let subtitleAvailable = Boolean(
+    options.includeSubtitleFetch || options.includeTranslatedSubtitleFetch
+  );
   let retryWasRequested = false;
+  let translationCompleted = Boolean(options.includeTranslatedSubtitleFetch);
 
   const completedTask = {
     taskId: "task-1",
@@ -144,6 +162,19 @@ function stubWorkbenchFetch(
     errorCode: "FFMPEG_NOT_FOUND",
     errorMessage: "FFmpeg executable not found: ffmpeg",
     diagnosticLogPath: "D:/Diplomat/projects/project-demo/logs/task-1.log"
+  };
+  const completedTranslationTask = {
+    ...completedTask,
+    taskId: "translation-task-1",
+    type: "translation",
+    message: "Translation completed"
+  };
+  const runningTranslationTask = {
+    ...completedTranslationTask,
+    status: "running",
+    progress: 0.4,
+    message: "Translating subtitles",
+    completedAt: null
   };
 
   const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
@@ -203,6 +234,61 @@ function stubWorkbenchFetch(
       return jsonResponse({ ...completedTask, taskId: "task-2" });
     }
 
+    if (url.endsWith("/projects/project-demo/translation-settings") && init?.method === undefined) {
+      return jsonResponse({
+        projectId: "project-demo",
+        provider: "fake",
+        sourceLanguage: "zh",
+        targetLanguage: "en",
+        mode: "missing_only",
+        endpoint: null,
+        apiKeyEnv: null,
+        updatedAt: "2026-06-07T00:00:01+00:00"
+      });
+    }
+
+    if (url.endsWith("/projects/project-demo/translation-settings") && init?.method === "PUT") {
+      return jsonResponse({
+        projectId: "project-demo",
+        ...JSON.parse(init.body as string),
+        updatedAt: "2026-06-07T00:00:02+00:00"
+      });
+    }
+
+    if (url.endsWith("/projects/project-demo/translation-jobs") && init?.method === "POST") {
+      const mode = options.translationJob ?? "completed";
+      if (mode === "running") {
+        return jsonResponse(runningTranslationTask);
+      }
+      translationCompleted = true;
+      subtitleAvailable = true;
+      return jsonResponse(completedTranslationTask);
+    }
+
+    if (url.endsWith("/tasks/translation-task-1") && init?.method === undefined) {
+      if (options.translationJob === "running") {
+        return jsonResponse(runningTranslationTask);
+      }
+      translationCompleted = true;
+      subtitleAvailable = true;
+      return jsonResponse(completedTranslationTask);
+    }
+
+    if (url.endsWith("/tasks/translation-task-1/cancel") && init?.method === "POST") {
+      return jsonResponse({
+        ...runningTranslationTask,
+        status: "canceled",
+        message: "Translation canceled",
+        completedAt: "2026-06-07T00:00:02+00:00"
+      });
+    }
+
+    if (url.endsWith("/tasks/translation-task-1/retry") && init?.method === "POST") {
+      translationCompleted = true;
+      subtitleAvailable = true;
+      return jsonResponse({ ...completedTranslationTask, taskId: "translation-task-2" });
+    }
+
     if (url.endsWith("/projects/project-demo/subtitle") && init?.method === "PUT") {
       const body = JSON.parse(init.body as string) as { document: SubtitleDocument };
       savedDocuments.push(body.document);
@@ -217,7 +303,7 @@ function stubWorkbenchFetch(
       if (!subtitleAvailable) {
         return jsonResponse({ detail: "Subtitle document not found" }, false, 404);
       }
-      return jsonResponse(analyzedDocument);
+      return jsonResponse(translationCompleted ? translatedDocument : analyzedDocument);
     }
 
     if (url.endsWith("/projects/project-demo/exports/srt") && init?.method === "POST") {
@@ -358,6 +444,54 @@ describe("App", () => {
       sourceLanguage: "zh",
       initialPrompt: null
     });
+  });
+
+  it("starts translation and displays generated target text", async () => {
+    stubWorkbenchFetch({
+      includeRecentProject: true,
+      includeSubtitleFetch: true,
+      translationJob: "completed"
+    });
+    render(<App />);
+
+    expect(await screen.findByText("Recent Projects")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Reopen Demo/ }));
+    expect(await screen.findByText(/Project: Demo/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Start Translation" }));
+
+    expect(await screen.findByDisplayValue("[en] 原始字幕文本")).toBeInTheDocument();
+    expect(screen.getByText("Translation completed")).toBeInTheDocument();
+  });
+
+  it("marks translated text edited when the user changes it", async () => {
+    stubWorkbenchFetch({
+      includeRecentProject: true,
+      includeTranslatedSubtitleFetch: true
+    });
+    render(<App />);
+
+    const reopenButton = await screen.findByRole("button", { name: /Reopen Demo/ });
+    await waitFor(() => expect(reopenButton).toBeEnabled());
+    fireEvent.click(reopenButton);
+    const translatedText = await screen.findByLabelText("Translated text");
+
+    fireEvent.change(translatedText, { target: { value: "Manual subtitle translation" } });
+
+    expect(screen.getByText("Translation: edited")).toBeInTheDocument();
+  });
+
+  it("filters missing translations", async () => {
+    stubWorkbenchFetch({ includeRecentProject: true, includeSubtitleFetch: true });
+    render(<App />);
+
+    const reopenButton = await screen.findByRole("button", { name: /Reopen Demo/ });
+    await waitFor(() => expect(reopenButton).toBeEnabled());
+    fireEvent.click(reopenButton);
+    expect(await screen.findByText("Project reopened with subtitles")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Missing translations" }));
+
+    expect(screen.getAllByText("原始字幕文本").length).toBeGreaterThan(0);
   });
 
   it("starts the desktop Worker when initial health check is unavailable", async () => {

@@ -31,6 +31,15 @@ export function SubtitleEditor({ line, busy, onChangeLine, onSave }: SubtitleEdi
         <span>{line.id}</span>
       </div>
 
+      <div className="editor-status-row">
+        <span>Translation: {line.translationStatus}</span>
+        {line.translationOrigin ? (
+          <span>
+            {line.translationOrigin.provider} / {line.translationOrigin.model}
+          </span>
+        ) : null}
+      </div>
+
       <div className="timing-grid">
         <label>
           Start ms
@@ -74,7 +83,14 @@ export function SubtitleEditor({ line, busy, onChangeLine, onSave }: SubtitleEdi
           rows={5}
           value={line.translatedText}
           disabled={busy}
-          onChange={(event) => onChangeLine({ ...line, translatedText: event.target.value })}
+          onChange={(event) =>
+            onChangeLine({
+              ...line,
+              translatedText: event.target.value,
+              translationStatus: "edited",
+              translationError: null
+            })
+          }
         />
       </label>
 

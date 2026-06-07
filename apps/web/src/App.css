@@ -245,7 +245,8 @@ button:disabled {
   font-weight: 700;
 }
 
-.analysis-job-panel {
+.analysis-job-panel,
+.translation-job-panel {
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -256,14 +257,16 @@ button:disabled {
   border-radius: 8px;
 }
 
-.analysis-controls {
+.analysis-controls,
+.translation-controls {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   min-width: 0;
 }
 
-.analysis-prompt-field {
+.analysis-prompt-field,
+.translation-endpoint-field {
   grid-column: span 3;
 }
 
@@ -423,6 +426,27 @@ button:disabled {
   list-style: none;
 }
 
+.line-filter-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.line-filter-button {
+  min-height: 34px;
+  padding: 6px 8px;
+  color: #0f172a;
+  background: #f8fafc;
+  border-color: #b6c2c8;
+  font-size: 0.78rem;
+}
+
+.line-filter-button.active {
+  color: #ffffff;
+  background: #0f766e;
+  border-color: #0f766e;
+}
+
 .line-row {
   display: flex;
   width: 100%;
@@ -465,6 +489,59 @@ button:disabled {
 .line-source {
   overflow-wrap: anywhere;
   line-height: 1.38;
+}
+
+.line-target {
+  overflow-wrap: anywhere;
+  color: #475569;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.line-status-chip {
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px 7px;
+  color: #334155;
+  background: #e2e8f0;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.status-translated {
+  color: #0f513f;
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.status-edited {
+  color: #713f12;
+  background: #fef3c7;
+  border-color: #fcd34d;
+}
+
+.status-failed {
+  color: #9f1239;
+  background: #ffe4e6;
+  border-color: #fda4af;
+}
+
+.editor-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.editor-status-row span {
+  padding: 4px 7px;
+  background: #f8fafc;
+  border: 1px solid #d8e1e7;
+  border-radius: 999px;
 }
 
 .timing-grid {
@@ -526,11 +603,13 @@ button:disabled {
   }
 
   .analysis-controls,
+  .translation-controls,
   .analysis-task-row {
     grid-template-columns: 1fr;
   }
 
-  .analysis-prompt-field {
+  .analysis-prompt-field,
+  .translation-endpoint-field {
     grid-column: span 1;
   }
 }

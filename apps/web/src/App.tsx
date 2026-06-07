@@ -6,16 +6,19 @@ import type {
   SrtExportResponse,
   SubtitleDocument,
   SubtitleLine,
-  TaskResponse
+  TaskResponse,
+  TranslationJobRequest
 } from "@diplomat/shared";
 import {
   cancelTask,
   createAnalysisJob,
   createProject,
+  createTranslationJob,
   exportSrt,
   fetchProject,
   fetchSubtitleDocument,
   fetchTask,
+  fetchTranslationSettings,
   fetchWorkerHealth,
   listProjects,
   retryTask,
@@ -30,6 +33,7 @@ import { ProjectImportPanel, type ProjectFormState } from "./components/ProjectI
 import { SubtitleEditor } from "./components/SubtitleEditor";
 import { SubtitleLineList } from "./components/SubtitleLineList";
 import { TaskStatusBar } from "./components/TaskStatusBar";
+import { TranslationJobPanel } from "./components/TranslationJobPanel";
 import "./App.css";
 
 const initialProjectForm: ProjectFormState = {
@@ -48,7 +52,20 @@ const initialAnalysisConfig: AnalysisJobRequest = {
   initialPrompt: null
 };
 
+const initialTranslationConfig: TranslationJobRequest = {
+  provider: "fake",
+  sourceLanguage: "zh",
+  targetLanguage: "en",
+  mode: "missing_only",
+  endpoint: null,
+  apiKeyEnv: null
+};
+
 function isAnalysisActive(task: TaskResponse | null) {
+  return task?.status === "queued" || task?.status === "running" || task?.status === "canceling";
+}
+
+function isTranslationActive(task: TaskResponse | null) {
   return task?.status === "queued" || task?.status === "running" || task?.status === "canceling";
 }
 
@@ -67,6 +84,7 @@ function isMissingSubtitleError(error: unknown): boolean {
 export function App() {
   const mountedRef = useRef(true);
   const analysisRunRef = useRef(0);
+  const translationRunRef = useRef(0);
   const [health, setHealth] = useState<WorkerHealth | null>(null);
   const [projectForm, setProjectForm] = useState<ProjectFormState>(initialProjectForm);
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
@@ -75,6 +93,10 @@ export function App() {
   const [analysisConfig, setAnalysisConfig] =
     useState<AnalysisJobRequest>(initialAnalysisConfig);
   const [analysisTask, setAnalysisTask] = useState<TaskResponse | null>(null);
+  const [translationConfig, setTranslationConfig] =
+    useState<TranslationJobRequest>(initialTranslationConfig);
+  const [translationTask, setTranslationTask] = useState<TaskResponse | null>(null);
+  const [lineFilter, setLineFilter] = useState<"all" | "missing">("all");
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [exportMode, setExportMode] = useState<SrtExportMode>("bilingual");
   const [exportResult, setExportResult] = useState<SrtExportResponse | null>(null);
@@ -143,12 +165,14 @@ export function App() {
     [document, selectedLineId]
   );
   const analysisActive = isAnalysisActive(analysisTask);
-  const exportDisabledReason = analysisActive
-    ? "Wait for analysis to finish."
+  const translationActive = isTranslationActive(translationTask);
+  const taskActive = analysisActive || translationActive;
+  const exportDisabledReason = taskActive
+    ? "Wait for analysis or translation to finish."
     : hasUnsavedChanges
       ? "Save subtitle edits before exporting."
       : null;
-  const canExport = Boolean(project && document && !hasUnsavedChanges && !analysisActive);
+  const canExport = Boolean(project && document && !hasUnsavedChanges && !taskActive);
 
   async function runAction(action: () => Promise<void>) {
     setBusy(true);
@@ -165,6 +189,26 @@ export function App() {
   async function refreshProjects() {
     const projectList = await listProjects();
     setProjects(projectList.projects);
+  }
+
+  async function loadTranslationSettings(activeProject: ProjectResponse) {
+    try {
+      const settings = await fetchTranslationSettings(activeProject.projectId);
+      setTranslationConfig({
+        provider: settings.provider,
+        sourceLanguage: settings.sourceLanguage,
+        targetLanguage: settings.targetLanguage,
+        mode: settings.mode,
+        endpoint: settings.endpoint,
+        apiKeyEnv: settings.apiKeyEnv
+      });
+    } catch {
+      setTranslationConfig((currentConfig) => ({
+        ...currentConfig,
+        sourceLanguage: activeProject.sourceLanguage,
+        targetLanguage: activeProject.targetLanguage ?? currentConfig.targetLanguage
+      }));
+    }
   }
 
   async function finishAnalysisTask(task: TaskResponse) {
@@ -220,6 +264,59 @@ export function App() {
     await finishAnalysisTask(currentTask);
   }
 
+  async function finishTranslationTask(task: TaskResponse) {
+    setTranslationTask(task);
+    if (task.status === "completed") {
+      if (!project) {
+        return;
+      }
+      const loadedDocument = await fetchSubtitleDocument(project.projectId);
+      setDocument(loadedDocument);
+      setSelectedLineId((currentLineId) => currentLineId ?? loadedDocument.lines[0]?.id ?? null);
+      setExportResult(null);
+      setHasUnsavedChanges(false);
+      setMessage("Translation completed");
+      setError(null);
+      await refreshProjects();
+      return;
+    }
+
+    if (task.status === "canceled") {
+      setMessage("Translation canceled");
+      return;
+    }
+
+    if (task.status === "failed") {
+      const failureMessage = task.errorMessage ?? task.message;
+      setMessage(failureMessage);
+      setError(failureMessage);
+    }
+  }
+
+  async function monitorTranslationTask(startingTask: TaskResponse, runId: number) {
+    let currentTask = startingTask;
+    if (!isTranslationActive(currentTask)) {
+      if (translationRunRef.current !== runId) {
+        return;
+      }
+      await finishTranslationTask(currentTask);
+      return;
+    }
+
+    while (isTranslationActive(currentTask)) {
+      await delay(500);
+      if (!mountedRef.current || translationRunRef.current !== runId) {
+        return;
+      }
+      currentTask = await fetchTask(currentTask.taskId);
+      setTranslationTask(currentTask);
+    }
+    if (translationRunRef.current !== runId) {
+      return;
+    }
+    await finishTranslationTask(currentTask);
+  }
+
   function handlePickVideo() {
     void runAction(async () => {
       const selectedPath = await pickVideoFile();
@@ -243,13 +340,21 @@ export function App() {
       setProject(createdProject);
       setDocument(null);
       setSelectedLineId(null);
+      setLineFilter("all");
       setExportResult(null);
       setHasUnsavedChanges(false);
       setAnalysisTask(null);
+      setTranslationTask(null);
       setAnalysisConfig((currentConfig) => ({
         ...currentConfig,
         sourceLanguage: createdProject.sourceLanguage
       }));
+      setTranslationConfig((currentConfig) => ({
+        ...currentConfig,
+        sourceLanguage: createdProject.sourceLanguage,
+        targetLanguage: createdProject.targetLanguage ?? currentConfig.targetLanguage
+      }));
+      await loadTranslationSettings(createdProject);
       setMessage("Project created");
       await refreshProjects();
     });
@@ -265,13 +370,21 @@ export function App() {
         sourceLanguage: reopenedProject.sourceLanguage,
         targetLanguage: reopenedProject.targetLanguage ?? ""
       });
+      setLineFilter("all");
       setExportResult(null);
       setHasUnsavedChanges(false);
       setAnalysisTask(null);
+      setTranslationTask(null);
       setAnalysisConfig((currentConfig) => ({
         ...currentConfig,
         sourceLanguage: reopenedProject.sourceLanguage
       }));
+      setTranslationConfig((currentConfig) => ({
+        ...currentConfig,
+        sourceLanguage: reopenedProject.sourceLanguage,
+        targetLanguage: reopenedProject.targetLanguage ?? currentConfig.targetLanguage
+      }));
+      await loadTranslationSettings(reopenedProject);
 
       try {
         const loadedDocument = await fetchSubtitleDocument(projectId);
@@ -362,6 +475,72 @@ export function App() {
     });
   }
 
+  function handleStartTranslation() {
+    if (!project || !document) {
+      return;
+    }
+
+    void startTranslationJob();
+  }
+
+  async function startTranslationJob() {
+    if (!project || !document) {
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      const task = await createTranslationJob(project.projectId, {
+        ...translationConfig,
+        sourceLanguage: translationConfig.sourceLanguage || project.sourceLanguage,
+        targetLanguage: translationConfig.targetLanguage || project.targetLanguage || "en"
+      });
+      const runId = translationRunRef.current + 1;
+      translationRunRef.current = runId;
+      setTranslationTask(task);
+      setExportResult(null);
+      setMessage(task.message);
+      void monitorTranslationTask(task, runId).catch((err: unknown) => {
+        if (mountedRef.current) {
+          setError(formatUnknownError(err));
+        }
+      });
+    } catch (err: unknown) {
+      setError(formatUnknownError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleCancelTranslation() {
+    if (!translationTask) {
+      return;
+    }
+
+    void runAction(async () => {
+      translationRunRef.current += 1;
+      const task = await cancelTask(translationTask.taskId);
+      await finishTranslationTask(task);
+    });
+  }
+
+  function handleRetryTranslation() {
+    if (!translationTask) {
+      return;
+    }
+
+    void runAction(async () => {
+      const task = await retryTask(translationTask.taskId);
+      const runId = translationRunRef.current + 1;
+      translationRunRef.current = runId;
+      setTranslationTask(task);
+      setMessage(task.message);
+      setError(null);
+      await monitorTranslationTask(task, runId);
+    });
+  }
+
   function handleUpdateLine(nextLine: SubtitleLine) {
     setDocument((currentDocument) => {
       if (!currentDocument) {
@@ -412,7 +591,7 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <TaskStatusBar health={health} message={message} error={error} busy={busy || analysisActive} />
+      <TaskStatusBar health={health} message={message} error={error} busy={busy || taskActive} />
 
       <div className="workspace-layout">
         <ProjectLibraryPanel
@@ -426,7 +605,7 @@ export function App() {
           <ProjectImportPanel
             form={projectForm}
             project={project}
-            busy={busy || analysisActive}
+            busy={busy || taskActive}
             canPickVideo={canPickVideo}
             onFormChange={setProjectForm}
             onPickVideo={handlePickVideo}
@@ -444,15 +623,27 @@ export function App() {
             onRetry={handleRetryAnalysis}
           />
 
+          <TranslationJobPanel
+            disabled={!project || !document || busy || hasUnsavedChanges}
+            task={translationTask}
+            config={translationConfig}
+            onConfigChange={setTranslationConfig}
+            onStart={handleStartTranslation}
+            onCancel={handleCancelTranslation}
+            onRetry={handleRetryTranslation}
+          />
+
           <div className="workbench-grid" aria-label="Subtitle workbench">
             <SubtitleLineList
               lines={document?.lines ?? []}
               selectedLineId={selectedLineId}
+              filter={lineFilter}
+              onFilterChange={setLineFilter}
               onSelectLine={setSelectedLineId}
             />
             <SubtitleEditor
               line={selectedLine}
-              busy={busy || analysisActive}
+              busy={busy || taskActive}
               onChangeLine={handleUpdateLine}
               onSave={handleSaveSubtitle}
             />
@@ -461,7 +652,7 @@ export function App() {
               exportResult={exportResult}
               canExport={canExport}
               disabledReason={exportDisabledReason}
-              busy={busy}
+              busy={busy || taskActive}
               onModeChange={handleExportModeChange}
               onExport={handleExportSrt}
             />
