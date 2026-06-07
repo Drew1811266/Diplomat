@@ -1,23 +1,29 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  AnalysisJobRequest,
   ProjectResponse,
   SrtExportMode,
   SrtExportResponse,
   SubtitleDocument,
-  SubtitleLine
+  SubtitleLine,
+  TaskResponse
 } from "@diplomat/shared";
 import {
+  cancelTask,
+  createAnalysisJob,
   createProject,
   exportSrt,
   fetchProject,
   fetchSubtitleDocument,
+  fetchTask,
   fetchWorkerHealth,
   listProjects,
-  runProjectAnalysis,
+  retryTask,
   saveSubtitleDocument,
   type WorkerHealth
 } from "./api";
 import { isDesktopRuntime, pickVideoFile, startWorker } from "./desktop";
+import { AnalysisJobPanel } from "./components/AnalysisJobPanel";
 import { ExportPanel } from "./components/ExportPanel";
 import { ProjectLibraryPanel } from "./components/ProjectLibraryPanel";
 import { ProjectImportPanel, type ProjectFormState } from "./components/ProjectImportPanel";
@@ -33,6 +39,23 @@ const initialProjectForm: ProjectFormState = {
   targetLanguage: "en"
 };
 
+const initialAnalysisConfig: AnalysisJobRequest = {
+  provider: "fake",
+  modelNameOrPath: null,
+  device: "cpu",
+  computeType: "int8",
+  sourceLanguage: "zh",
+  initialPrompt: null
+};
+
+function isAnalysisActive(task: TaskResponse | null) {
+  return task?.status === "queued" || task?.status === "running" || task?.status === "canceling";
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 function formatUnknownError(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown worker error";
 }
@@ -42,11 +65,16 @@ function isMissingSubtitleError(error: unknown): boolean {
 }
 
 export function App() {
+  const mountedRef = useRef(true);
+  const analysisRunRef = useRef(0);
   const [health, setHealth] = useState<WorkerHealth | null>(null);
   const [projectForm, setProjectForm] = useState<ProjectFormState>(initialProjectForm);
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
   const [project, setProject] = useState<ProjectResponse | null>(null);
   const [document, setDocument] = useState<SubtitleDocument | null>(null);
+  const [analysisConfig, setAnalysisConfig] =
+    useState<AnalysisJobRequest>(initialAnalysisConfig);
+  const [analysisTask, setAnalysisTask] = useState<TaskResponse | null>(null);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [exportMode, setExportMode] = useState<SrtExportMode>("bilingual");
   const [exportResult, setExportResult] = useState<SrtExportResponse | null>(null);
@@ -55,6 +83,12 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [canPickVideo] = useState(() => isDesktopRuntime());
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let canceled = false;
@@ -108,10 +142,13 @@ export function App() {
     () => document?.lines.find((line) => line.id === selectedLineId) ?? null,
     [document, selectedLineId]
   );
-  const exportDisabledReason = hasUnsavedChanges
-    ? "Save subtitle edits before exporting."
-    : null;
-  const canExport = Boolean(project && document && !hasUnsavedChanges);
+  const analysisActive = isAnalysisActive(analysisTask);
+  const exportDisabledReason = analysisActive
+    ? "Wait for analysis to finish."
+    : hasUnsavedChanges
+      ? "Save subtitle edits before exporting."
+      : null;
+  const canExport = Boolean(project && document && !hasUnsavedChanges && !analysisActive);
 
   async function runAction(action: () => Promise<void>) {
     setBusy(true);
@@ -128,6 +165,59 @@ export function App() {
   async function refreshProjects() {
     const projectList = await listProjects();
     setProjects(projectList.projects);
+  }
+
+  async function finishAnalysisTask(task: TaskResponse) {
+    setAnalysisTask(task);
+    if (task.status === "completed") {
+      if (!project) {
+        return;
+      }
+      const loadedDocument = await fetchSubtitleDocument(project.projectId);
+      setDocument(loadedDocument);
+      setSelectedLineId(loadedDocument.lines[0]?.id ?? null);
+      setExportResult(null);
+      setHasUnsavedChanges(false);
+      setMessage("Analysis completed");
+      setError(null);
+      await refreshProjects();
+      return;
+    }
+
+    if (task.status === "canceled") {
+      setMessage("Analysis canceled");
+      return;
+    }
+
+    if (task.status === "failed") {
+      const failureMessage = task.errorMessage ?? task.message;
+      setMessage(failureMessage);
+      setError(failureMessage);
+    }
+  }
+
+  async function monitorAnalysisTask(startingTask: TaskResponse, runId: number) {
+    let currentTask = startingTask;
+    if (!isAnalysisActive(currentTask)) {
+      if (analysisRunRef.current !== runId) {
+        return;
+      }
+      await finishAnalysisTask(currentTask);
+      return;
+    }
+
+    while (isAnalysisActive(currentTask)) {
+      await delay(500);
+      if (!mountedRef.current || analysisRunRef.current !== runId) {
+        return;
+      }
+      currentTask = await fetchTask(currentTask.taskId);
+      setAnalysisTask(currentTask);
+    }
+    if (analysisRunRef.current !== runId) {
+      return;
+    }
+    await finishAnalysisTask(currentTask);
   }
 
   function handlePickVideo() {
@@ -155,6 +245,11 @@ export function App() {
       setSelectedLineId(null);
       setExportResult(null);
       setHasUnsavedChanges(false);
+      setAnalysisTask(null);
+      setAnalysisConfig((currentConfig) => ({
+        ...currentConfig,
+        sourceLanguage: createdProject.sourceLanguage
+      }));
       setMessage("Project created");
       await refreshProjects();
     });
@@ -172,6 +267,11 @@ export function App() {
       });
       setExportResult(null);
       setHasUnsavedChanges(false);
+      setAnalysisTask(null);
+      setAnalysisConfig((currentConfig) => ({
+        ...currentConfig,
+        sourceLanguage: reopenedProject.sourceLanguage
+      }));
 
       try {
         const loadedDocument = await fetchSubtitleDocument(projectId);
@@ -196,14 +296,66 @@ export function App() {
       return;
     }
 
-    void runAction(async () => {
-      const analysis = await runProjectAnalysis(project.projectId);
-      setDocument(analysis.document);
-      setSelectedLineId(analysis.document.lines[0]?.id ?? null);
+    void startAnalysisJob();
+  }
+
+  async function startAnalysisJob() {
+    if (!project) {
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      const task = await createAnalysisJob(project.projectId, {
+        ...analysisConfig,
+        sourceLanguage: analysisConfig.sourceLanguage ?? project.sourceLanguage
+      });
+      const runId = analysisRunRef.current + 1;
+      analysisRunRef.current = runId;
+      setAnalysisTask(task);
+      setDocument(null);
+      setSelectedLineId(null);
       setExportResult(null);
       setHasUnsavedChanges(false);
-      setMessage("Analysis completed");
-      await refreshProjects();
+      setMessage(task.message);
+      void monitorAnalysisTask(task, runId).catch((err: unknown) => {
+        if (mountedRef.current) {
+          setError(formatUnknownError(err));
+        }
+      });
+    } catch (err: unknown) {
+      setError(formatUnknownError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleCancelAnalysis() {
+    if (!analysisTask) {
+      return;
+    }
+
+    void runAction(async () => {
+      analysisRunRef.current += 1;
+      const task = await cancelTask(analysisTask.taskId);
+      await finishAnalysisTask(task);
+    });
+  }
+
+  function handleRetryAnalysis() {
+    if (!analysisTask) {
+      return;
+    }
+
+    void runAction(async () => {
+      const task = await retryTask(analysisTask.taskId);
+      const runId = analysisRunRef.current + 1;
+      analysisRunRef.current = runId;
+      setAnalysisTask(task);
+      setMessage(task.message);
+      setError(null);
+      await monitorAnalysisTask(task, runId);
     });
   }
 
@@ -257,7 +409,7 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <TaskStatusBar health={health} message={message} error={error} busy={busy} />
+      <TaskStatusBar health={health} message={message} error={error} busy={busy || analysisActive} />
 
       <div className="workspace-layout">
         <ProjectLibraryPanel
@@ -271,12 +423,22 @@ export function App() {
           <ProjectImportPanel
             form={projectForm}
             project={project}
-            busy={busy}
+            busy={busy || analysisActive}
             canPickVideo={canPickVideo}
             onFormChange={setProjectForm}
             onPickVideo={handlePickVideo}
             onCreateProject={handleCreateProject}
             onAnalyzeProject={handleAnalyzeProject}
+          />
+
+          <AnalysisJobPanel
+            disabled={!project || busy}
+            task={analysisTask}
+            config={analysisConfig}
+            onConfigChange={setAnalysisConfig}
+            onStart={handleAnalyzeProject}
+            onCancel={handleCancelAnalysis}
+            onRetry={handleRetryAnalysis}
           />
 
           <div className="workbench-grid" aria-label="Subtitle workbench">
@@ -287,7 +449,7 @@ export function App() {
             />
             <SubtitleEditor
               line={selectedLine}
-              busy={busy}
+              busy={busy || analysisActive}
               onChangeLine={handleUpdateLine}
               onSave={handleSaveSubtitle}
             />

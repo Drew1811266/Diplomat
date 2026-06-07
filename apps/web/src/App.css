@@ -245,6 +245,68 @@ button:disabled {
   font-weight: 700;
 }
 
+.analysis-job-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid #cbd5d9;
+  border-radius: 8px;
+}
+
+.analysis-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.analysis-prompt-field {
+  grid-column: span 3;
+}
+
+.analysis-task-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.45fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  color: #334155;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.analysis-task-row progress {
+  width: 100%;
+  height: 14px;
+  accent-color: #0f766e;
+}
+
+.analysis-error,
+.analysis-diagnostic {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.analysis-error {
+  color: #9f1239;
+}
+
+.analysis-diagnostic {
+  color: #475569;
+}
+
+.analysis-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .workbench-grid {
   display: grid;
   min-width: 0;
@@ -461,6 +523,15 @@ button:disabled {
 
   .project-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analysis-controls,
+  .analysis-task-row {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-prompt-field {
+    grid-column: span 1;
   }
 }
 

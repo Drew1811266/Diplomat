@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { SubtitleDocument } from "@diplomat/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
@@ -89,13 +89,58 @@ function createDeferred<T>(): Deferred<T> {
 }
 
 function stubWorkbenchFetch(
-  options: { pauseSave?: boolean; includeRecentProject?: boolean; includeSubtitleFetch?: boolean } = {}
+  options: {
+    pauseSave?: boolean;
+    includeRecentProject?: boolean;
+    includeSubtitleFetch?: boolean;
+    analysisJob?: "completed" | "running" | "failedThenCompleted";
+  } = {}
 ) {
   const savedDocuments: SubtitleDocument[] = [];
   const exportModes: string[] = [];
   const pendingSave = options.pauseSave ? createDeferred<Response>() : null;
   let projectWasCreated = false;
   let subtitleAvailable = Boolean(options.includeSubtitleFetch);
+  let retryWasRequested = false;
+
+  const completedTask = {
+    taskId: "task-1",
+    projectId: "project-demo",
+    type: "analysis",
+    status: "completed",
+    progress: 1,
+    message: "Analysis completed",
+    startedAt: "2026-06-07T00:00:00+00:00",
+    updatedAt: "2026-06-07T00:00:01+00:00",
+    completedAt: "2026-06-07T00:00:01+00:00",
+    errorCode: null,
+    errorMessage: null,
+    diagnosticLogPath: null
+  };
+  const runningTask = {
+    ...completedTask,
+    status: "running",
+    progress: 0.35,
+    message: "Transcribing audio",
+    completedAt: null
+  };
+  const canceledTask = {
+    ...runningTask,
+    status: "canceled",
+    progress: 0.35,
+    message: "Analysis canceled",
+    completedAt: "2026-06-07T00:00:01+00:00"
+  };
+  const failedTask = {
+    ...runningTask,
+    status: "failed",
+    progress: 0.02,
+    message: "FFmpeg executable not found: ffmpeg",
+    completedAt: "2026-06-07T00:00:01+00:00",
+    errorCode: "FFMPEG_NOT_FOUND",
+    errorMessage: "FFmpeg executable not found: ffmpeg",
+    diagnosticLogPath: "D:/Diplomat/projects/project-demo/logs/task-1.log"
+  };
 
   const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
@@ -127,15 +172,30 @@ function stubWorkbenchFetch(
       return jsonResponse({ ...projectMetadata, hasSubtitleDocument: subtitleAvailable });
     }
 
-    if (url.endsWith("/projects/project-demo/analyze") && init?.method === "POST") {
+    if (url.endsWith("/projects/project-demo/analysis-jobs") && init?.method === "POST") {
+      const mode = options.analysisJob ?? "completed";
+      if (mode === "running") {
+        return jsonResponse(runningTask);
+      }
+      if (mode === "failedThenCompleted" && !retryWasRequested) {
+        return jsonResponse(failedTask);
+      }
       subtitleAvailable = true;
-      return jsonResponse({
-        projectId: "project-demo",
-        status: "completed",
-        subtitlePath: "D:/Diplomat/projects/project-demo/subtitles.json",
-        lineCount: 1,
-        document: analyzedDocument
-      });
+      return jsonResponse(completedTask);
+    }
+
+    if (url.endsWith("/tasks/task-1") && init?.method === undefined) {
+      return jsonResponse(options.analysisJob === "running" ? runningTask : completedTask);
+    }
+
+    if (url.endsWith("/tasks/task-1/cancel") && init?.method === "POST") {
+      return jsonResponse(canceledTask);
+    }
+
+    if (url.endsWith("/tasks/task-1/retry") && init?.method === "POST") {
+      retryWasRequested = true;
+      subtitleAvailable = true;
+      return jsonResponse({ ...completedTask, taskId: "task-2" });
     }
 
     if (url.endsWith("/projects/project-demo/subtitle") && init?.method === "PUT") {
@@ -230,6 +290,57 @@ describe("App", () => {
     expect(screen.getByText("Video path selected")).toBeInTheDocument();
   });
 
+  it("shows analysis model controls and starts a completed analysis job", async () => {
+    stubWorkbenchFetch();
+    await createAndAnalyzeDemoProject();
+
+    expect(screen.getByLabelText("ASR provider")).toBeInTheDocument();
+    expect(screen.getByLabelText("Model name or path")).toBeInTheDocument();
+    expect(screen.getAllByText("Analysis completed").length).toBeGreaterThan(0);
+  });
+
+  it("cancels a running analysis job", async () => {
+    stubWorkbenchFetch({ analysisJob: "running" });
+    render(<App />);
+
+    expect(await screen.findByText("Worker: ok")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Demo" } });
+    fireEvent.change(screen.getByLabelText("Source video path"), {
+      target: { value: "D:/media/demo.mp4" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
+    expect(await screen.findByText(/Project: Demo/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Start Analysis" }));
+    expect(await screen.findByText("Transcribing audio")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Cancel Analysis" })).toBeEnabled()
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel Analysis" }));
+
+    expect((await screen.findAllByText("Analysis canceled")).length).toBeGreaterThan(0);
+  });
+
+  it("retries a failed analysis job", async () => {
+    stubWorkbenchFetch({ analysisJob: "failedThenCompleted" });
+    render(<App />);
+
+    expect(await screen.findByText("Worker: ok")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Demo" } });
+    fireEvent.change(screen.getByLabelText("Source video path"), {
+      target: { value: "D:/media/demo.mp4" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
+    expect(await screen.findByText(/Project: Demo/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Start Analysis" }));
+    expect((await screen.findAllByText("FFmpeg executable not found: ffmpeg")).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Retry Analysis" }));
+
+    expect((await screen.findAllByText("Analysis completed")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("原始字幕文本")).length).toBeGreaterThan(0);
+  });
+
   it("starts the desktop Worker when initial health check is unavailable", async () => {
     const invoke = vi.fn(async (command: string) =>
       command === "start_worker"
@@ -272,7 +383,7 @@ describe("App", () => {
     const { savedDocuments, exportModes } = stubWorkbenchFetch();
     await createAndAnalyzeDemoProject();
 
-    expect(screen.getByText("Analysis completed")).toBeInTheDocument();
+    expect(screen.getAllByText("Analysis completed").length).toBeGreaterThan(0);
 
     const subtitleList = screen.getByRole("list", { name: "Subtitle lines" });
     fireEvent.click(within(subtitleList).getByRole("button", { name: /line-1/ }));
