@@ -50,5 +50,6 @@ python -m pip install -e ".\worker[dev,asr]"
 - [M2a Workbench Loop](docs/development/m2a-workbench-loop.md)
 - [M2b Usability Foundation](docs/development/m2b-usability-foundation.md)
 - [M3 Real ASR MVP](docs/development/m3-real-asr-mvp.md)
+- [M3 Stage Gate Review](docs/development/m3-stage-gate-review.md)
 - [M2b-M6 Development Roadmap](docs/development/m2b-m6-development-roadmap.md)
 - [Product Design Spec](docs/superpowers/specs/2026-06-04-diplomat-ai-subtitle-editor-design.md)
