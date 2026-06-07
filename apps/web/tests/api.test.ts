@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type CreateProjectInput,
+  cancelTask,
+  createAnalysisJob,
   createProject,
   exportSrt,
   fetchProject,
   fetchSubtitleDocument,
+  fetchTask,
   listProjects,
+  retryTask,
   runProjectAnalysis,
   saveSubtitleDocument
 } from "../src/api";
@@ -74,6 +78,21 @@ const subtitleDocument: SubtitleDocument = {
       notes: ""
     }
   ]
+};
+
+const taskResponse = {
+  taskId: "task-1",
+  projectId: "project-1",
+  type: "analysis",
+  status: "running",
+  progress: 0.25,
+  message: "Extracting audio",
+  startedAt: "2026-06-07T00:00:00+00:00",
+  updatedAt: "2026-06-07T00:00:01+00:00",
+  completedAt: null,
+  errorCode: null,
+  errorMessage: null,
+  diagnosticLogPath: null
 };
 
 function stubJsonResponse(payload: unknown, ok = true, status = 200) {
@@ -179,6 +198,54 @@ describe("worker API helpers", () => {
     await expect(runProjectAnalysis("project-1", baseUrl)).resolves.toEqual(response);
 
     expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/analyze`, {
+      method: "POST"
+    });
+  });
+
+  it("createAnalysisJob posts model config and parses the task response", async () => {
+    const fetchMock = stubJsonResponse(taskResponse);
+
+    await expect(
+      createAnalysisJob("project-1", { provider: "fake", sourceLanguage: "zh" }, baseUrl)
+    ).resolves.toEqual(taskResponse);
+
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/analysis-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "fake",
+        modelNameOrPath: null,
+        device: "cpu",
+        computeType: "int8",
+        sourceLanguage: "zh",
+        initialPrompt: null
+      })
+    });
+  });
+
+  it("fetchTask gets and parses task state", async () => {
+    const fetchMock = stubJsonResponse(taskResponse);
+
+    await expect(fetchTask("task-1", baseUrl)).resolves.toEqual(taskResponse);
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/tasks/task-1`, undefined);
+  });
+
+  it("cancelTask posts to the cancel endpoint", async () => {
+    const response = { ...taskResponse, status: "canceled", progress: 0 };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(cancelTask("task-1", baseUrl)).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/tasks/task-1/cancel`, {
+      method: "POST"
+    });
+  });
+
+  it("retryTask posts to the retry endpoint", async () => {
+    const response = { ...taskResponse, taskId: "task-2", status: "queued", progress: 0 };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(retryTask("task-1", baseUrl)).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/tasks/task-1/retry`, {
       method: "POST"
     });
   });

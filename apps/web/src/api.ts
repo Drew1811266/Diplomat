@@ -1,17 +1,22 @@
 import {
+  AnalysisJobRequestSchema,
   AnalyzeProjectResponseSchema,
   CreateProjectRequestSchema,
   ProjectListResponseSchema,
   ProjectResponseSchema,
   SrtExportResponseSchema,
   SubtitleDocumentSchema,
+  TaskResponseSchema,
+  type AnalysisJobRequestInput,
+  type AnalysisJobRequest,
   type AnalyzeProjectResponse,
   type CreateProjectRequest,
   type ProjectListResponse,
   type ProjectResponse,
   type SrtExportMode,
   type SrtExportResponse,
-  type SubtitleDocument
+  type SubtitleDocument,
+  type TaskResponse
 } from "@diplomat/shared";
 
 const DEFAULT_WORKER_BASE_URL = "http://127.0.0.1:8765";
@@ -114,6 +119,57 @@ export async function runProjectAnalysis(
     `${baseUrl}/projects/${projectId}/analyze`,
     { method: "POST" },
     (payload) => AnalyzeProjectResponseSchema.parse(payload)
+  );
+}
+
+export async function createAnalysisJob(
+  projectId: string,
+  input: AnalysisJobRequestInput,
+  baseUrl = DEFAULT_WORKER_BASE_URL
+): Promise<TaskResponse> {
+  const request = AnalysisJobRequestSchema.parse(input);
+
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/analysis-jobs`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    },
+    (payload) => TaskResponseSchema.parse(payload)
+  );
+}
+
+export async function fetchTask(
+  taskId: string,
+  baseUrl = DEFAULT_WORKER_BASE_URL
+): Promise<TaskResponse> {
+  return requestJson(
+    `${baseUrl}/tasks/${taskId}`,
+    undefined,
+    (payload) => TaskResponseSchema.parse(payload)
+  );
+}
+
+export async function cancelTask(
+  taskId: string,
+  baseUrl = DEFAULT_WORKER_BASE_URL
+): Promise<TaskResponse> {
+  return requestJson(
+    `${baseUrl}/tasks/${taskId}/cancel`,
+    { method: "POST" },
+    (payload) => TaskResponseSchema.parse(payload)
+  );
+}
+
+export async function retryTask(
+  taskId: string,
+  baseUrl = DEFAULT_WORKER_BASE_URL
+): Promise<TaskResponse> {
+  return requestJson(
+    `${baseUrl}/tasks/${taskId}/retry`,
+    { method: "POST" },
+    (payload) => TaskResponseSchema.parse(payload)
   );
 }
 
