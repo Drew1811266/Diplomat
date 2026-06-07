@@ -2,6 +2,8 @@
 
 M2a is the first usable Diplomat editing loop. It connects local project creation, analysis, subtitle review, line editing, save, and export into one end-to-end workflow for development testing.
 
+M2b supersedes the manual-only project setup flow for desktop development by adding project reopening, native video file picking, Worker lifecycle commands, and storage migration. See [M2b Usability Foundation](m2b-usability-foundation.md).
+
 ## Included
 
 - Worker API project creation from a local video path.
