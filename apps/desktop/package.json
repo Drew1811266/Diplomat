@@ -8,7 +8,7 @@
     "check": "pnpm test && pnpm typecheck",
     "dev": "tauri dev",
     "build": "tauri build",
-    "test": "node -e \"console.log('desktop shell metadata ok')\"",
+    "test": "node -e \"const { spawnSync } = require('node:child_process'); const result = spawnSync('cargo', ['test', '--manifest-path', 'src-tauri/Cargo.toml'], { stdio: 'inherit', env: { ...process.env, DIPLOMAT_SKIP_TAURI_BUILD: '1' } }); process.exit(result.status ?? 1);\"",
     "typecheck": "node -e \"console.log('desktop shell has no TypeScript sources')\""
   },
   "devDependencies": {
