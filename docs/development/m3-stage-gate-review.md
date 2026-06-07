@@ -6,9 +6,9 @@ Branch: `codex/m3-real-asr-mvp`
 
 ## Gate Decision
 
-M3 is implementation-complete and automated-verification-complete, but the product stage gate is not fully accepted in this environment.
+M3 is accepted.
 
-Do not start M4 until the manual real-ASR acceptance path is verified, or until the project owner explicitly accepts deferring that environment-dependent check.
+The implementation, automated checks, browser workbench shell verification, fake-ASR media run, real faster-whisper media run, cancellation path, and failed-model retry path all passed in this environment.
 
 ## Passed
 
@@ -26,6 +26,10 @@ Do not start M4 until the manual real-ASR acceptance path is verified, or until 
 - Completed analysis jobs load editable subtitle documents through the existing editor.
 - Model weights remain outside the repository.
 - M3 development documentation is present at `docs/development/m3-real-asr-mvp.md`.
+- Manual fake-ASR media verification passed with a generated local speech video.
+- Manual real faster-whisper verification passed with `tiny.en`.
+- Cancellation of an active real-ASR task reached `canceled`.
+- Retry after a bad model path succeeded after replacing the retry request config with `tiny.en`.
 
 ## Verification Evidence
 
@@ -68,33 +72,55 @@ Browser shell verification:
   - `Retry Analysis`
   - `Analysis progress`
 
-## Not Verified
+Fake-ASR media verification:
 
-Manual fake-ASR media run was not executed because the current environment has no `ffmpeg` or `ffprobe` command on `PATH`, and the repository has no checked-in media fixture.
+- Local FFmpeg/FFprobe was downloaded into `.dev/tools` and injected into the Worker process `PATH`.
+- A local TTS video was generated at `.dev/samples/speech.mp4`.
+- `POST /projects/{project_id}/analysis-jobs` with provider `fake` completed.
+- Result:
+  - status: `completed`
+  - progress: `1.0`
+  - subtitle lines: `1`
+  - first source line: `Fake transcript chunk 0`
 
-Manual real-ASR run was not executed because:
+Real faster-whisper verification:
 
-- `faster_whisper` is not installed in the current Python environment.
-- No local faster-whisper model path is configured.
-- No short local speech video was available for the manual acceptance test.
-- `ffmpeg` and `ffprobe` are unavailable on `PATH`.
+- Worker ASR dependencies were installed with `python -m pip install -e ".\worker[dev,asr]"`.
+- Installed versions:
+  - `faster-whisper`: `1.2.1`
+  - `ctranslate2`: `4.8.0`
+- `POST /projects/{project_id}/analysis-jobs` with provider `faster-whisper`, model `tiny.en`, device `cpu`, and compute type `int8` completed.
+- Result:
+  - status: `completed`
+  - progress: `1.0`
+  - subtitle lines: `1`
+  - first source line: `Hello world. This is a Diplomat subtitle test. The local transcription should create editable English subtitles.`
 
-## Required Follow-Up To Accept M3
+Cancellation verification:
 
-1. Install FFmpeg and FFprobe or provide absolute executable paths through the Worker runtime.
-2. Install real ASR dependencies:
+- A real-ASR job was started and immediately canceled.
+- Initial cancel response reached `canceling`.
+- Final task state reached `canceled`.
+- Final message: `Analysis canceled`.
 
-   ```powershell
-   python -m pip install -e ".\worker[dev,asr]"
-   ```
+Failed-model retry verification:
 
-3. Provide a short local video with speech.
-4. Run the documented real faster-whisper manual test in `docs/development/m3-real-asr-mvp.md`.
-5. Confirm:
-   - real transcription completes,
-   - generated subtitle text approximately matches speech,
-   - subtitles are editable and saveable,
-   - cancel reaches `canceled`,
-   - retry works after correcting a bad model path.
+- A real-ASR job was started with a nonexistent local model path.
+- The job reached `failed` with an actionable faster-whisper model error.
+- `POST /tasks/{task_id}/retry` was called with replacement config using model `tiny.en`.
+- Retry task completed and wrote the same expected subtitle text.
 
-Only after those checks pass should M3 be merged and M4 begin under the strict stage-gate rule.
+## Local Verification Artifacts
+
+The following artifacts are intentionally local-only and ignored by Git:
+
+- `.dev/tools`: downloaded FFmpeg/FFprobe binaries.
+- `.dev/samples/speech.wav`
+- `.dev/samples/speech.mp4`
+- `.dev/data`: verification projects, subtitle documents, and task diagnostics.
+
+Model weights and provider caches remain outside the repository and keep their upstream licenses.
+
+## Stage Gate Outcome
+
+M3 satisfies the roadmap acceptance criteria and can be merged before starting M4.
