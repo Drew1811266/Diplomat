@@ -7,6 +7,7 @@ from diplomat_worker.schemas.subtitle import (
     SubtitleDocument,
     SubtitleLine,
     SubtitleStyle,
+    TranslationOrigin,
     WordTiming,
 )
 
@@ -140,3 +141,48 @@ def test_subtitle_line_rejects_unknown_style_override_fields() -> None:
             ai_origin=AiOrigin(engine="fake-asr", model="fake-v1"),
             notes="",
         )
+
+
+def make_line(**overrides) -> SubtitleLine:
+    payload = {
+        "id": "line-1",
+        "startMs": 0,
+        "endMs": 1200,
+        "speakerId": "speaker-1",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh",
+        "sourceText": "Hello world",
+        "translatedText": "",
+        "words": [],
+        "styleOverrides": {},
+        "reviewStatus": "draft",
+        "aiOrigin": {"engine": "fake-asr", "model": "fake-v1"},
+        "notes": "",
+    }
+    payload.update(overrides)
+    return SubtitleLine.model_validate(payload)
+
+
+def test_subtitle_line_defaults_translation_metadata() -> None:
+    line = make_line()
+
+    assert line.translation_status == "not_requested"
+    assert line.translation_origin is None
+    assert line.translation_error is None
+
+    payload = line.model_dump(by_alias=True)
+    assert payload["translationStatus"] == "not_requested"
+    assert payload["translationOrigin"] is None
+    assert payload["translationError"] is None
+
+
+def test_subtitle_line_accepts_generated_translation_metadata() -> None:
+    line = make_line(
+        translatedText="你好，世界",
+        translationStatus="translated",
+        translationOrigin={"provider": "fake", "model": "fake-v1"},
+        translationError=None,
+    )
+
+    assert line.translation_status == "translated"
+    assert line.translation_origin == TranslationOrigin(provider="fake", model="fake-v1")

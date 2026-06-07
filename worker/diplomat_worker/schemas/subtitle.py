@@ -32,6 +32,14 @@ class AiOrigin(CamelModel):
     model: str
 
 
+class TranslationOrigin(CamelModel):
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+
+
+TranslationStatus = Literal["not_requested", "queued", "translated", "edited", "failed"]
+
+
 class Speaker(CamelModel):
     id: str = Field(min_length=1)
     display_name: str = Field(alias="displayName", min_length=1)
@@ -86,6 +94,15 @@ class SubtitleLine(CamelModel):
         alias="reviewStatus",
     )
     ai_origin: AiOrigin = Field(alias="aiOrigin")
+    translation_status: TranslationStatus = Field(
+        default="not_requested",
+        alias="translationStatus",
+    )
+    translation_origin: TranslationOrigin | None = Field(
+        default=None,
+        alias="translationOrigin",
+    )
+    translation_error: str | None = Field(default=None, alias="translationError")
     notes: str = ""
 
     @field_validator("target_language")

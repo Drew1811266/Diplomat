@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SubtitleDocumentSchema } from "../src/subtitle";
+import { SubtitleDocumentSchema, SubtitleLineSchema } from "../src/subtitle";
 
 const validDocument = {
   schemaVersion: "diplomat.subtitle.v1",
@@ -67,5 +67,52 @@ describe("SubtitleDocumentSchema", () => {
     const invalid = structuredClone(validDocument);
     invalid.lines[0]!.styleOverrides = { unexpectedKey: "value" };
     expect(() => SubtitleDocumentSchema.parse(invalid)).toThrow();
+  });
+});
+
+describe("translation metadata", () => {
+  it("defaults M4 translation metadata for older subtitle lines", () => {
+    const parsed = SubtitleLineSchema.parse({
+      id: "line-1",
+      startMs: 0,
+      endMs: 1000,
+      speakerId: "speaker-1",
+      sourceLanguage: "en",
+      targetLanguage: "zh",
+      sourceText: "Hello",
+      translatedText: "",
+      words: [],
+      styleOverrides: {},
+      reviewStatus: "draft",
+      aiOrigin: { engine: "fake-asr", model: "fake-v1" },
+      notes: ""
+    });
+
+    expect(parsed.translationStatus).toBe("not_requested");
+    expect(parsed.translationOrigin).toBeNull();
+    expect(parsed.translationError).toBeNull();
+  });
+
+  it("accepts generated translation metadata", () => {
+    const parsed = SubtitleLineSchema.parse({
+      id: "line-1",
+      startMs: 0,
+      endMs: 1000,
+      speakerId: "speaker-1",
+      sourceLanguage: "en",
+      targetLanguage: "zh",
+      sourceText: "Hello",
+      translatedText: "你好",
+      words: [],
+      styleOverrides: {},
+      reviewStatus: "draft",
+      aiOrigin: { engine: "fake-asr", model: "fake-v1" },
+      notes: "",
+      translationStatus: "translated",
+      translationOrigin: { provider: "fake", model: "fake-v1" },
+      translationError: null
+    });
+
+    expect(parsed.translationOrigin?.provider).toBe("fake");
   });
 });

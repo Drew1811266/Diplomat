@@ -28,6 +28,19 @@ export const AiOriginSchema = z.object({
   model: z.string()
 });
 
+export const TranslationStatusSchema = z.enum([
+  "not_requested",
+  "queued",
+  "translated",
+  "edited",
+  "failed"
+]);
+
+export const TranslationOriginSchema = z.object({
+  provider: z.string().min(1),
+  model: z.string().min(1)
+});
+
 export const SpeakerSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
@@ -66,6 +79,9 @@ export const SubtitleLineSchema = z
     styleOverrides: StyleOverridesSchema,
     reviewStatus: ReviewStatusSchema,
     aiOrigin: AiOriginSchema,
+    translationStatus: TranslationStatusSchema.default("not_requested"),
+    translationOrigin: TranslationOriginSchema.nullable().default(null),
+    translationError: z.string().nullable().default(null),
     notes: z.string()
   })
   .refine((line) => line.endMs > line.startMs, {
@@ -86,3 +102,5 @@ export type SubtitleDocument = z.infer<typeof SubtitleDocumentSchema>;
 export type SubtitleLine = z.infer<typeof SubtitleLineSchema>;
 export type SubtitleStyle = z.infer<typeof SubtitleStyleSchema>;
 export type Speaker = z.infer<typeof SpeakerSchema>;
+export type TranslationStatus = z.infer<typeof TranslationStatusSchema>;
+export type TranslationOrigin = z.infer<typeof TranslationOriginSchema>;
