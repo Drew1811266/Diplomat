@@ -13,7 +13,10 @@ This repository contains the MIT-licensed application source code. AI model weig
 - Pluggable ASR interface with deterministic fake tests.
 - Local background analysis jobs with progress, cancellation, and retry.
 - Optional faster-whisper ASR provider for real local transcription.
+- Local fake translation provider and optional LibreTranslate provider.
+- Background translation jobs with settings, progress, cancellation, and retry.
 - React subtitle workbench with project reopen, analysis job controls, editing, saving, and SRT export.
+- Web translation controls, missing translation filtering, edited target text tracking, and bilingual SRT export.
 - Tauri development shell with Worker lifecycle support.
 
 ## Requirements
@@ -51,5 +54,7 @@ python -m pip install -e ".\worker[dev,asr]"
 - [M2b Usability Foundation](docs/development/m2b-usability-foundation.md)
 - [M3 Real ASR MVP](docs/development/m3-real-asr-mvp.md)
 - [M3 Stage Gate Review](docs/development/m3-stage-gate-review.md)
+- [M4 Translation And Bilingual Subtitles](docs/development/m4-translation-bilingual.md)
+- [M4 Stage Gate Review](docs/development/m4-stage-gate-review.md)
 - [M2b-M6 Development Roadmap](docs/development/m2b-m6-development-roadmap.md)
 - [Product Design Spec](docs/superpowers/specs/2026-06-04-diplomat-ai-subtitle-editor-design.md)

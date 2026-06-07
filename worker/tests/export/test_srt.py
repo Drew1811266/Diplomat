@@ -7,7 +7,7 @@ from diplomat_worker.export import (
     subtitle_document_to_srt,
     write_srt_export,
 )
-from diplomat_worker.schemas.subtitle import AiOrigin, SubtitleDocument, SubtitleLine
+from diplomat_worker.schemas.subtitle import AiOrigin, SubtitleDocument, SubtitleLine, TranslationOrigin
 
 
 def make_line(
@@ -59,6 +59,38 @@ def make_document() -> SubtitleDocument:
     )
 
 
+def make_translated_document(translated_text: str) -> SubtitleDocument:
+    return SubtitleDocument(
+        project_id="project-1",
+        media_id="media-1",
+        duration_ms=2000,
+        speakers=[],
+        styles=[],
+        lines=[
+            SubtitleLine(
+                id="line-1",
+                start_ms=0,
+                end_ms=1000,
+                speaker_id=None,
+                source_language="en",
+                target_language="zh",
+                source_text="Hello from source",
+                translated_text=translated_text,
+                words=[],
+                style_overrides={},
+                review_status="draft",
+                ai_origin=AiOrigin(engine="fake-asr", model="fake-v1"),
+                translation_status="translated" if translated_text else "not_requested",
+                translation_origin=TranslationOrigin(provider="fake", model="fake-v1")
+                if translated_text
+                else None,
+                translation_error=None,
+                notes="",
+            )
+        ],
+    )
+
+
 def test_format_srt_timestamp_formats_hours_minutes_seconds_and_milliseconds() -> None:
     assert format_srt_timestamp(3_723_045) == "01:02:03,045"
 
@@ -103,6 +135,25 @@ def test_subtitle_document_to_srt_target_mode_falls_back_to_source_text() -> Non
         "00:00:01,000 --> 00:00:02,500\n"
         "你好\n"
     )
+
+
+def test_target_srt_uses_translated_text_after_translation() -> None:
+    srt = subtitle_document_to_srt(make_translated_document("Hello from translation"), "target")
+
+    assert "Hello from translation" in srt
+    assert "Hello from source" not in srt
+
+
+def test_bilingual_srt_writes_source_and_target_after_translation() -> None:
+    srt = subtitle_document_to_srt(make_translated_document("Hello from translation"), "bilingual")
+
+    assert "Hello from source\nHello from translation" in srt
+
+
+def test_target_srt_falls_back_to_source_when_target_is_empty_after_translation() -> None:
+    srt = subtitle_document_to_srt(make_translated_document(""), "target")
+
+    assert "Hello from source" in srt
 
 
 def test_subtitle_document_to_srt_source_mode_exports_source_text_only() -> None:

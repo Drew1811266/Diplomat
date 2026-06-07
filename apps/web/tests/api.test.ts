@@ -9,6 +9,7 @@ import {
   fetchProject,
   fetchSubtitleDocument,
   fetchTask,
+  fetchWorkerHealth,
   fetchTranslationSettings,
   listProjects,
   retryTask,
@@ -184,6 +185,19 @@ describe("worker API helpers", () => {
     expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects`, undefined);
   });
 
+  it("uses configured worker base URL when no base URL argument is provided", async () => {
+    vi.stubEnv("VITE_DIPLOMAT_WORKER_BASE_URL", "http://env-worker.test");
+    const fetchMock = stubJsonResponse({ name: "diplomat-worker", status: "ok", version: "0.1.0" });
+
+    await expect(fetchWorkerHealth()).resolves.toEqual({
+      name: "diplomat-worker",
+      status: "ok",
+      version: "0.1.0"
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("http://env-worker.test/health", undefined);
+  });
+
   it("fetchProject gets and parses one project", async () => {
     const fetchMock = stubJsonResponse(projectResponse);
 
@@ -355,6 +369,45 @@ describe("worker API helpers", () => {
         computeType: "int8",
         sourceLanguage: "en",
         initialPrompt: null
+      })
+    });
+  });
+
+  it("retryTask posts replacement translation config when provided", async () => {
+    const response = {
+      ...taskResponse,
+      taskId: "task-2",
+      type: "translation",
+      status: "queued",
+      progress: 0
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(
+      retryTask(
+        "task-1",
+        {
+          provider: "libretranslate",
+          sourceLanguage: "zh",
+          targetLanguage: "en",
+          mode: "overwrite_all",
+          endpoint: "http://localhost:5000",
+          apiKeyEnv: "LIBRETRANSLATE_API_KEY"
+        },
+        baseUrl
+      )
+    ).resolves.toEqual(response);
+
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/tasks/task-1/retry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "libretranslate",
+        sourceLanguage: "zh",
+        targetLanguage: "en",
+        mode: "overwrite_all",
+        endpoint: "http://localhost:5000",
+        apiKeyEnv: "LIBRETRANSLATE_API_KEY"
       })
     });
   });

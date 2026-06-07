@@ -1,4 +1,5 @@
 import json
+import os
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,6 +28,18 @@ from diplomat_worker.storage.project_store import TaskRecord
 from diplomat_worker.tasks.analysis import AnalysisJobManager
 from diplomat_worker.tasks.translation import TranslationJobManager
 from diplomat_worker.translation.config import TranslationProviderConfig
+
+DEFAULT_CORS_ORIGINS = ("http://localhost:1420", "http://127.0.0.1:1420")
+
+
+def cors_origins() -> list[str]:
+    origins = list(DEFAULT_CORS_ORIGINS)
+    configured = os.environ.get("DIPLOMAT_CORS_ORIGINS", "")
+    for origin in configured.split(","):
+        normalized = origin.strip()
+        if normalized and normalized not in origins:
+            origins.append(normalized)
+    return origins
 
 
 def project_response(project, runtime: WorkerRuntime) -> ProjectResponse:
@@ -107,7 +120,7 @@ def create_app(
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:1420", "http://127.0.0.1:1420"],
+        allow_origins=cors_origins(),
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],

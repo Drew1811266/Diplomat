@@ -111,7 +111,7 @@ function stubWorkbenchFetch(
     includeSubtitleFetch?: boolean;
     includeTranslatedSubtitleFetch?: boolean;
     analysisJob?: "completed" | "running" | "failedThenCompleted";
-    translationJob?: "completed" | "running";
+    translationJob?: "completed" | "queuedThenCompleted" | "running" | "failedThenCompleted";
   } = {}
 ) {
   const savedDocuments: SubtitleDocument[] = [];
@@ -123,6 +123,7 @@ function stubWorkbenchFetch(
     options.includeSubtitleFetch || options.includeTranslatedSubtitleFetch
   );
   let retryWasRequested = false;
+  let translationRetryWasRequested = false;
   let translationCompleted = Boolean(options.includeTranslatedSubtitleFetch);
 
   const completedTask = {
@@ -174,6 +175,23 @@ function stubWorkbenchFetch(
     status: "running",
     progress: 0.4,
     message: "Translating subtitles",
+    completedAt: null
+  };
+  const failedTranslationTask = {
+    ...completedTranslationTask,
+    status: "failed",
+    progress: 0.05,
+    message: "Translation failed",
+    completedAt: "2026-06-07T00:00:02+00:00",
+    errorCode: "TRANSLATION_FAILED",
+    errorMessage: "LibreTranslate request failed",
+    diagnosticLogPath: "D:/Diplomat/projects/project-demo/logs/translation-task-1.log"
+  };
+  const queuedTranslationTask = {
+    ...completedTranslationTask,
+    status: "queued",
+    progress: 0,
+    message: "Queued translation",
     completedAt: null
   };
 
@@ -257,8 +275,14 @@ function stubWorkbenchFetch(
 
     if (url.endsWith("/projects/project-demo/translation-jobs") && init?.method === "POST") {
       const mode = options.translationJob ?? "completed";
+      if (mode === "queuedThenCompleted") {
+        return jsonResponse(queuedTranslationTask);
+      }
       if (mode === "running") {
         return jsonResponse(runningTranslationTask);
+      }
+      if (mode === "failedThenCompleted" && !translationRetryWasRequested) {
+        return jsonResponse(failedTranslationTask);
       }
       translationCompleted = true;
       subtitleAvailable = true;
@@ -284,6 +308,8 @@ function stubWorkbenchFetch(
     }
 
     if (url.endsWith("/tasks/translation-task-1/retry") && init?.method === "POST") {
+      retryBodies.push(init.body ? JSON.parse(init.body as string) : null);
+      translationRetryWasRequested = true;
       translationCompleted = true;
       subtitleAvailable = true;
       return jsonResponse({ ...completedTranslationTask, taskId: "translation-task-2" });
@@ -464,6 +490,69 @@ describe("App", () => {
     expect(screen.getByText("Translation completed")).toBeInTheDocument();
   });
 
+  it("polls a queued translation job and displays completed target text", async () => {
+    const { fetchMock } = stubWorkbenchFetch({
+      includeRecentProject: true,
+      includeSubtitleFetch: true,
+      translationJob: "queuedThenCompleted"
+    });
+    render(<App />);
+
+    expect(await screen.findByText("Recent Projects")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Reopen Demo/ }));
+    expect(await screen.findByText(/Project: Demo/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Start Translation" }));
+
+    expect(await screen.findByDisplayValue("[en] 原始字幕文本")).toBeInTheDocument();
+    expect(screen.getByText("Translation completed")).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input, init]) =>
+        String(input).endsWith("/tasks/translation-task-1") && init?.method === undefined
+      )
+    ).toBe(true);
+  });
+
+  it("retries a failed translation job with the current translation config", async () => {
+    const { retryBodies } = stubWorkbenchFetch({
+      includeRecentProject: true,
+      includeSubtitleFetch: true,
+      translationJob: "failedThenCompleted"
+    });
+    render(<App />);
+
+    expect(await screen.findByText("Recent Projects")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Reopen Demo/ }));
+    expect(await screen.findByText(/Project: Demo/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Translation provider"), {
+      target: { value: "libretranslate" }
+    });
+    fireEvent.change(screen.getByLabelText("Translation mode"), {
+      target: { value: "overwrite_all" }
+    });
+    fireEvent.change(screen.getByLabelText("LibreTranslate endpoint"), {
+      target: { value: "http://127.0.0.1:9" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start Translation" }));
+    expect((await screen.findAllByText("LibreTranslate request failed")).length).toBeGreaterThan(0);
+
+    fireEvent.change(screen.getByLabelText("Translation provider"), {
+      target: { value: "fake" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Retry Translation" }));
+
+    expect(await screen.findByDisplayValue("[en] 原始字幕文本")).toBeInTheDocument();
+    expect(retryBodies.at(-1)).toEqual({
+      provider: "fake",
+      sourceLanguage: "zh",
+      targetLanguage: "en",
+      mode: "overwrite_all",
+      endpoint: "http://127.0.0.1:9",
+      apiKeyEnv: null
+    });
+  });
+
   it("marks translated text edited when the user changes it", async () => {
     stubWorkbenchFetch({
       includeRecentProject: true,
@@ -492,6 +581,30 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Missing translations" }));
 
     expect(screen.getAllByText("原始字幕文本").length).toBeGreaterThan(0);
+  });
+
+  it("exports bilingual SRT after translation edit is saved", async () => {
+    const { exportModes, savedDocuments } = stubWorkbenchFetch({
+      includeRecentProject: true,
+      includeTranslatedSubtitleFetch: true
+    });
+    render(<App />);
+
+    const reopenButton = await screen.findByRole("button", { name: /Reopen Demo/ });
+    await waitFor(() => expect(reopenButton).toBeEnabled());
+    fireEvent.click(reopenButton);
+    fireEvent.change(await screen.findByLabelText("Translated text"), {
+      target: { value: "Manual subtitle translation" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Subtitle" }));
+    await screen.findByText("Saved subtitle edits");
+    fireEvent.click(screen.getByRole("button", { name: "Export SRT" }));
+
+    expect(await screen.findByText("SRT export completed")).toBeInTheDocument();
+    expect(exportModes).toContain("bilingual");
+    expect(savedDocuments.at(-1)?.lines[0]?.translatedText).toBe(
+      "Manual subtitle translation"
+    );
   });
 
   it("starts the desktop Worker when initial health check is unavailable", async () => {

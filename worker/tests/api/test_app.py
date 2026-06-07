@@ -94,6 +94,22 @@ def test_health_endpoint_returns_worker_status(app_module) -> None:
     assert response.json() == {"name": "diplomat-worker", "status": "ok", "version": "0.1.0"}
 
 
+def test_cors_allows_configured_local_web_origin(app_module, monkeypatch) -> None:
+    monkeypatch.setenv("DIPLOMAT_CORS_ORIGINS", "http://127.0.0.1:1421")
+    client = TestClient(app_module.create_app())
+
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "http://127.0.0.1:1421",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:1421"
+
+
 def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
     calls = []
     monkeypatch.setattr(

@@ -531,7 +531,11 @@ export function App() {
     }
 
     void runAction(async () => {
-      const task = await retryTask(translationTask.taskId);
+      const task = await retryTask(translationTask.taskId, {
+        ...translationConfig,
+        sourceLanguage: translationConfig.sourceLanguage || project?.sourceLanguage || "zh",
+        targetLanguage: translationConfig.targetLanguage || project?.targetLanguage || "en"
+      });
       const runId = translationRunRef.current + 1;
       translationRunRef.current = runId;
       setTranslationTask(task);

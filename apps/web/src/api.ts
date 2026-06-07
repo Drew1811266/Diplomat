@@ -25,6 +25,11 @@ import {
 
 const DEFAULT_WORKER_BASE_URL = "http://127.0.0.1:8765";
 
+function defaultWorkerBaseUrl() {
+  const configuredUrl = import.meta.env.VITE_DIPLOMAT_WORKER_BASE_URL;
+  return configuredUrl?.trim() ? configuredUrl.trim() : DEFAULT_WORKER_BASE_URL;
+}
+
 export type WorkerHealth = {
   name: string;
   status: string;
@@ -54,6 +59,12 @@ async function formatWorkerError(response: Response): Promise<string> {
   return message;
 }
 
+function retryRequestSchema(input: AnalysisJobRequestInput | TranslationJobRequestInput) {
+  return "targetLanguage" in input
+    ? TranslationJobRequestSchema.parse(input)
+    : AnalysisJobRequestSchema.parse(input);
+}
+
 async function requestJson<T>(
   url: string,
   init: RequestInit | undefined,
@@ -75,13 +86,13 @@ async function requestJson<T>(
   return parse(await response.json());
 }
 
-export async function fetchWorkerHealth(baseUrl = DEFAULT_WORKER_BASE_URL): Promise<WorkerHealth> {
+export async function fetchWorkerHealth(baseUrl = defaultWorkerBaseUrl()): Promise<WorkerHealth> {
   return requestJson(`${baseUrl}/health`, undefined, (payload) => payload as WorkerHealth);
 }
 
 export async function createProject(
   input: CreateProjectInput,
-  baseUrl = DEFAULT_WORKER_BASE_URL
+  baseUrl = defaultWorkerBaseUrl()
 ): Promise<ProjectResponse> {
   const request = CreateProjectRequestSchema.parse(input);
 
@@ -96,7 +107,7 @@ export async function createProject(
   );
 }
 
-export async function listProjects(baseUrl = DEFAULT_WORKER_BASE_URL): Promise<ProjectListResponse> {
+export async function listProjects(baseUrl = defaultWorkerBaseUrl()): Promise<ProjectListResponse> {
   return requestJson(
     `${baseUrl}/projects`,
     undefined,
@@ -106,7 +117,7 @@ export async function listProjects(baseUrl = DEFAULT_WORKER_BASE_URL): Promise<P
 
 export async function fetchProject(
   projectId: string,
-  baseUrl = DEFAULT_WORKER_BASE_URL
+  baseUrl = defaultWorkerBaseUrl()
 ): Promise<ProjectResponse> {
   return requestJson(
     `${baseUrl}/projects/${projectId}`,
@@ -117,7 +128,7 @@ export async function fetchProject(
 
 export async function runProjectAnalysis(
   projectId: string,
-  baseUrl = DEFAULT_WORKER_BASE_URL
+  baseUrl = defaultWorkerBaseUrl()
 ): Promise<AnalyzeProjectResponse> {
   return requestJson(
     `${baseUrl}/projects/${projectId}/analyze`,
@@ -129,7 +140,7 @@ export async function runProjectAnalysis(
 export async function createAnalysisJob(
   projectId: string,
   input: AnalysisJobRequestInput,
-  baseUrl = DEFAULT_WORKER_BASE_URL
+  baseUrl = defaultWorkerBaseUrl()
 ): Promise<TaskResponse> {
   const request = AnalysisJobRequestSchema.parse(input);
 
@@ -146,7 +157,7 @@ export async function createAnalysisJob(
 
 export async function fetchTask(
   taskId: string,
-  baseUrl = DEFAULT_WORKER_BASE_URL
+  baseUrl = defaultWorkerBaseUrl()
 ): Promise<TaskResponse> {
   return requestJson(
     `${baseUrl}/tasks/${taskId}`,
@@ -157,7 +168,7 @@ export async function fetchTask(
 
 export async function fetchTranslationSettings(
   projectId: string,
-  baseUrl = DEFAULT_WORKER_BASE_URL
+  baseUrl = defaultWorkerBaseUrl()
 ): Promise<TranslationSettingsResponse> {
   return requestJson(
     `${baseUrl}/projects/${projectId}/translation-settings`,
@@ -169,7 +180,7 @@ export async function fetchTranslationSettings(
 export async function saveTranslationSettings(
   projectId: string,
   input: TranslationJobRequestInput,
-  baseUrl = DEFAULT_WORKER_BASE_URL
+  baseUrl = defaultWorkerBaseUrl()
 ): Promise<TranslationSettingsResponse> {
   const request = TranslationJobRequestSchema.parse(input);
 
@@ -187,7 +198,7 @@ export async function saveTranslationSettings(
 export async function createTranslationJob(
   projectId: string,
   input: TranslationJobRequestInput,
-  baseUrl = DEFAULT_WORKER_BASE_URL
+  baseUrl = defaultWorkerBaseUrl()
 ): Promise<TaskResponse> {
   const request = TranslationJobRequestSchema.parse(input);
 
@@ -204,7 +215,7 @@ export async function createTranslationJob(
 
 export async function cancelTask(
   taskId: string,
-  baseUrl = DEFAULT_WORKER_BASE_URL
+  baseUrl = defaultWorkerBaseUrl()
 ): Promise<TaskResponse> {
   return requestJson(
     `${baseUrl}/tasks/${taskId}/cancel`,
@@ -215,8 +226,8 @@ export async function cancelTask(
 
 export async function retryTask(
   taskId: string,
-  inputOrBaseUrl?: AnalysisJobRequestInput | string,
-  maybeBaseUrl = DEFAULT_WORKER_BASE_URL
+  inputOrBaseUrl?: AnalysisJobRequestInput | TranslationJobRequestInput | string,
+  maybeBaseUrl = defaultWorkerBaseUrl()
 ): Promise<TaskResponse> {
   const hasReplacementConfig =
     inputOrBaseUrl !== undefined && typeof inputOrBaseUrl !== "string";
@@ -226,7 +237,7 @@ export async function retryTask(
     ? {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(AnalysisJobRequestSchema.parse(inputOrBaseUrl))
+        body: JSON.stringify(retryRequestSchema(inputOrBaseUrl))
       }
     : { method: "POST" };
 
@@ -239,7 +250,7 @@ export async function retryTask(
 
 export async function fetchSubtitleDocument(
   projectId: string,
-  baseUrl = DEFAULT_WORKER_BASE_URL
+  baseUrl = defaultWorkerBaseUrl()
 ): Promise<SubtitleDocument> {
   return requestJson(
     `${baseUrl}/projects/${projectId}/subtitle`,
@@ -251,7 +262,7 @@ export async function fetchSubtitleDocument(
 export async function saveSubtitleDocument(
   projectId: string,
   document: SubtitleDocument,
-  baseUrl = DEFAULT_WORKER_BASE_URL
+  baseUrl = defaultWorkerBaseUrl()
 ): Promise<SubtitleDocument> {
   return requestJson(
     `${baseUrl}/projects/${projectId}/subtitle`,
@@ -267,7 +278,7 @@ export async function saveSubtitleDocument(
 export async function exportSrt(
   projectId: string,
   mode: SrtExportMode,
-  baseUrl = DEFAULT_WORKER_BASE_URL
+  baseUrl = defaultWorkerBaseUrl()
 ): Promise<SrtExportResponse> {
   return requestJson(
     `${baseUrl}/projects/${projectId}/exports/srt`,
