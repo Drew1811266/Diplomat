@@ -3,13 +3,28 @@ import {
   type CreateProjectInput,
   createProject,
   exportSrt,
+  fetchProject,
   fetchSubtitleDocument,
+  listProjects,
   runProjectAnalysis,
   saveSubtitleDocument
 } from "../src/api";
 import type { SubtitleDocument } from "@diplomat/shared";
 
 const baseUrl = "http://worker.test";
+
+const projectResponse = {
+  projectId: "project-1",
+  name: "Launch interview",
+  sourceVideoPath: "D:/media/interview.mp4",
+  projectDir: "D:/Diplomat/projects/project-1",
+  durationMs: 124_000,
+  sourceLanguage: "zh",
+  targetLanguage: "en",
+  createdAt: "2026-06-07T00:00:00+00:00",
+  updatedAt: "2026-06-07T00:01:00+00:00",
+  hasSubtitleDocument: false
+};
 
 const subtitleDocument: SubtitleDocument = {
   schemaVersion: "diplomat.subtitle.v1",
@@ -80,15 +95,7 @@ afterEach(() => {
 
 describe("worker API helpers", () => {
   it("createProject sends POST JSON and parses the response", async () => {
-    const response = {
-      projectId: "project-1",
-      name: "Launch interview",
-      sourceVideoPath: "D:/media/interview.mp4",
-      projectDir: "D:/Diplomat/projects/project-1",
-      durationMs: 124_000,
-      sourceLanguage: "zh",
-      targetLanguage: "en"
-    };
+    const response = projectResponse;
     const fetchMock = stubJsonResponse(response);
 
     await expect(
@@ -117,7 +124,8 @@ describe("worker API helpers", () => {
 
   it("createProject normalizes an omitted target language to null", async () => {
     const response = {
-      projectId: "project-1",
+      ...projectResponse,
+      projectId: "project-review",
       name: "Source-only review",
       sourceVideoPath: "D:/media/review.mp4",
       projectDir: "D:/Diplomat/projects/project-1",
@@ -141,6 +149,21 @@ describe("worker API helpers", () => {
       sourceLanguage: "ja",
       targetLanguage: null
     });
+  });
+
+  it("listProjects gets and parses recent projects", async () => {
+    const response = { projects: [projectResponse] };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(listProjects(baseUrl)).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects`, undefined);
+  });
+
+  it("fetchProject gets and parses one project", async () => {
+    const fetchMock = stubJsonResponse(projectResponse);
+
+    await expect(fetchProject("project-1", baseUrl)).resolves.toEqual(projectResponse);
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1`, undefined);
   });
 
   it("runProjectAnalysis posts to the project analyze URL and parses the response", async () => {
@@ -204,6 +227,19 @@ describe("worker API helpers", () => {
 
     await expect(runProjectAnalysis("project-1", baseUrl)).rejects.toThrow(
       "Worker request failed: 503"
+    );
+  });
+
+  it("formats network failures as worker connection errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () => {
+        throw new TypeError("Failed to fetch");
+      })
+    );
+
+    await expect(listProjects(baseUrl)).rejects.toThrow(
+      "Worker is not reachable at http://worker.test"
     );
   });
 

@@ -1,11 +1,13 @@
 import {
   AnalyzeProjectResponseSchema,
   CreateProjectRequestSchema,
+  ProjectListResponseSchema,
   ProjectResponseSchema,
   SrtExportResponseSchema,
   SubtitleDocumentSchema,
   type AnalyzeProjectResponse,
   type CreateProjectRequest,
+  type ProjectListResponse,
   type ProjectResponse,
   type SrtExportMode,
   type SrtExportResponse,
@@ -48,7 +50,16 @@ async function requestJson<T>(
   init: RequestInit | undefined,
   parse: (payload: unknown) => T
 ): Promise<T> {
-  const response = await fetch(url, init);
+  let response: Response;
+  try {
+    response = await fetch(url, init);
+  } catch (error) {
+    const workerOrigin = new URL(url).origin;
+    throw new Error(
+      `Worker is not reachable at ${workerOrigin}. Start the Worker or use the desktop Start Worker action.`,
+      { cause: error }
+    );
+  }
   if (!response.ok) {
     throw new Error(await formatWorkerError(response));
   }
@@ -72,6 +83,25 @@ export async function createProject(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request)
     },
+    (payload) => ProjectResponseSchema.parse(payload)
+  );
+}
+
+export async function listProjects(baseUrl = DEFAULT_WORKER_BASE_URL): Promise<ProjectListResponse> {
+  return requestJson(
+    `${baseUrl}/projects`,
+    undefined,
+    (payload) => ProjectListResponseSchema.parse(payload)
+  );
+}
+
+export async function fetchProject(
+  projectId: string,
+  baseUrl = DEFAULT_WORKER_BASE_URL
+): Promise<ProjectResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}`,
+    undefined,
     (payload) => ProjectResponseSchema.parse(payload)
   );
 }

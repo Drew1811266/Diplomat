@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AnalyzeProjectResponseSchema,
   CreateProjectRequestSchema,
+  ProjectListResponseSchema,
   ProjectResponseSchema,
   SubtitleDocumentRequestSchema
 } from "../src/project";
@@ -100,11 +101,15 @@ describe("ProjectResponseSchema", () => {
       projectDir: "D:/Diplomat/projects/project-1",
       durationMs: 124_000,
       sourceLanguage: "zh",
-      targetLanguage: "en"
+      targetLanguage: "en",
+      createdAt: "2026-06-07T00:00:00+00:00",
+      updatedAt: "2026-06-07T00:01:00+00:00",
+      hasSubtitleDocument: true
     });
 
     expect(response.projectId).toBe("project-1");
     expect(response.durationMs).toBe(124_000);
+    expect(response.hasSubtitleDocument).toBe(true);
   });
 
   it("accepts a null target language", () => {
@@ -115,10 +120,14 @@ describe("ProjectResponseSchema", () => {
       projectDir: "D:/Diplomat/projects/project-1",
       durationMs: 124_000,
       sourceLanguage: "zh",
-      targetLanguage: null
+      targetLanguage: null,
+      createdAt: "2026-06-07T00:00:00+00:00",
+      updatedAt: "2026-06-07T00:01:00+00:00",
+      hasSubtitleDocument: false
     });
 
     expect(response.targetLanguage).toBeNull();
+    expect(response.hasSubtitleDocument).toBe(false);
   });
 
   it("does not apply request language code length constraints to responses", () => {
@@ -129,11 +138,37 @@ describe("ProjectResponseSchema", () => {
       projectDir: "D:/Diplomat/projects/project-1",
       durationMs: 124_000,
       sourceLanguage: "z",
-      targetLanguage: "english-long-name"
+      targetLanguage: "english-long-name",
+      createdAt: "2026-06-07T00:00:00+00:00",
+      updatedAt: "2026-06-07T00:01:00+00:00",
+      hasSubtitleDocument: true
     });
 
     expect(response.sourceLanguage).toBe("z");
     expect(response.targetLanguage).toBe("english-long-name");
+  });
+});
+
+describe("ProjectListResponseSchema", () => {
+  it("accepts a project list response", () => {
+    const response = ProjectListResponseSchema.parse({
+      projects: [
+        {
+          projectId: "project-1",
+          name: "Launch interview",
+          sourceVideoPath: "D:/media/interview.mp4",
+          projectDir: "D:/Diplomat/projects/project-1",
+          durationMs: 124_000,
+          sourceLanguage: "zh",
+          targetLanguage: "en",
+          createdAt: "2026-06-07T00:00:00+00:00",
+          updatedAt: "2026-06-07T00:01:00+00:00",
+          hasSubtitleDocument: true
+        }
+      ]
+    });
+
+    expect(response.projects[0]?.hasSubtitleDocument).toBe(true);
   });
 });
 

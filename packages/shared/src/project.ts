@@ -17,7 +17,14 @@ export const ProjectResponseSchema = z.object({
   projectDir: z.string().min(1),
   durationMs: z.number().int().nonnegative(),
   sourceLanguage: z.string(),
-  targetLanguage: z.string().nullable()
+  targetLanguage: z.string().nullable(),
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+  hasSubtitleDocument: z.boolean()
+});
+
+export const ProjectListResponseSchema = z.object({
+  projects: z.array(ProjectResponseSchema)
 });
 
 export const AnalyzeProjectResponseSchema = z.object({
@@ -34,5 +41,6 @@ export const SubtitleDocumentRequestSchema = z.object({
 
 export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
 export type ProjectResponse = z.infer<typeof ProjectResponseSchema>;
+export type ProjectListResponse = z.infer<typeof ProjectListResponseSchema>;
 export type AnalyzeProjectResponse = z.infer<typeof AnalyzeProjectResponseSchema>;
 export type SubtitleDocumentRequest = z.infer<typeof SubtitleDocumentRequestSchema>;
