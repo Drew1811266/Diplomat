@@ -13,6 +13,14 @@ function jsonResponse(payload: unknown): Response {
   } as Response;
 }
 
+function errorResponse(status: number, detail: string): Response {
+  return {
+    ok: false,
+    status,
+    json: async () => ({ detail })
+  } as Response;
+}
+
 function stubMatchMedia() {
   vi.stubGlobal("matchMedia", () => ({
     matches: false,
@@ -49,5 +57,29 @@ describe("ProjectCenterPage", () => {
     expect(await screen.findByText("Demo")).toBeVisible();
     expect(screen.getByRole("button", { name: "Create Project" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Import Video" })).toBeVisible();
+  });
+
+  it("shows project query errors instead of the empty project state", async () => {
+    stubMatchMedia();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async (input) => {
+        const url = String(input);
+        if (url.endsWith("/health")) {
+          return jsonResponse({ name: "diplomat-worker", status: "ok", version: "0.2.0" });
+        }
+        if (url.endsWith("/projects")) {
+          return errorResponse(500, "project index offline");
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      })
+    );
+
+    renderWithProviders(<ProjectCenterPage onOpenProject={vi.fn()} />);
+
+    expect(await screen.findByRole("alert", undefined, { timeout: 3000 })).toHaveTextContent(
+      "project index offline"
+    );
+    expect(screen.queryByText("No recent projects")).not.toBeInTheDocument();
   });
 });

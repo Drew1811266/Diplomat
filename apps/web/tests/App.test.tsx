@@ -79,4 +79,29 @@ describe("App", () => {
 
     expect(await screen.findByRole("main", { name: "Settings" })).toBeVisible();
   });
+
+  it("navigates every rail item and opens projects into the workbench", async () => {
+    stubMatchMedia();
+    stubResizeObserver();
+    stubStartupFetch();
+
+    renderWithProviders(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Project Center" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Workbench" }));
+    expect(await screen.findByRole("main", { name: "Workbench" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
+    expect(await screen.findByRole("main", { name: "Tasks" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("main", { name: "Settings" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Projects" }));
+    expect(await screen.findByRole("heading", { name: "Project Center" })).toBeVisible();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+    expect(await screen.findByRole("main", { name: "Workbench" })).toBeVisible();
+  });
 });

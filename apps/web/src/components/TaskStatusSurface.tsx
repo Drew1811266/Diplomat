@@ -13,7 +13,12 @@ export function TaskStatusSurface({ busy, message, error }: TaskStatusSurfacePro
 
   if (error) {
     return (
-      <Alert color="red" icon={<IconAlertTriangle size={18} />} title={t("status.failed")}>
+      <Alert
+        color="red"
+        icon={<IconAlertTriangle size={18} />}
+        role="alert"
+        title={t("status.failed")}
+      >
         {error}
       </Alert>
     );

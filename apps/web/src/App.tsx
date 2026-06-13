@@ -1,6 +1,7 @@
 import { AppShellLayout } from "./app/AppShellLayout";
 import { ProjectCenterPage } from "./pages/ProjectCenterPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { TasksPage } from "./pages/TasksPage";
 import { WorkbenchPage } from "./pages/WorkbenchPage";
 import { useUiStore } from "./state/uiStore";
 import "./App.css";
@@ -14,7 +15,8 @@ export function App() {
       {currentPage === "projects" ? (
         <ProjectCenterPage onOpenProject={() => setPage("workbench")} />
       ) : null}
-      {currentPage === "workbench" || currentPage === "tasks" ? <WorkbenchPage /> : null}
+      {currentPage === "workbench" ? <WorkbenchPage /> : null}
+      {currentPage === "tasks" ? <TasksPage /> : null}
       {currentPage === "settings" ? <SettingsPage /> : null}
     </AppShellLayout>
   );

@@ -37,12 +37,17 @@ function formatLanguagePair(project: ProjectResponse) {
     : project.sourceLanguage;
 }
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : null;
+}
+
 export function ProjectCenterPage({ onOpenProject }: ProjectCenterPageProps) {
   const { t } = useTranslation();
   const worker = useWorkerHealthQuery();
   const projects = useProjectsQuery();
   const recentProjects = projects.data?.projects ?? [];
   const workerReady = worker.data?.status === "ok";
+  const statusError = getErrorMessage(worker.error) ?? getErrorMessage(projects.error);
 
   return (
     <Stack gap="md" maw={1180}>
@@ -65,7 +70,7 @@ export function ProjectCenterPage({ onOpenProject }: ProjectCenterPageProps) {
       <TaskStatusSurface
         busy={worker.isLoading || projects.isLoading}
         message={workerReady ? t("projectCenter.workerReady") : null}
-        error={worker.error instanceof Error ? worker.error.message : null}
+        error={statusError}
       />
 
       <Group gap="sm">
@@ -89,56 +94,60 @@ export function ProjectCenterPage({ onOpenProject }: ProjectCenterPageProps) {
           </Group>
 
           {recentProjects.length > 0 ? (
-            <Box style={{ minWidth: 760, overflowX: "auto" }}>
-              <Table verticalSpacing="sm" horizontalSpacing="sm" highlightOnHover>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Project</Table.Th>
-                    <Table.Th>Source</Table.Th>
-                    <Table.Th>Languages</Table.Th>
-                    <Table.Th>Subtitles</Table.Th>
-                    <Table.Th>Duration</Table.Th>
-                    <Table.Th aria-label="Project actions" />
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {recentProjects.map((project) => (
-                    <Table.Tr key={project.projectId}>
-                      <Table.Td>
-                        <Text fw={700}>{project.name}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" c="dimmed" maw={320} truncate>
-                          {project.sourceVideoPath}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{formatLanguagePair(project)}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge color={project.hasSubtitleDocument ? "teal" : "gray"} variant="light">
-                          {project.hasSubtitleDocument ? t("status.ready") : t("workbench.noDocument")}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{formatDuration(project.durationMs)}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Button
-                          size="xs"
-                          variant="light"
-                          leftSection={<IconFolderOpen size={16} />}
-                          onClick={() => onOpenProject(project.projectId)}
-                        >
-                          {t("actions.open")}
-                        </Button>
-                      </Table.Td>
+            <Box w="100%" maw="100%" style={{ overflowX: "auto" }}>
+              <Box style={{ minWidth: 760 }}>
+                <Table verticalSpacing="sm" horizontalSpacing="sm" highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Project</Table.Th>
+                      <Table.Th>Source</Table.Th>
+                      <Table.Th>Languages</Table.Th>
+                      <Table.Th>Subtitles</Table.Th>
+                      <Table.Th>Duration</Table.Th>
+                      <Table.Th aria-label="Project actions" />
                     </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {recentProjects.map((project) => (
+                      <Table.Tr key={project.projectId}>
+                        <Table.Td>
+                          <Text fw={700}>{project.name}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm" c="dimmed" maw={320} truncate>
+                            {project.sourceVideoPath}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm">{formatLanguagePair(project)}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Badge color={project.hasSubtitleDocument ? "teal" : "gray"} variant="light">
+                            {project.hasSubtitleDocument
+                              ? t("status.ready")
+                              : t("workbench.noDocument")}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm">{formatDuration(project.durationMs)}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Button
+                            size="xs"
+                            variant="light"
+                            leftSection={<IconFolderOpen size={16} />}
+                            onClick={() => onOpenProject(project.projectId)}
+                          >
+                            {t("actions.open")}
+                          </Button>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Box>
             </Box>
-          ) : (
+          ) : projects.isLoading || projects.isError ? null : (
             <Stack gap={2} py="xl" align="center">
               <Text fw={700}>{t("projectCenter.noProjects")}</Text>
               <Text size="sm" c="dimmed">
