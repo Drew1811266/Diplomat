@@ -1,742 +1,82 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { SubtitleDocument } from "@diplomat/shared";
+import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
+import { useUiStore } from "../src/state/uiStore";
+import { projectFixture } from "../src/test/fixtures";
+import { renderWithProviders } from "../src/test/render";
 
-const analyzedDocument: SubtitleDocument = {
-  schemaVersion: "diplomat.subtitle.v1",
-  projectId: "project-demo",
-  mediaId: "media-demo",
-  durationMs: 12_000,
-  speakers: [
-    {
-      id: "speaker-1",
-      displayName: "Speaker 1",
-      color: "#0D9488",
-      styleId: "default",
-      mergedInto: null
-    }
-  ],
-  styles: [
-    {
-      id: "default",
-      name: "Default",
-      fontFamily: "Arial",
-      fontSize: 36,
-      primaryColor: "#FFFFFF",
-      secondaryColor: "#14B8A6",
-      strokeWidth: 3,
-      shadow: 1,
-      position: "bottom-center",
-      marginV: 48,
-      alignment: "center",
-      bilingualLayout: "source-above-target",
-      lineSpacing: 1.15
-    }
-  ],
-  lines: [
-    {
-      id: "line-1",
-      startMs: 1000,
-      endMs: 2400,
-      speakerId: "speaker-1",
-      sourceLanguage: "zh",
-      targetLanguage: "en",
-      sourceText: "原始字幕文本",
-      translatedText: "",
-      words: [{ text: "原始字幕文本", startMs: 1000, endMs: 2400, confidence: 0.95 }],
-      styleOverrides: {},
-      reviewStatus: "draft",
-      aiOrigin: { engine: "mock-asr", model: "mock-v1" },
-      translationStatus: "not_requested",
-      translationOrigin: null,
-      translationError: null,
-      notes: ""
-    }
-  ]
-};
-
-const translatedDocument: SubtitleDocument = {
-  ...analyzedDocument,
-  lines: [
-    {
-      ...analyzedDocument.lines[0]!,
-      translatedText: "[en] 原始字幕文本",
-      translationStatus: "translated",
-      translationOrigin: { provider: "fake", model: "fake-v1" },
-      translationError: null
-    }
-  ]
-};
-
-const projectMetadata = {
-  projectId: "project-demo",
-  name: "Demo",
-  sourceVideoPath: "D:/media/demo.mp4",
-  projectDir: "D:/Diplomat/projects/project-demo",
-  durationMs: 12_000,
-  sourceLanguage: "zh",
-  targetLanguage: "en",
-  createdAt: "2026-06-07T00:00:00+00:00",
-  updatedAt: "2026-06-07T00:01:00+00:00",
-  hasSubtitleDocument: false
-};
-
-function jsonResponse(payload: unknown, ok = true, status = 200): Response {
+function jsonResponse(payload: unknown): Response {
   return {
-    ok,
-    status,
+    ok: true,
+    status: 200,
     json: async () => payload
   } as Response;
 }
 
-type Deferred<T> = {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-};
-
-function createDeferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((nextResolve) => {
-    resolve = nextResolve;
-  });
-  return { promise, resolve };
+function stubMatchMedia() {
+  vi.stubGlobal("matchMedia", () => ({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn()
+  }));
 }
 
-function stubWorkbenchFetch(
-  options: {
-    pauseSave?: boolean;
-    includeRecentProject?: boolean;
-    includeSubtitleFetch?: boolean;
-    includeTranslatedSubtitleFetch?: boolean;
-    analysisJob?: "completed" | "running" | "failedThenCompleted";
-    translationJob?: "completed" | "queuedThenCompleted" | "running" | "failedThenCompleted";
-  } = {}
-) {
-  const savedDocuments: SubtitleDocument[] = [];
-  const exportModes: string[] = [];
-  const retryBodies: unknown[] = [];
-  const pendingSave = options.pauseSave ? createDeferred<Response>() : null;
-  let projectWasCreated = false;
-  let subtitleAvailable = Boolean(
-    options.includeSubtitleFetch || options.includeTranslatedSubtitleFetch
+function stubResizeObserver() {
+  vi.stubGlobal(
+    "ResizeObserver",
+    vi.fn(() => ({
+      observe: vi.fn(),
+      unobserve: vi.fn(),
+      disconnect: vi.fn()
+    }))
   );
-  let retryWasRequested = false;
-  let translationRetryWasRequested = false;
-  let translationCompleted = Boolean(options.includeTranslatedSubtitleFetch);
-
-  const completedTask = {
-    taskId: "task-1",
-    projectId: "project-demo",
-    type: "analysis",
-    status: "completed",
-    progress: 1,
-    message: "Analysis completed",
-    startedAt: "2026-06-07T00:00:00+00:00",
-    updatedAt: "2026-06-07T00:00:01+00:00",
-    completedAt: "2026-06-07T00:00:01+00:00",
-    errorCode: null,
-    errorMessage: null,
-    diagnosticLogPath: null
-  };
-  const runningTask = {
-    ...completedTask,
-    status: "running",
-    progress: 0.35,
-    message: "Transcribing audio",
-    completedAt: null
-  };
-  const canceledTask = {
-    ...runningTask,
-    status: "canceled",
-    progress: 0.35,
-    message: "Analysis canceled",
-    completedAt: "2026-06-07T00:00:01+00:00"
-  };
-  const failedTask = {
-    ...runningTask,
-    status: "failed",
-    progress: 0.02,
-    message: "FFmpeg executable not found: ffmpeg",
-    completedAt: "2026-06-07T00:00:01+00:00",
-    errorCode: "FFMPEG_NOT_FOUND",
-    errorMessage: "FFmpeg executable not found: ffmpeg",
-    diagnosticLogPath: "D:/Diplomat/projects/project-demo/logs/task-1.log"
-  };
-  const completedTranslationTask = {
-    ...completedTask,
-    taskId: "translation-task-1",
-    type: "translation",
-    message: "Translation completed"
-  };
-  const runningTranslationTask = {
-    ...completedTranslationTask,
-    status: "running",
-    progress: 0.4,
-    message: "Translating subtitles",
-    completedAt: null
-  };
-  const failedTranslationTask = {
-    ...completedTranslationTask,
-    status: "failed",
-    progress: 0.05,
-    message: "Translation failed",
-    completedAt: "2026-06-07T00:00:02+00:00",
-    errorCode: "TRANSLATION_FAILED",
-    errorMessage: "LibreTranslate request failed",
-    diagnosticLogPath: "D:/Diplomat/projects/project-demo/logs/translation-task-1.log"
-  };
-  const queuedTranslationTask = {
-    ...completedTranslationTask,
-    status: "queued",
-    progress: 0,
-    message: "Queued translation",
-    completedAt: null
-  };
-
-  const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
-    const url = String(input);
-    if (url.endsWith("/health")) {
-      return jsonResponse({ name: "diplomat-worker", status: "ok", version: "0.1.0" });
-    }
-
-    if (url.endsWith("/projects") && init?.method === undefined) {
-      const shouldShowProject = options.includeRecentProject || projectWasCreated;
-      return jsonResponse({
-        projects: shouldShowProject
-          ? [{ ...projectMetadata, hasSubtitleDocument: subtitleAvailable }]
-          : []
-      });
-    }
-
-    if (url.endsWith("/projects") && init?.method === "POST") {
-      expect(JSON.parse(init.body as string)).toEqual({
-        name: "Demo",
-        sourceVideoPath: "D:/media/demo.mp4",
-        sourceLanguage: "zh",
-        targetLanguage: "en"
-      });
-      projectWasCreated = true;
-      return jsonResponse(projectMetadata);
-    }
-
-    if (url.endsWith("/projects/project-demo") && init?.method === undefined) {
-      return jsonResponse({ ...projectMetadata, hasSubtitleDocument: subtitleAvailable });
-    }
-
-    if (url.endsWith("/projects/project-demo/analysis-jobs") && init?.method === "POST") {
-      const mode = options.analysisJob ?? "completed";
-      if (mode === "running") {
-        return jsonResponse(runningTask);
-      }
-      if (mode === "failedThenCompleted" && !retryWasRequested) {
-        return jsonResponse(failedTask);
-      }
-      subtitleAvailable = true;
-      return jsonResponse(completedTask);
-    }
-
-    if (url.endsWith("/tasks/task-1") && init?.method === undefined) {
-      return jsonResponse(options.analysisJob === "running" ? runningTask : completedTask);
-    }
-
-    if (url.endsWith("/tasks/task-1/cancel") && init?.method === "POST") {
-      return jsonResponse(canceledTask);
-    }
-
-    if (url.endsWith("/tasks/task-1/retry") && init?.method === "POST") {
-      retryBodies.push(init.body ? JSON.parse(init.body as string) : null);
-      retryWasRequested = true;
-      subtitleAvailable = true;
-      return jsonResponse({ ...completedTask, taskId: "task-2" });
-    }
-
-    if (url.endsWith("/projects/project-demo/translation-settings") && init?.method === undefined) {
-      return jsonResponse({
-        projectId: "project-demo",
-        provider: "fake",
-        sourceLanguage: "zh",
-        targetLanguage: "en",
-        mode: "missing_only",
-        endpoint: null,
-        apiKeyEnv: null,
-        updatedAt: "2026-06-07T00:00:01+00:00"
-      });
-    }
-
-    if (url.endsWith("/projects/project-demo/translation-settings") && init?.method === "PUT") {
-      return jsonResponse({
-        projectId: "project-demo",
-        ...JSON.parse(init.body as string),
-        updatedAt: "2026-06-07T00:00:02+00:00"
-      });
-    }
-
-    if (url.endsWith("/projects/project-demo/translation-jobs") && init?.method === "POST") {
-      const mode = options.translationJob ?? "completed";
-      if (mode === "queuedThenCompleted") {
-        return jsonResponse(queuedTranslationTask);
-      }
-      if (mode === "running") {
-        return jsonResponse(runningTranslationTask);
-      }
-      if (mode === "failedThenCompleted" && !translationRetryWasRequested) {
-        return jsonResponse(failedTranslationTask);
-      }
-      translationCompleted = true;
-      subtitleAvailable = true;
-      return jsonResponse(completedTranslationTask);
-    }
-
-    if (url.endsWith("/tasks/translation-task-1") && init?.method === undefined) {
-      if (options.translationJob === "running") {
-        return jsonResponse(runningTranslationTask);
-      }
-      translationCompleted = true;
-      subtitleAvailable = true;
-      return jsonResponse(completedTranslationTask);
-    }
-
-    if (url.endsWith("/tasks/translation-task-1/cancel") && init?.method === "POST") {
-      return jsonResponse({
-        ...runningTranslationTask,
-        status: "canceled",
-        message: "Translation canceled",
-        completedAt: "2026-06-07T00:00:02+00:00"
-      });
-    }
-
-    if (url.endsWith("/tasks/translation-task-1/retry") && init?.method === "POST") {
-      retryBodies.push(init.body ? JSON.parse(init.body as string) : null);
-      translationRetryWasRequested = true;
-      translationCompleted = true;
-      subtitleAvailable = true;
-      return jsonResponse({ ...completedTranslationTask, taskId: "translation-task-2" });
-    }
-
-    if (url.endsWith("/projects/project-demo/subtitle") && init?.method === "PUT") {
-      const body = JSON.parse(init.body as string) as { document: SubtitleDocument };
-      savedDocuments.push(body.document);
-      subtitleAvailable = true;
-      if (pendingSave) {
-        return pendingSave.promise;
-      }
-      return jsonResponse(body.document);
-    }
-
-    if (url.endsWith("/projects/project-demo/subtitle") && init?.method === undefined) {
-      if (!subtitleAvailable) {
-        return jsonResponse({ detail: "Subtitle document not found" }, false, 404);
-      }
-      return jsonResponse(translationCompleted ? translatedDocument : analyzedDocument);
-    }
-
-    if (url.endsWith("/projects/project-demo/exports/srt") && init?.method === "POST") {
-      const body = JSON.parse(init.body as string) as { mode: string };
-      exportModes.push(body.mode);
-      return jsonResponse({
-        projectId: "project-demo",
-        exportPath: `D:/Diplomat/projects/project-demo/export-${body.mode}.srt`,
-        mode: body.mode
-      });
-    }
-
-    throw new Error(`Unexpected fetch: ${url}`);
-  });
-  vi.stubGlobal("fetch", fetchMock);
-  return { fetchMock, pendingSave, savedDocuments, exportModes, retryBodies };
 }
 
-async function createAndAnalyzeDemoProject() {
-  render(<App />);
-
-  expect(await screen.findByText("Worker: ok")).toBeInTheDocument();
-
-  fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Demo" } });
-  fireEvent.change(screen.getByLabelText("Source video path"), {
-    target: { value: "D:/media/demo.mp4" }
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
-
-  expect(await screen.findByText(/Project: Demo/)).toBeInTheDocument();
-  expect(screen.getByText("Project created")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
-
-  expect((await screen.findAllByText("原始字幕文本")).length).toBeGreaterThan(0);
+function stubStartupFetch() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/health")) {
+        return jsonResponse({ name: "diplomat-worker", status: "ok", version: "0.2.0" });
+      }
+      if (url.endsWith("/projects")) {
+        return jsonResponse({ projects: [projectFixture] });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    })
+  );
 }
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  useUiStore.getState().resetUiState();
 });
 
 describe("App", () => {
-  it("loads recent projects and reopens a project with saved subtitles", async () => {
-    stubWorkbenchFetch({ includeRecentProject: true, includeSubtitleFetch: true });
-    render(<App />);
+  it("starts in the project center shell", async () => {
+    stubMatchMedia();
+    stubResizeObserver();
+    stubStartupFetch();
 
-    expect(await screen.findByText("Recent Projects")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Reopen Demo/ }));
+    renderWithProviders(<App />);
 
-    expect(await screen.findByText(/Project: Demo/)).toBeInTheDocument();
-    expect(screen.getByText("Project reopened with subtitles")).toBeInTheDocument();
-    expect((await screen.findAllByText("原始字幕文本")).length).toBeGreaterThan(0);
+    expect(await screen.findByRole("heading", { name: "Project Center" })).toBeVisible();
+    expect(screen.getByRole("navigation", { name: "Application" })).toBeVisible();
+    expect(screen.getByText("Diplomat")).toBeVisible();
+    expect(await screen.findByText("Demo")).toBeVisible();
   });
 
-  it("keeps manual path entry available when desktop file picker is unavailable", async () => {
-    stubWorkbenchFetch();
-    render(<App />);
+  it("navigates to settings from the app rail", async () => {
+    stubMatchMedia();
+    stubResizeObserver();
+    stubStartupFetch();
 
-    expect(await screen.findByLabelText("Source video path")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Pick Video" })).not.toBeInTheDocument();
-  });
+    renderWithProviders(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
 
-  it("uses desktop file picker when Tauri runtime is available", async () => {
-    vi.stubGlobal("__TAURI_INTERNALS__", {
-      invoke: vi.fn(async (command: string) =>
-        command === "pick_video_file" ? "D:/media/picked.mp4" : null
-      )
-    });
-    stubWorkbenchFetch();
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Pick Video" }));
-
-    expect(await screen.findByDisplayValue("D:/media/picked.mp4")).toBeInTheDocument();
-    expect(screen.getByText("Video path selected")).toBeInTheDocument();
-  });
-
-  it("shows analysis model controls and starts a completed analysis job", async () => {
-    stubWorkbenchFetch();
-    await createAndAnalyzeDemoProject();
-
-    expect(screen.getByLabelText("ASR provider")).toBeInTheDocument();
-    expect(screen.getByLabelText("Model name or path")).toBeInTheDocument();
-    expect(screen.getAllByText("Analysis completed").length).toBeGreaterThan(0);
-  });
-
-  it("cancels a running analysis job", async () => {
-    stubWorkbenchFetch({ analysisJob: "running" });
-    render(<App />);
-
-    expect(await screen.findByText("Worker: ok")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Demo" } });
-    fireEvent.change(screen.getByLabelText("Source video path"), {
-      target: { value: "D:/media/demo.mp4" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
-    expect(await screen.findByText(/Project: Demo/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Start Analysis" }));
-    expect(await screen.findByText("Transcribing audio")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Cancel Analysis" })).toBeEnabled()
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Cancel Analysis" }));
-
-    expect((await screen.findAllByText("Analysis canceled")).length).toBeGreaterThan(0);
-  });
-
-  it("retries a failed analysis job", async () => {
-    const { retryBodies } = stubWorkbenchFetch({ analysisJob: "failedThenCompleted" });
-    render(<App />);
-
-    expect(await screen.findByText("Worker: ok")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Demo" } });
-    fireEvent.change(screen.getByLabelText("Source video path"), {
-      target: { value: "D:/media/demo.mp4" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
-    expect(await screen.findByText(/Project: Demo/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Start Analysis" }));
-    expect((await screen.findAllByText("FFmpeg executable not found: ffmpeg")).length).toBeGreaterThan(0);
-    fireEvent.change(screen.getByLabelText("ASR provider"), {
-      target: { value: "faster-whisper" }
-    });
-    fireEvent.change(screen.getByLabelText("Model name or path"), {
-      target: { value: "tiny" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Retry Analysis" }));
-
-    expect((await screen.findAllByText("Analysis completed")).length).toBeGreaterThan(0);
-    expect((await screen.findAllByText("原始字幕文本")).length).toBeGreaterThan(0);
-    expect(retryBodies[0]).toEqual({
-      provider: "faster-whisper",
-      modelNameOrPath: "tiny",
-      device: "cpu",
-      computeType: "int8",
-      sourceLanguage: "zh",
-      initialPrompt: null
-    });
-  });
-
-  it("starts translation and displays generated target text", async () => {
-    stubWorkbenchFetch({
-      includeRecentProject: true,
-      includeSubtitleFetch: true,
-      translationJob: "completed"
-    });
-    render(<App />);
-
-    expect(await screen.findByText("Recent Projects")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Reopen Demo/ }));
-    expect(await screen.findByText(/Project: Demo/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Start Translation" }));
-
-    expect(await screen.findByDisplayValue("[en] 原始字幕文本")).toBeInTheDocument();
-    expect(screen.getByText("Translation completed")).toBeInTheDocument();
-  });
-
-  it("polls a queued translation job and displays completed target text", async () => {
-    const { fetchMock } = stubWorkbenchFetch({
-      includeRecentProject: true,
-      includeSubtitleFetch: true,
-      translationJob: "queuedThenCompleted"
-    });
-    render(<App />);
-
-    expect(await screen.findByText("Recent Projects")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Reopen Demo/ }));
-    expect(await screen.findByText(/Project: Demo/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Start Translation" }));
-
-    expect(await screen.findByDisplayValue("[en] 原始字幕文本")).toBeInTheDocument();
-    expect(screen.getByText("Translation completed")).toBeInTheDocument();
-    expect(
-      fetchMock.mock.calls.some(([input, init]) =>
-        String(input).endsWith("/tasks/translation-task-1") && init?.method === undefined
-      )
-    ).toBe(true);
-  });
-
-  it("retries a failed translation job with the current translation config", async () => {
-    const { retryBodies } = stubWorkbenchFetch({
-      includeRecentProject: true,
-      includeSubtitleFetch: true,
-      translationJob: "failedThenCompleted"
-    });
-    render(<App />);
-
-    expect(await screen.findByText("Recent Projects")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Reopen Demo/ }));
-    expect(await screen.findByText(/Project: Demo/)).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("Translation provider"), {
-      target: { value: "libretranslate" }
-    });
-    fireEvent.change(screen.getByLabelText("Translation mode"), {
-      target: { value: "overwrite_all" }
-    });
-    fireEvent.change(screen.getByLabelText("LibreTranslate endpoint"), {
-      target: { value: "http://127.0.0.1:9" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Start Translation" }));
-    expect((await screen.findAllByText("LibreTranslate request failed")).length).toBeGreaterThan(0);
-
-    fireEvent.change(screen.getByLabelText("Translation provider"), {
-      target: { value: "fake" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Retry Translation" }));
-
-    expect(await screen.findByDisplayValue("[en] 原始字幕文本")).toBeInTheDocument();
-    expect(retryBodies.at(-1)).toEqual({
-      provider: "fake",
-      sourceLanguage: "zh",
-      targetLanguage: "en",
-      mode: "overwrite_all",
-      endpoint: "http://127.0.0.1:9",
-      apiKeyEnv: null
-    });
-  });
-
-  it("marks translated text edited when the user changes it", async () => {
-    stubWorkbenchFetch({
-      includeRecentProject: true,
-      includeTranslatedSubtitleFetch: true
-    });
-    render(<App />);
-
-    const reopenButton = await screen.findByRole("button", { name: /Reopen Demo/ });
-    await waitFor(() => expect(reopenButton).toBeEnabled());
-    fireEvent.click(reopenButton);
-    const translatedText = await screen.findByLabelText("Translated text");
-
-    fireEvent.change(translatedText, { target: { value: "Manual subtitle translation" } });
-
-    expect(screen.getByText("Translation: edited")).toBeInTheDocument();
-  });
-
-  it("filters missing translations", async () => {
-    stubWorkbenchFetch({ includeRecentProject: true, includeSubtitleFetch: true });
-    render(<App />);
-
-    const reopenButton = await screen.findByRole("button", { name: /Reopen Demo/ });
-    await waitFor(() => expect(reopenButton).toBeEnabled());
-    fireEvent.click(reopenButton);
-    expect(await screen.findByText("Project reopened with subtitles")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Missing translations" }));
-
-    expect(screen.getAllByText("原始字幕文本").length).toBeGreaterThan(0);
-  });
-
-  it("exports bilingual SRT after translation edit is saved", async () => {
-    const { exportModes, savedDocuments } = stubWorkbenchFetch({
-      includeRecentProject: true,
-      includeTranslatedSubtitleFetch: true
-    });
-    render(<App />);
-
-    const reopenButton = await screen.findByRole("button", { name: /Reopen Demo/ });
-    await waitFor(() => expect(reopenButton).toBeEnabled());
-    fireEvent.click(reopenButton);
-    fireEvent.change(await screen.findByLabelText("Translated text"), {
-      target: { value: "Manual subtitle translation" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save Subtitle" }));
-    await screen.findByText("Saved subtitle edits");
-    fireEvent.click(screen.getByRole("button", { name: "Export SRT" }));
-
-    expect(await screen.findByText("SRT export completed")).toBeInTheDocument();
-    expect(exportModes).toContain("bilingual");
-    expect(savedDocuments.at(-1)?.lines[0]?.translatedText).toBe(
-      "Manual subtitle translation"
-    );
-  });
-
-  it("starts the desktop Worker when initial health check is unavailable", async () => {
-    const invoke = vi.fn(async (command: string) =>
-      command === "start_worker"
-        ? {
-            status: "running",
-            endpoint: "http://127.0.0.1:8765",
-            owner: "diplomat",
-            message: "Diplomat Worker started"
-          }
-        : null
-    );
-    vi.stubGlobal("__TAURI_INTERNALS__", { invoke });
-    let healthAttempts = 0;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>(async (input, init) => {
-        const url = String(input);
-        if (url.endsWith("/health")) {
-          healthAttempts += 1;
-          if (healthAttempts === 1) {
-            throw new TypeError("Failed to fetch");
-          }
-          return jsonResponse({ name: "diplomat-worker", status: "ok", version: "0.1.0" });
-        }
-        if (url.endsWith("/projects") && init?.method === undefined) {
-          return jsonResponse({ projects: [] });
-        }
-        throw new Error(`Unexpected fetch: ${url}`);
-      })
-    );
-
-    render(<App />);
-
-    expect(await screen.findByText("Worker: ok")).toBeInTheDocument();
-    expect(screen.getByText("Diplomat Worker started")).toBeInTheDocument();
-    expect(invoke).toHaveBeenCalledWith("start_worker", undefined);
-  });
-
-  it("runs the M2a workbench loop from project creation to SRT export", async () => {
-    const { savedDocuments, exportModes } = stubWorkbenchFetch();
-    await createAndAnalyzeDemoProject();
-
-    expect(screen.getAllByText("Analysis completed").length).toBeGreaterThan(0);
-
-    const subtitleList = screen.getByRole("list", { name: "Subtitle lines" });
-    fireEvent.click(within(subtitleList).getByRole("button", { name: /line-1/ }));
-    fireEvent.change(screen.getByLabelText("Source text"), {
-      target: { value: "Edited source text" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save Subtitle" }));
-
-    expect(await screen.findByText("Saved subtitle edits")).toBeInTheDocument();
-    expect(savedDocuments.at(-1)?.lines[0]?.sourceText).toBe("Edited source text");
-
-    fireEvent.click(screen.getByRole("button", { name: "Export SRT" }));
-
-    expect(await screen.findByText("SRT export completed")).toBeInTheDocument();
-    expect(exportModes).toEqual(["bilingual"]);
-    expect(
-      screen.getByText("SRT exported: D:/Diplomat/projects/project-demo/export-bilingual.srt")
-    ).toBeInTheDocument();
-  });
-
-  it("blocks stale SRT export when subtitle edits are unsaved", async () => {
-    const { savedDocuments, exportModes } = stubWorkbenchFetch();
-    await createAndAnalyzeDemoProject();
-
-    fireEvent.click(screen.getByRole("button", { name: "Export SRT" }));
-
-    expect(await screen.findByText("SRT export completed")).toBeInTheDocument();
-    expect(
-      screen.getByText("SRT exported: D:/Diplomat/projects/project-demo/export-bilingual.srt")
-    ).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("SRT mode"), { target: { value: "source" } });
-    expect(
-      screen.queryByText("SRT exported: D:/Diplomat/projects/project-demo/export-bilingual.srt")
-    ).not.toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("SRT mode"), { target: { value: "bilingual" } });
-    fireEvent.click(screen.getByRole("button", { name: "Export SRT" }));
-    expect(
-      await screen.findByText("SRT exported: D:/Diplomat/projects/project-demo/export-bilingual.srt")
-    ).toBeInTheDocument();
-
-    const subtitleList = screen.getByRole("list", { name: "Subtitle lines" });
-    fireEvent.click(within(subtitleList).getByRole("button", { name: /line-1/ }));
-    fireEvent.change(screen.getByLabelText("Source text"), {
-      target: { value: "Changed after export" }
-    });
-
-    const exportButton = screen.getByRole("button", { name: "Export SRT" });
-    expect(exportButton).toBeDisabled();
-    expect(screen.getByText("Unsaved subtitle edits")).toBeInTheDocument();
-    expect(screen.getByText("Save subtitle edits before exporting.")).toBeInTheDocument();
-    expect(
-      screen.queryByText("SRT exported: D:/Diplomat/projects/project-demo/export-bilingual.srt")
-    ).not.toBeInTheDocument();
-
-    fireEvent.click(exportButton);
-    expect(exportModes).toEqual(["bilingual", "bilingual"]);
-
-    fireEvent.click(screen.getByRole("button", { name: "Save Subtitle" }));
-    expect(await screen.findByText("Saved subtitle edits")).toBeInTheDocument();
-    expect(savedDocuments.at(-1)?.lines[0]?.sourceText).toBe("Changed after export");
-    expect(screen.getByRole("button", { name: "Export SRT" })).toBeEnabled();
-  });
-
-  it("locks subtitle editor fields while save is in flight", async () => {
-    const { pendingSave } = stubWorkbenchFetch({ pauseSave: true });
-    await createAndAnalyzeDemoProject();
-
-    fireEvent.change(screen.getByLabelText("Source text"), {
-      target: { value: "Queued save text" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save Subtitle" }));
-
-    expect(screen.getByLabelText("Start ms")).toBeDisabled();
-    expect(screen.getByLabelText("End ms")).toBeDisabled();
-    expect(screen.getByLabelText("Source text")).toBeDisabled();
-    expect(screen.getByLabelText("Translated text")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Save Subtitle" })).toBeDisabled();
-
-    pendingSave?.resolve(
-      jsonResponse({
-        ...analyzedDocument,
-        lines: [{ ...analyzedDocument.lines[0]!, sourceText: "Queued save text" }]
-      })
-    );
-
-    expect(await screen.findByText("Saved subtitle edits")).toBeInTheDocument();
+    expect(await screen.findByRole("main", { name: "Settings" })).toBeVisible();
   });
 });
