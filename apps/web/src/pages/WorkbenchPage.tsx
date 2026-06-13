@@ -52,8 +52,10 @@ export function WorkbenchPage() {
   const [translationConfig, setTranslationConfig] = useState(defaultTranslationConfig);
   const [exportMode, setExportMode] = useState<SrtExportMode>("bilingual");
   const [exportResult, setExportResult] = useState<SrtExportResponse | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const layout = isNarrow ? "stacked" : "split";
-  const canExport = subtitleDocument.lines.length > 0;
+  const hasSubtitleRows = subtitleDocument.lines.length > 0;
+  const canExport = hasSubtitleRows && !hasUnsavedChanges;
   const selectedLine = useMemo(
     () => subtitleDocument.lines.find((line) => line.id === selectedLineId) ?? null,
     [selectedLineId, subtitleDocument.lines]
@@ -64,6 +66,11 @@ export function WorkbenchPage() {
       ...currentDocument,
       lines: currentDocument.lines.map((line) => (line.id === nextLine.id ? nextLine : line))
     }));
+    setHasUnsavedChanges(true);
+  }
+
+  function handleSave() {
+    setHasUnsavedChanges(false);
   }
 
   function handleExport() {
@@ -81,7 +88,7 @@ export function WorkbenchPage() {
           line={selectedLine}
           busy={false}
           onChangeLine={updateLine}
-          onSave={() => undefined}
+          onSave={handleSave}
         />
       );
     }
@@ -118,7 +125,13 @@ export function WorkbenchPage() {
           mode={exportMode}
           result={exportResult}
           canExport={canExport}
-          disabledReason={canExport ? null : t("inspector.exportDisabledNoLines")}
+          disabledReason={
+            canExport
+              ? null
+              : hasUnsavedChanges
+                ? t("inspector.exportDisabledUnsaved")
+                : t("inspector.exportDisabledNoLines")
+          }
           busy={false}
           onModeChange={setExportMode}
           onExport={handleExport}
@@ -151,10 +164,10 @@ export function WorkbenchPage() {
       }}
     >
       <TopToolbar
-        canSave={false}
-        canExport={canExport}
+        canSave={hasUnsavedChanges}
+        canExport={hasSubtitleRows}
         onInspectorMode={setInspectorMode}
-        onSave={() => undefined}
+        onSave={handleSave}
       />
 
       <Box

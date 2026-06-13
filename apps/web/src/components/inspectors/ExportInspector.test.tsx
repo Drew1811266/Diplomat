@@ -85,7 +85,7 @@ describe("ExportInspector", () => {
       />
     );
 
-    expect(screen.getByRole("combobox", { name: "Export mode" })).toBeEnabled();
+    expect(screen.getByRole("combobox", { name: "Export mode" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Export" })).toBeDisabled();
     expect(screen.getByText("SRT exported: D:/exports/project-1.srt")).toBeInTheDocument();
   });

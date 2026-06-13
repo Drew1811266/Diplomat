@@ -83,6 +83,34 @@ describe("WorkbenchPage", () => {
     expect(screen.getByRole("combobox", { name: "Export mode" })).toBeInTheDocument();
   });
 
+  it("blocks export after local subtitle edits until the draft is saved", async () => {
+    const user = userEvent.setup();
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.clear(screen.getByLabelText("Source text"));
+    await user.type(screen.getByLabelText("Source text"), "Edited source");
+
+    const toolbar = screen.getByRole("toolbar", { name: "Project tools" });
+    const toolbarSave = within(toolbar).getByRole("button", { name: "Save" });
+    expect(toolbarSave).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "Export" }));
+
+    const inspector = screen.getByLabelText("Inspector");
+    expect(within(inspector).getByRole("button", { name: "Export" })).toBeDisabled();
+    expect(within(inspector).getByText("Save subtitle edits before exporting.")).toBeInTheDocument();
+
+    await user.click(toolbarSave);
+
+    expect(toolbarSave).toBeDisabled();
+    expect(within(inspector).getByRole("button", { name: "Export" })).toBeEnabled();
+    expect(
+      within(inspector).queryByText("Save subtitle edits before exporting.")
+    ).not.toBeInTheDocument();
+  });
+
   it("uses localized workbench accessibility labels", async () => {
     await appI18n.changeLanguage("zh");
 

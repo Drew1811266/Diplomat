@@ -135,4 +135,46 @@ describe("TranslationInspector", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
   });
+
+  it.each([
+    {
+      field: "Source language",
+      config: { ...translationConfig, sourceLanguage: "" },
+      error: "Source language is required."
+    },
+    {
+      field: "Source language",
+      config: { ...translationConfig, sourceLanguage: "z" },
+      error: "Use 2 to 12 characters."
+    },
+    {
+      field: "Target language",
+      config: { ...translationConfig, targetLanguage: "english-long-code" },
+      error: "Use 2 to 12 characters."
+    }
+  ])("disables draft actions when $field is invalid", ({ config, error }) => {
+    const onStart = vi.fn();
+    const onRetry = vi.fn();
+
+    renderWithProviders(
+      <TranslationInspector
+        config={config}
+        busy={false}
+        onConfigChange={() => undefined}
+        onStart={onStart}
+        onCancel={() => undefined}
+        onRetry={onRetry}
+      />
+    );
+
+    expect(screen.getByText(error)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(onStart).not.toHaveBeenCalled();
+    expect(onRetry).not.toHaveBeenCalled();
+  });
 });

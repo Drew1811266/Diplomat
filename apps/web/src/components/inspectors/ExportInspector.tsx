@@ -34,6 +34,7 @@ export function ExportInspector({
           value: exportMode,
           label: t(`exportModes.${exportMode}`)
         }))}
+        disabled={busy}
         onChange={(event) => onModeChange(event.currentTarget.value as SrtExportMode)}
       />
 

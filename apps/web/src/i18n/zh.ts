@@ -89,6 +89,7 @@ export const zh = {
     export: "导出",
     emptyLine: "请选择一条字幕来编辑时间和文本。",
     exportDisabledNoLines: "暂无可导出的字幕行。",
+    exportDisabledUnsaved: "请先保存字幕修改再导出。",
     exportResult: "SRT 已导出：{{exportPath}}"
   },
   fields: {
@@ -118,6 +119,10 @@ export const zh = {
     source: "源文",
     target: "译文",
     bilingual: "双语"
+  },
+  validation: {
+    requiredField: "{{field}}为必填项。",
+    languageCodeLength: "请输入 2 到 12 个字符。"
   },
   actions: {
     start: "开始",

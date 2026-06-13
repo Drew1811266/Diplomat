@@ -89,6 +89,7 @@ export const en = {
     export: "Export",
     emptyLine: "Select a subtitle row to edit timing and text.",
     exportDisabledNoLines: "No subtitle rows are available to export.",
+    exportDisabledUnsaved: "Save subtitle edits before exporting.",
     exportResult: "SRT exported: {{exportPath}}"
   },
   fields: {
@@ -118,6 +119,10 @@ export const en = {
     source: "source",
     target: "target",
     bilingual: "bilingual"
+  },
+  validation: {
+    requiredField: "{{field}} is required.",
+    languageCodeLength: "Use 2 to 12 characters."
   },
   actions: {
     start: "Start",

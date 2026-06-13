@@ -51,8 +51,12 @@ describe("AnalysisInspector", () => {
     });
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: "tiny" } });
     fireEvent.change(screen.getByLabelText("Source language"), { target: { value: "zh" } });
-    fireEvent.change(screen.getByLabelText("Device"), { target: { value: "cuda" } });
-    fireEvent.change(screen.getByLabelText("Compute type"), { target: { value: "float16" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Device" }), {
+      target: { value: "cuda" }
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Compute type" }), {
+      target: { value: "float16" }
+    });
     fireEvent.change(screen.getByLabelText("Initial prompt"), {
       target: { value: "Use short subtitle phrasing" }
     });
@@ -124,11 +128,28 @@ describe("AnalysisInspector", () => {
     expect(screen.getByRole("combobox", { name: "Provider" })).toBeDisabled();
     expect(screen.getByLabelText("Model")).toBeDisabled();
     expect(screen.getByLabelText("Source language")).toBeDisabled();
-    expect(screen.getByLabelText("Device")).toBeDisabled();
-    expect(screen.getByLabelText("Compute type")).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Device" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Compute type" })).toBeDisabled();
     expect(screen.getByLabelText("Initial prompt")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
+  });
+
+  it("limits runtime settings to non-empty device and compute type options", () => {
+    renderWithProviders(
+      <AnalysisInspector
+        config={analysisConfig}
+        busy={false}
+        onConfigChange={() => undefined}
+        onStart={() => undefined}
+        onCancel={() => undefined}
+        onRetry={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("combobox", { name: "Device" })).toHaveValue("cpu");
+    expect(screen.getByRole("combobox", { name: "Compute type" })).toHaveValue("int8");
+    expect(screen.queryAllByRole("option", { name: "" })).toHaveLength(0);
   });
 });

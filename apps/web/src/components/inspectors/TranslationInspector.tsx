@@ -14,6 +14,18 @@ type TranslationInspectorProps = {
 const translationProviders: TranslationJobRequest["provider"][] = ["fake", "libretranslate"];
 const translationModes: TranslationJobRequest["mode"][] = ["missing_only", "overwrite_all"];
 
+function getLanguageError(value: string, requiredMessage: string, lengthMessage: string) {
+  if (value.length === 0) {
+    return requiredMessage;
+  }
+
+  if (value.length < 2 || value.length > 12) {
+    return lengthMessage;
+  }
+
+  return null;
+}
+
 export function TranslationInspector({
   config,
   busy,
@@ -23,12 +35,36 @@ export function TranslationInspector({
   onRetry
 }: TranslationInspectorProps) {
   const { t } = useTranslation();
+  const languageLengthError = t("validation.languageCodeLength");
+  const sourceLanguageError = getLanguageError(
+    config.sourceLanguage,
+    t("validation.requiredField", { field: t("fields.sourceLanguage") }),
+    languageLengthError
+  );
+  const targetLanguageError = getLanguageError(
+    config.targetLanguage,
+    t("validation.requiredField", { field: t("fields.targetLanguage") }),
+    languageLengthError
+  );
+  const hasLanguageErrors = Boolean(sourceLanguageError || targetLanguageError);
 
   function updateConfig<Key extends keyof TranslationJobRequest>(
     key: Key,
     value: TranslationJobRequest[Key]
   ) {
     onConfigChange({ ...config, [key]: value });
+  }
+
+  function handleStart() {
+    if (!hasLanguageErrors) {
+      onStart();
+    }
+  }
+
+  function handleRetry() {
+    if (!hasLanguageErrors) {
+      onRetry();
+    }
   }
 
   return (
@@ -47,12 +83,14 @@ export function TranslationInspector({
         <TextInput
           label={t("fields.sourceLanguage")}
           value={config.sourceLanguage}
+          error={sourceLanguageError}
           disabled={busy}
           onChange={(event) => updateConfig("sourceLanguage", event.currentTarget.value)}
         />
         <TextInput
           label={t("fields.targetLanguage")}
           value={config.targetLanguage}
+          error={targetLanguageError}
           disabled={busy}
           onChange={(event) => updateConfig("targetLanguage", event.currentTarget.value)}
         />
@@ -86,13 +124,13 @@ export function TranslationInspector({
       />
 
       <Group justify="flex-end" gap="xs">
-        <Button type="button" size="xs" color="teal" onClick={onStart} disabled={busy}>
+        <Button type="button" size="xs" color="teal" onClick={handleStart} disabled={busy || hasLanguageErrors}>
           {t("actions.start")}
         </Button>
         <Button type="button" size="xs" variant="light" color="gray" onClick={onCancel}>
           {t("actions.cancel")}
         </Button>
-        <Button type="button" size="xs" variant="light" color="gray" onClick={onRetry}>
+        <Button type="button" size="xs" variant="light" color="gray" onClick={handleRetry} disabled={hasLanguageErrors}>
           {t("actions.retry")}
         </Button>
       </Group>

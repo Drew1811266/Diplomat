@@ -12,6 +12,8 @@ type AnalysisInspectorProps = {
 };
 
 const analysisProviders: AnalysisJobRequest["provider"][] = ["fake", "faster-whisper"];
+const devices: AnalysisJobRequest["device"][] = ["cpu", "cuda"];
+const computeTypes: AnalysisJobRequest["computeType"][] = ["int8", "float16", "float32"];
 
 export function AnalysisInspector({
   config,
@@ -57,15 +59,17 @@ export function AnalysisInspector({
       />
 
       <Group grow gap="xs" align="flex-start">
-        <TextInput
+        <NativeSelect
           label={t("fields.device")}
           value={config.device}
+          data={devices}
           disabled={busy}
           onChange={(event) => updateConfig("device", event.currentTarget.value)}
         />
-        <TextInput
+        <NativeSelect
           label={t("fields.computeType")}
           value={config.computeType}
+          data={computeTypes}
           disabled={busy}
           onChange={(event) => updateConfig("computeType", event.currentTarget.value)}
         />
