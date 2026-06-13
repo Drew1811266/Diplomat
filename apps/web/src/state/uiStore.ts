@@ -36,7 +36,7 @@ export const useUiStore = create<UiState>((set) => ({
   setSelectedLineId: (selectedLineId) =>
     set({
       selectedLineId,
-      inspectorMode: selectedLineId ? "line" : "line"
+      inspectorMode: "line"
     }),
   setLanguage: (language) => set({ language }),
   setTimelineCollapsed: (timelineCollapsed) => set({ timelineCollapsed }),
