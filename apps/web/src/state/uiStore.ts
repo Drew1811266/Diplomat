@@ -34,13 +34,10 @@ export const useUiStore = create<UiState>((set) => ({
   setPage: (currentPage) => set({ currentPage }),
   setInspectorMode: (inspectorMode) => set({ inspectorMode }),
   setSelectedLineId: (selectedLineId) =>
-    set((state) => ({
+    set({
       selectedLineId,
-      inspectorMode:
-        selectedLineId && (state.inspectorMode === "export" || state.inspectorMode === "settings-lite")
-          ? "line"
-          : state.inspectorMode
-    })),
+      inspectorMode: selectedLineId ? "line" : "line"
+    }),
   setLanguage: (language) => set({ language }),
   setTimelineCollapsed: (timelineCollapsed) => set({ timelineCollapsed }),
   setCommandOpen: (commandOpen) => set({ commandOpen }),

@@ -8,21 +8,23 @@ describe("uiStore", () => {
 
   it("tracks page, inspector mode, selected line, and language", () => {
     useUiStore.getState().setPage("settings");
-    useUiStore.getState().setInspectorMode("translation");
     useUiStore.getState().setSelectedLineId("line-1");
     useUiStore.getState().setLanguage("zh");
 
     expect(useUiStore.getState().currentPage).toBe("settings");
-    expect(useUiStore.getState().inspectorMode).toBe("translation");
+    expect(useUiStore.getState().inspectorMode).toBe("line");
     expect(useUiStore.getState().selectedLineId).toBe("line-1");
     expect(useUiStore.getState().language).toBe("zh");
   });
 
-  it("selecting a line returns the inspector to line mode", () => {
-    useUiStore.getState().setInspectorMode("export");
-    useUiStore.getState().setSelectedLineId("line-2");
+  it.each(["analysis", "translation", "export", "settings-lite"] as const)(
+    "selecting a line from %s mode returns the inspector to line mode",
+    (mode) => {
+      useUiStore.getState().setInspectorMode(mode);
+      useUiStore.getState().setSelectedLineId("line-2");
 
-    expect(useUiStore.getState().selectedLineId).toBe("line-2");
-    expect(useUiStore.getState().inspectorMode).toBe("line");
-  });
+      expect(useUiStore.getState().selectedLineId).toBe("line-2");
+      expect(useUiStore.getState().inspectorMode).toBe("line");
+    }
+  );
 });
