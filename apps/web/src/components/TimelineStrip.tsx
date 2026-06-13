@@ -1,4 +1,5 @@
 import { Box, Group, Text } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 
 type TimelineStripProps = {
   durationMs: number;
@@ -10,13 +11,14 @@ function formatSeconds(durationMs: number) {
 }
 
 export function TimelineStrip({ durationMs, lineCount }: TimelineStripProps) {
+  const { t } = useTranslation();
   const filledPercent = Math.min(100, Math.max(0, lineCount * 4));
 
   return (
     <Box
       component="section"
       role="region"
-      aria-label="Timeline"
+      aria-label={t("workbench.labels.timeline")}
       px="sm"
       py={8}
       bg="#f8fafc"
@@ -31,7 +33,7 @@ export function TimelineStrip({ durationMs, lineCount }: TimelineStripProps) {
           00:00
         </Text>
         <Text size="xs" c="dimmed" truncate>
-          {lineCount} subtitle rows
+          {t("workbench.timeline.subtitleRows", { count: lineCount })}
         </Text>
         <Text size="xs" c="dimmed" ff="monospace">
           {formatSeconds(durationMs)}

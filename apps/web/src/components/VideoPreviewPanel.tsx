@@ -14,7 +14,7 @@ export function VideoPreviewPanel({ sourceVideoPath, selectedLine }: VideoPrevie
     <Box
       component="section"
       role="region"
-      aria-label="Video preview"
+      aria-label={t("workbench.labels.videoPreview")}
       bg="#070b14"
       c="white"
       style={{

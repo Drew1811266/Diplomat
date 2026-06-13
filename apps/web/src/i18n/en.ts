@@ -30,6 +30,16 @@ export const en = {
     export: "Export"
   },
   workbench: {
+    title: "Workbench",
+    labels: {
+      projectTools: "Project tools",
+      videoPreview: "Video preview",
+      inspector: "Inspector",
+      timeline: "Timeline"
+    },
+    timeline: {
+      subtitleRows: "{{count}} subtitle rows"
+    },
     noProject: "No project selected",
     noDocument: "No subtitle document",
     unsaved: "Unsaved changes",

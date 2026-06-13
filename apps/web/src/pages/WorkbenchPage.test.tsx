@@ -1,21 +1,28 @@
 import { cleanup, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { appI18n } from "../app/i18n";
 import { useUiStore } from "../state/uiStore";
 import { renderWithProviders } from "../test/render";
 import { WorkbenchPage } from "./WorkbenchPage";
 
-beforeEach(() => {
+function stubMatchMedia(matches: boolean) {
   vi.stubGlobal("matchMedia", () => ({
-    matches: false,
+    matches,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn()
   }));
+}
+
+beforeEach(async () => {
+  stubMatchMedia(false);
+  await appI18n.changeLanguage("en");
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.unstubAllGlobals();
   useUiStore.getState().resetUiState();
+  await appI18n.changeLanguage("en");
 });
 
 describe("WorkbenchPage", () => {
@@ -27,5 +34,34 @@ describe("WorkbenchPage", () => {
     expect(screen.getByLabelText("Subtitle Grid")).toBeInTheDocument();
     expect(screen.getByLabelText("Inspector")).toBeInTheDocument();
     expect(screen.getByLabelText("Timeline")).toBeInTheDocument();
+  });
+
+  it("stacks the inspector below media panes on narrow screens", () => {
+    stubMatchMedia(true);
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(screen.getByTestId("workbench-body")).toHaveAttribute("data-layout", "stacked");
+  });
+
+  it("keeps growing subtitle and inspector content independently scrollable", () => {
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(screen.getByTestId("subtitle-grid-body")).toHaveStyle({ overflow: "auto" });
+    expect(screen.getByTestId("inspector-body")).toHaveStyle({ overflow: "auto" });
+  });
+
+  it("uses localized workbench accessibility labels", async () => {
+    await appI18n.changeLanguage("zh");
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(screen.getByRole("main", { name: "工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("toolbar", { name: "项目工具" })).toBeInTheDocument();
+    expect(screen.getByLabelText("视频预览")).toBeInTheDocument();
+    expect(screen.getByLabelText("字幕表格")).toBeInTheDocument();
+    expect(screen.getByLabelText("检查器")).toBeInTheDocument();
+    expect(screen.getByLabelText("时间线")).toBeInTheDocument();
+    expect(screen.getByText("0 行字幕")).toBeInTheDocument();
   });
 });

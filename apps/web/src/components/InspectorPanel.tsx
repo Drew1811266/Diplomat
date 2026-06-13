@@ -6,6 +6,7 @@ import type { InspectorMode } from "../state/uiStore";
 type InspectorPanelProps = {
   mode: InspectorMode;
   children: ReactNode;
+  layout?: "side" | "stacked";
 };
 
 const titleKeyByMode: Record<InspectorMode, string> = {
@@ -16,28 +17,31 @@ const titleKeyByMode: Record<InspectorMode, string> = {
   "settings-lite": "inspector.line"
 };
 
-export function InspectorPanel({ mode, children }: InspectorPanelProps) {
+export function InspectorPanel({ mode, children, layout = "side" }: InspectorPanelProps) {
   const { t } = useTranslation();
 
   return (
     <Box
       component="aside"
       role="region"
-      aria-label="Inspector"
+      aria-label={t("workbench.labels.inspector")}
       bg="#ffffff"
       h="100%"
       style={{
         minHeight: 0,
-        borderLeft: "1px solid #cbd5e1"
+        borderLeft: layout === "side" ? "1px solid #cbd5e1" : undefined,
+        borderTop: layout === "stacked" ? "1px solid #cbd5e1" : undefined
       }}
     >
-      <Stack gap="md" p="md" h="100%">
+      <Stack gap="md" p="md" h="100%" style={{ minHeight: 0 }}>
         <Box>
           <Title order={2} size="h4" c="#0f172a">
             {t(titleKeyByMode[mode])}
           </Title>
         </Box>
-        <Box style={{ minHeight: 0 }}>{children}</Box>
+        <Box data-testid="inspector-body" style={{ minHeight: 0, overflow: "auto" }}>
+          {children}
+        </Box>
       </Stack>
     </Box>
   );

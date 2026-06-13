@@ -30,6 +30,16 @@ export const zh = {
     export: "导出"
   },
   workbench: {
+    title: "工作台",
+    labels: {
+      projectTools: "项目工具",
+      videoPreview: "视频预览",
+      inspector: "检查器",
+      timeline: "时间线"
+    },
+    timeline: {
+      subtitleRows: "{{count}} 行字幕"
+    },
     noProject: "未选择项目",
     noDocument: "暂无字幕文档",
     unsaved: "有未保存修改",

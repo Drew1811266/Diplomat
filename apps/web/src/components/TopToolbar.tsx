@@ -27,7 +27,7 @@ export function TopToolbar({
   return (
     <Group
       role="toolbar"
-      aria-label="Project tools"
+      aria-label={t("workbench.labels.projectTools")}
       justify="space-between"
       gap="xs"
       wrap="nowrap"
