@@ -50,8 +50,12 @@ type ActiveProjectFetchOptions = {
   analysisError?: { status: number; detail: string };
   translationError?: { status: number; detail: string };
   exportError?: { status: number; detail: string };
+  cancelError?: { status: number; detail: string };
+  retryError?: { status: number; detail: string };
   analysisTask?: TaskResponse;
   translationTask?: TaskResponse;
+  cancelTask?: TaskResponse;
+  retryTask?: TaskResponse;
   taskResponses?: TaskResponse[];
   subtitleDocuments?: SubtitleDocument[];
 };
@@ -167,6 +171,44 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
         ok: true,
         status: 200,
         json: async () => task
+      } as Response;
+    }
+
+    if (url.endsWith("/tasks/task-1/cancel") && init?.method === "POST") {
+      if (options.cancelError) {
+        return errorResponse(options.cancelError);
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () =>
+          options.cancelTask ?? {
+            ...runningAnalysisTaskFixture,
+            status: "canceled",
+            progress: 0.35,
+            message: "Analysis canceled",
+            completedAt: "2026-06-07T00:00:02+00:00"
+          }
+      } as Response;
+    }
+
+    if (url.endsWith("/tasks/task-1/retry") && init?.method === "POST") {
+      if (options.retryError) {
+        return errorResponse(options.retryError);
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () =>
+          options.retryTask ?? {
+            ...runningAnalysisTaskFixture,
+            status: "queued",
+            progress: 0,
+            message: "Analysis queued",
+            completedAt: null
+          }
       } as Response;
     }
 
@@ -497,6 +539,50 @@ describe("WorkbenchPage", () => {
     const inspector = screen.getByLabelText("Inspector");
     expect(within(inspector).getByRole("button", { name: "Export" })).toBeDisabled();
     expect(within(inspector).getByText("Wait for analysis or translation to finish.")).toBeInTheDocument();
+  });
+
+  it("shows task progress and wires cancel and retry actions", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubActiveProjectFetch({
+      analysisTask: runningAnalysisTaskFixture,
+      taskResponses: [runningAnalysisTaskFixture]
+    });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Analyze" }));
+    const inspector = screen.getByLabelText("Inspector");
+    await user.click(within(inspector).getByRole("button", { name: "Start" }));
+
+    expect(await screen.findByText("Running · Transcribing audio · 35%")).toBeInTheDocument();
+    expect(within(inspector).getByRole("button", { name: "Cancel" })).toBeEnabled();
+    expect(within(inspector).getByRole("button", { name: "Retry" })).toBeDisabled();
+
+    await user.click(within(inspector).getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/tasks\/task-1\/cancel$/),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(await screen.findByText("Canceled · Analysis canceled · 35%")).toBeInTheDocument();
+    expect(within(inspector).getByRole("button", { name: "Retry" })).toBeEnabled();
+
+    await user.click(within(inspector).getByRole("button", { name: "Retry" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/tasks\/task-1\/retry$/),
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"provider":"fake"')
+        })
+      )
+    );
+    expect(await screen.findByText("Queued · Analysis queued · 0%")).toBeInTheDocument();
   });
 
   it("uses localized task-active export blocking copy", async () => {

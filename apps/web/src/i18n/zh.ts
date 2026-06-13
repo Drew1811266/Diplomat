@@ -15,12 +15,24 @@ export const zh = {
     recentProjects: "最近项目",
     createProject: "创建项目",
     importVideo: "导入视频",
+    untitledProject: "未命名项目",
+    creationTitle: "新建项目",
+    importFallbackHint: "使用桌面选择器或粘贴本地视频路径，然后创建项目。",
+    creatingProject: "正在创建项目...",
     noProjects: "暂无最近项目",
     noProjectsHint: "导入一个视频来创建第一个本地项目。",
     workerReady: "Worker 已就绪",
     workerStarting: "Worker 启动中",
     workerUnavailable: "Worker 不可用",
-    retryWorker: "重试 Worker"
+    retryWorker: "重试 Worker",
+    table: {
+      project: "项目",
+      source: "来源",
+      languages: "语言",
+      subtitles: "字幕",
+      duration: "时长",
+      actions: "项目操作"
+    }
   },
   toolbar: {
     import: "导入",
@@ -149,6 +161,10 @@ export const zh = {
     defaultSourceLanguage: "默认源语言",
     defaultTargetLanguage: "默认目标语言",
     defaultExportMode: "默认导出模式"
+  },
+  tasks: {
+    title: "任务",
+    description: "后台分析、翻译和导出任务历史会显示在这里。"
   },
   status: {
     ready: "就绪",

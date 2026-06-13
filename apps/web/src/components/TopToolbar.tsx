@@ -12,6 +12,7 @@ import type { InspectorMode } from "../state/uiStore";
 type TopToolbarProps = {
   canSave: boolean;
   canExport?: boolean;
+  onImport?: () => void;
   onInspectorMode: (mode: InspectorMode) => void;
   onSave: () => void;
 };
@@ -19,6 +20,7 @@ type TopToolbarProps = {
 export function TopToolbar({
   canSave,
   canExport = true,
+  onImport,
   onInspectorMode,
   onSave
 }: TopToolbarProps) {
@@ -46,6 +48,8 @@ export function TopToolbar({
           color="gray"
           size="xs"
           leftSection={<IconMovie size={16} aria-hidden />}
+          disabled={!onImport}
+          onClick={onImport}
         >
           {t("toolbar.import")}
         </Button>

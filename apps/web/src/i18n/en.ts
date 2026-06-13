@@ -15,12 +15,25 @@ export const en = {
     recentProjects: "Recent Projects",
     createProject: "Create Project",
     importVideo: "Import Video",
+    untitledProject: "Untitled Project",
+    creationTitle: "New Project",
+    importFallbackHint:
+      "Use the desktop picker or paste a local video path, then create the project.",
+    creatingProject: "Creating project...",
     noProjects: "No recent projects",
     noProjectsHint: "Import a video to create your first local project.",
     workerReady: "Worker ready",
     workerStarting: "Worker starting",
     workerUnavailable: "Worker unavailable",
-    retryWorker: "Retry Worker"
+    retryWorker: "Retry Worker",
+    table: {
+      project: "Project",
+      source: "Source",
+      languages: "Languages",
+      subtitles: "Subtitles",
+      duration: "Duration",
+      actions: "Project actions"
+    }
   },
   toolbar: {
     import: "Import",
@@ -149,6 +162,10 @@ export const en = {
     defaultSourceLanguage: "Default source language",
     defaultTargetLanguage: "Default target language",
     defaultExportMode: "Default export mode"
+  },
+  tasks: {
+    title: "Tasks",
+    description: "Background analysis, translation, and export task history will appear here."
   },
   status: {
     ready: "Ready",

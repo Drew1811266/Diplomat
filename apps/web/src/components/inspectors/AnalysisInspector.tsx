@@ -5,6 +5,8 @@ import { useTranslation } from "react-i18next";
 type AnalysisInspectorProps = {
   config: AnalysisJobRequest;
   busy: boolean;
+  canCancel?: boolean;
+  canRetry?: boolean;
   onConfigChange: (config: AnalysisJobRequest) => void;
   onStart: () => void;
   onCancel: () => void;
@@ -18,6 +20,8 @@ const computeTypes: AnalysisJobRequest["computeType"][] = ["int8", "float16", "f
 export function AnalysisInspector({
   config,
   busy,
+  canCancel = true,
+  canRetry = true,
   onConfigChange,
   onStart,
   onCancel,
@@ -86,10 +90,24 @@ export function AnalysisInspector({
         <Button type="button" size="xs" color="teal" onClick={onStart} disabled={busy}>
           {t("actions.start")}
         </Button>
-        <Button type="button" size="xs" variant="light" color="gray" onClick={onCancel}>
+        <Button
+          type="button"
+          size="xs"
+          variant="light"
+          color="gray"
+          onClick={onCancel}
+          disabled={!canCancel}
+        >
           {t("actions.cancel")}
         </Button>
-        <Button type="button" size="xs" variant="light" color="gray" onClick={onRetry}>
+        <Button
+          type="button"
+          size="xs"
+          variant="light"
+          color="gray"
+          onClick={onRetry}
+          disabled={!canRetry}
+        >
           {t("actions.retry")}
         </Button>
       </Group>

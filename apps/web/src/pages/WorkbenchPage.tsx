@@ -17,6 +17,7 @@ import { ExportInspector } from "../components/inspectors/ExportInspector";
 import { LineInspector } from "../components/inspectors/LineInspector";
 import { TranslationInspector } from "../components/inspectors/TranslationInspector";
 import { SubtitleGrid, type SubtitleGridFilter } from "../components/SubtitleGrid";
+import { TaskStatusSurface } from "../components/TaskStatusSurface";
 import { TimelineStrip } from "../components/TimelineStrip";
 import { TopToolbar } from "../components/TopToolbar";
 import { VideoPreviewPanel } from "../components/VideoPreviewPanel";
@@ -28,9 +29,11 @@ import {
 } from "../queries/subtitleQueries";
 import {
   isTaskActive,
+  useCancelTaskMutation,
   useCreateAnalysisJobMutation,
   useTaskQuery,
-  useCreateTranslationJobMutation
+  useCreateTranslationJobMutation,
+  useRetryTaskMutation
 } from "../queries/taskQueries";
 import { useUiStore } from "../state/uiStore";
 
@@ -99,6 +102,7 @@ export function WorkbenchPage() {
   const { t } = useTranslation();
   const isNarrow = useMediaQuery("(max-width: 900px)");
   const activeProjectId = useUiStore((state) => state.activeProjectId);
+  const setPage = useUiStore((state) => state.setPage);
   const inspectorMode = useUiStore((state) => state.inspectorMode);
   const setInspectorMode = useUiStore((state) => state.setInspectorMode);
   const selectedLineId = useUiStore((state) => state.selectedLineId);
@@ -108,6 +112,8 @@ export function WorkbenchPage() {
   const saveSubtitle = useSaveSubtitleDocumentMutation(activeProjectId);
   const createAnalysisJob = useCreateAnalysisJobMutation(activeProjectId);
   const createTranslationJob = useCreateTranslationJobMutation(activeProjectId);
+  const cancelTask = useCancelTaskMutation();
+  const retryTask = useRetryTaskMutation();
   const exportSrt = useExportSrtMutation(activeProjectId);
   const [draftDocument, setDraftDocument] = useState<SubtitleDocument | null>(null);
   const [subtitleFilter, setSubtitleFilter] = useState<SubtitleGridFilter>("all");
@@ -126,8 +132,32 @@ export function WorkbenchPage() {
   const layout = isNarrow ? "stacked" : "split";
   const hasSubtitleRows = subtitleLines.length > 0;
   const observedTask = polledTask ?? latestTask;
+  const taskOperationPending = cancelTask.isPending || retryTask.isPending;
   const taskActive =
-    isTaskActive(observedTask) || createAnalysisJob.isPending || createTranslationJob.isPending;
+    isTaskActive(observedTask) ||
+    createAnalysisJob.isPending ||
+    createTranslationJob.isPending ||
+    taskOperationPending;
+  const canCancelTask = Boolean(observedTask && isTaskActive(observedTask) && !cancelTask.isPending);
+  const canRetryCurrentTask = Boolean(
+    observedTask &&
+      (observedTask.status === "failed" || observedTask.status === "canceled") &&
+      !retryTask.isPending
+  );
+  const canRetryAnalysisTask = Boolean(canRetryCurrentTask && observedTask?.type === "analysis");
+  const canRetryTranslationTask = Boolean(
+    canRetryCurrentTask && observedTask?.type === "translation"
+  );
+  const taskStatusMessage = observedTask
+    ? `${t(`status.${observedTask.status}`)} · ${observedTask.message} · ${Math.round(
+        observedTask.progress * 100
+      )}%`
+    : t("status.ready");
+  const taskStatusError =
+    observedTask?.errorMessage ??
+    getErrorMessage(task.error) ??
+    getErrorMessage(cancelTask.error) ??
+    getErrorMessage(retryTask.error);
   const hasProjectError = project.isError;
   const hasSubtitleError = subtitle.isError;
   const dataBlocked = project.isPending || subtitle.isPending || hasProjectError || hasSubtitleError;
@@ -239,6 +269,41 @@ export function WorkbenchPage() {
     }
   }
 
+  async function handleCancelTask() {
+    if (!observedTask || !isTaskActive(observedTask)) {
+      return;
+    }
+
+    try {
+      const nextTask = await cancelTask.mutateAsync(observedTask.taskId);
+      setLatestTask(nextTask);
+      setLatestTaskId(nextTask.taskId);
+    } catch {
+      // Mutation state surfaces the failure; avoid throwing from the UI event.
+    }
+  }
+
+  async function handleRetryTask(config: AnalysisJobRequest | TranslationJobRequest) {
+    if (
+      !observedTask ||
+      (observedTask.status !== "failed" && observedTask.status !== "canceled")
+    ) {
+      return;
+    }
+
+    try {
+      const nextTask = await retryTask.mutateAsync({
+        taskId: observedTask.taskId,
+        config
+      });
+      refetchedTaskId.current = null;
+      setLatestTask(nextTask);
+      setLatestTaskId(nextTask.taskId);
+    } catch {
+      // Mutation state surfaces the failure; avoid throwing from the UI event.
+    }
+  }
+
   async function handleExport() {
     if (!canExport) {
       return;
@@ -273,10 +338,12 @@ export function WorkbenchPage() {
           <AnalysisInspector
             config={analysisConfig}
             busy={!activeProjectId || taskActive}
+            canCancel={canCancelTask}
+            canRetry={canRetryAnalysisTask}
             onConfigChange={setAnalysisConfig}
             onStart={() => void handleStartAnalysis()}
-            onCancel={() => undefined}
-            onRetry={() => undefined}
+            onCancel={() => void handleCancelTask()}
+            onRetry={() => void handleRetryTask(analysisConfig)}
           />
         </Stack>
       );
@@ -289,10 +356,12 @@ export function WorkbenchPage() {
           <TranslationInspector
             config={translationConfig}
             busy={!activeProjectId || taskActive}
+            canCancel={canCancelTask}
+            canRetry={canRetryTranslationTask}
             onConfigChange={setTranslationConfig}
             onStart={() => void handleStartTranslation()}
-            onCancel={() => undefined}
-            onRetry={() => undefined}
+            onCancel={() => void handleCancelTask()}
+            onRetry={() => void handleRetryTask(translationConfig)}
           />
         </Stack>
       );
@@ -375,7 +444,7 @@ export function WorkbenchPage() {
         height: "calc(100vh - 84px)",
         minHeight: 620,
         display: "grid",
-        gridTemplateRows: "auto minmax(0, 1fr)",
+        gridTemplateRows: "auto auto minmax(0, 1fr)",
         overflow: "hidden",
         border: "1px solid #cbd5e1",
         borderRadius: 6
@@ -384,9 +453,25 @@ export function WorkbenchPage() {
       <TopToolbar
         canSave={hasUnsavedChanges && !saveSubtitle.isPending}
         canExport={Boolean(activeProjectId)}
+        onImport={() => setPage("projects")}
         onInspectorMode={setInspectorMode}
         onSave={() => void handleSave()}
       />
+
+      <Box
+        px="sm"
+        py={4}
+        bg="#ffffff"
+        style={{
+          borderBottom: "1px solid #dbe3ec"
+        }}
+      >
+        <TaskStatusSurface
+          busy={taskActive}
+          message={taskStatusMessage}
+          error={taskStatusError}
+        />
+      </Box>
 
       <Box
         data-testid="workbench-body"

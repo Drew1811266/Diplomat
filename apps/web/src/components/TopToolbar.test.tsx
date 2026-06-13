@@ -18,23 +18,27 @@ afterEach(() => {
 });
 
 describe("TopToolbar", () => {
-  it("switches inspector mode from analysis, translation, and export actions", async () => {
+  it("runs import and switches inspector mode from analysis, translation, and export actions", async () => {
     const user = userEvent.setup();
+    const onImport = vi.fn();
     const onInspectorMode = vi.fn();
 
     renderWithProviders(
       <TopToolbar
         canSave={false}
         canExport
+        onImport={onImport}
         onInspectorMode={onInspectorMode}
         onSave={vi.fn()}
       />
     );
 
+    await user.click(screen.getByRole("button", { name: "Import" }));
     await user.click(screen.getByRole("button", { name: "Analyze" }));
     await user.click(screen.getByRole("button", { name: "Translate" }));
     await user.click(screen.getByRole("button", { name: "Export" }));
 
+    expect(onImport).toHaveBeenCalledTimes(1);
     expect(onInspectorMode).toHaveBeenNthCalledWith(1, "analysis");
     expect(onInspectorMode).toHaveBeenNthCalledWith(2, "translation");
     expect(onInspectorMode).toHaveBeenNthCalledWith(3, "export");

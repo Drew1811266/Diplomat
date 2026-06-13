@@ -5,6 +5,8 @@ import { useTranslation } from "react-i18next";
 type TranslationInspectorProps = {
   config: TranslationJobRequest;
   busy: boolean;
+  canCancel?: boolean;
+  canRetry?: boolean;
   onConfigChange: (config: TranslationJobRequest) => void;
   onStart: () => void;
   onCancel: () => void;
@@ -29,6 +31,8 @@ function getLanguageError(value: string, requiredMessage: string, lengthMessage:
 export function TranslationInspector({
   config,
   busy,
+  canCancel = true,
+  canRetry = true,
   onConfigChange,
   onStart,
   onCancel,
@@ -124,13 +128,33 @@ export function TranslationInspector({
       />
 
       <Group justify="flex-end" gap="xs">
-        <Button type="button" size="xs" color="teal" onClick={handleStart} disabled={busy || hasLanguageErrors}>
+        <Button
+          type="button"
+          size="xs"
+          color="teal"
+          onClick={handleStart}
+          disabled={busy || hasLanguageErrors}
+        >
           {t("actions.start")}
         </Button>
-        <Button type="button" size="xs" variant="light" color="gray" onClick={onCancel}>
+        <Button
+          type="button"
+          size="xs"
+          variant="light"
+          color="gray"
+          onClick={onCancel}
+          disabled={!canCancel}
+        >
           {t("actions.cancel")}
         </Button>
-        <Button type="button" size="xs" variant="light" color="gray" onClick={handleRetry} disabled={hasLanguageErrors}>
+        <Button
+          type="button"
+          size="xs"
+          variant="light"
+          color="gray"
+          onClick={handleRetry}
+          disabled={!canRetry || hasLanguageErrors}
+        >
           {t("actions.retry")}
         </Button>
       </Group>
