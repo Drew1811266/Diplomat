@@ -26,3 +26,6 @@ coverage/
 htmlcov/
 .mypy_cache/
 .pnpm-store/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/
