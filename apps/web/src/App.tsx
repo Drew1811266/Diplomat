@@ -9,11 +9,17 @@ import "./App.css";
 export function App() {
   const currentPage = useUiStore((state) => state.currentPage);
   const setPage = useUiStore((state) => state.setPage);
+  const setActiveProjectId = useUiStore((state) => state.setActiveProjectId);
+
+  function openProject(projectId: string) {
+    setActiveProjectId(projectId);
+    setPage("workbench");
+  }
 
   return (
     <AppShellLayout>
       {currentPage === "projects" ? (
-        <ProjectCenterPage onOpenProject={() => setPage("workbench")} />
+        <ProjectCenterPage onOpenProject={openProject} />
       ) : null}
       {currentPage === "workbench" ? <WorkbenchPage /> : null}
       {currentPage === "tasks" ? <TasksPage /> : null}

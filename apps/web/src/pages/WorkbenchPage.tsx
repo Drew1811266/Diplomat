@@ -3,11 +3,13 @@ import type {
   AnalysisJobRequest,
   SrtExportMode,
   SrtExportResponse,
+  SubtitleDocument,
   SubtitleLine,
+  TaskResponse,
   TranslationJobRequest
 } from "@diplomat/shared";
 import { useMediaQuery } from "@mantine/hooks";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { AnalysisInspector } from "../components/inspectors/AnalysisInspector";
@@ -18,8 +20,18 @@ import { SubtitleGrid, type SubtitleGridFilter } from "../components/SubtitleGri
 import { TimelineStrip } from "../components/TimelineStrip";
 import { TopToolbar } from "../components/TopToolbar";
 import { VideoPreviewPanel } from "../components/VideoPreviewPanel";
+import { useExportSrtMutation } from "../queries/exportQueries";
+import { useProjectQuery } from "../queries/projectQueries";
+import {
+  useSaveSubtitleDocumentMutation,
+  useSubtitleDocumentQuery
+} from "../queries/subtitleQueries";
+import {
+  isTaskActive,
+  useCreateAnalysisJobMutation,
+  useCreateTranslationJobMutation
+} from "../queries/taskQueries";
 import { useUiStore } from "../state/uiStore";
-import { analyzedDocumentFixture } from "../test/fixtures";
 
 const defaultAnalysisConfig: AnalysisJobRequest = {
   provider: "fake",
@@ -39,46 +51,126 @@ const defaultTranslationConfig: TranslationJobRequest = {
   apiKeyEnv: null
 };
 
+const emptySubtitleLines: SubtitleLine[] = [];
+const taskActiveExportReason = "Wait for analysis or translation to finish.";
+
 export function WorkbenchPage() {
   const { t } = useTranslation();
   const isNarrow = useMediaQuery("(max-width: 900px)");
+  const activeProjectId = useUiStore((state) => state.activeProjectId);
   const inspectorMode = useUiStore((state) => state.inspectorMode);
   const setInspectorMode = useUiStore((state) => state.setInspectorMode);
   const selectedLineId = useUiStore((state) => state.selectedLineId);
   const setSelectedLineId = useUiStore((state) => state.setSelectedLineId);
-  const [subtitleDocument, setSubtitleDocument] = useState(analyzedDocumentFixture);
+  const project = useProjectQuery(activeProjectId);
+  const subtitle = useSubtitleDocumentQuery(activeProjectId);
+  const saveSubtitle = useSaveSubtitleDocumentMutation(activeProjectId);
+  const createAnalysisJob = useCreateAnalysisJobMutation(activeProjectId);
+  const createTranslationJob = useCreateTranslationJobMutation(activeProjectId);
+  const exportSrt = useExportSrtMutation(activeProjectId);
+  const [draftDocument, setDraftDocument] = useState<SubtitleDocument | null>(null);
   const [subtitleFilter, setSubtitleFilter] = useState<SubtitleGridFilter>("all");
   const [analysisConfig, setAnalysisConfig] = useState(defaultAnalysisConfig);
   const [translationConfig, setTranslationConfig] = useState(defaultTranslationConfig);
   const [exportMode, setExportMode] = useState<SrtExportMode>("bilingual");
   const [exportResult, setExportResult] = useState<SrtExportResponse | null>(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [latestTask, setLatestTask] = useState<TaskResponse | null>(null);
+  const subtitleDocument = draftDocument ?? subtitle.data ?? null;
+  const subtitleLines = subtitleDocument?.lines ?? emptySubtitleLines;
+  const hasUnsavedChanges = Boolean(draftDocument);
   const layout = isNarrow ? "stacked" : "split";
-  const hasSubtitleRows = subtitleDocument.lines.length > 0;
-  const canExport = hasSubtitleRows && !hasUnsavedChanges;
+  const hasSubtitleRows = subtitleLines.length > 0;
+  const taskActive =
+    isTaskActive(latestTask) || createAnalysisJob.isPending || createTranslationJob.isPending;
+  const canExport = Boolean(
+    activeProjectId && subtitleDocument && hasSubtitleRows && !hasUnsavedChanges && !taskActive
+  );
+  const exportDisabledReason = canExport
+    ? null
+    : taskActive
+      ? taskActiveExportReason
+      : hasUnsavedChanges
+        ? t("inspector.exportDisabledUnsaved")
+        : activeProjectId
+          ? t("inspector.exportDisabledNoLines")
+          : t("workbench.noProject");
   const selectedLine = useMemo(
-    () => subtitleDocument.lines.find((line) => line.id === selectedLineId) ?? null,
-    [selectedLineId, subtitleDocument.lines]
+    () => subtitleLines.find((line) => line.id === selectedLineId) ?? null,
+    [selectedLineId, subtitleLines]
   );
 
+  useEffect(() => {
+    setDraftDocument(null);
+  }, [activeProjectId, subtitle.dataUpdatedAt]);
+
+  useEffect(() => {
+    setExportResult(null);
+    setLatestTask(null);
+  }, [activeProjectId]);
+
   function updateLine(nextLine: SubtitleLine) {
-    setSubtitleDocument((currentDocument) => ({
-      ...currentDocument,
-      lines: currentDocument.lines.map((line) => (line.id === nextLine.id ? nextLine : line))
-    }));
-    setHasUnsavedChanges(true);
-  }
+    if (!subtitleDocument) {
+      return;
+    }
 
-  function handleSave() {
-    setHasUnsavedChanges(false);
-  }
+    setDraftDocument((currentDraft) => {
+      const sourceDocument = currentDraft ?? subtitleDocument;
 
-  function handleExport() {
-    setExportResult({
-      projectId: analyzedDocumentFixture.projectId,
-      exportPath: `fixture-${exportMode}.srt`,
-      mode: exportMode
+      return {
+        ...sourceDocument,
+        lines: sourceDocument.lines.map((line) => (line.id === nextLine.id ? nextLine : line))
+      };
     });
+  }
+
+  async function handleSave() {
+    if (!draftDocument || !activeProjectId) {
+      return;
+    }
+
+    try {
+      await saveSubtitle.mutateAsync(draftDocument);
+      setDraftDocument(null);
+      void subtitle.refetch();
+    } catch {
+      // Keep the draft in place so the user can retry a failed save.
+    }
+  }
+
+  async function handleStartAnalysis() {
+    if (!activeProjectId) {
+      return;
+    }
+
+    try {
+      setLatestTask(await createAnalysisJob.mutateAsync(analysisConfig));
+    } catch {
+      // Mutation state surfaces the failure; avoid throwing from the UI event.
+    }
+  }
+
+  async function handleStartTranslation() {
+    if (!activeProjectId) {
+      return;
+    }
+
+    try {
+      setLatestTask(await createTranslationJob.mutateAsync(translationConfig));
+    } catch {
+      // Mutation state surfaces the failure; avoid throwing from the UI event.
+    }
+  }
+
+  async function handleExport() {
+    if (!canExport) {
+      return;
+    }
+
+    try {
+      setExportResult(await exportSrt.mutateAsync(exportMode));
+    } catch {
+      // Mutation state surfaces the failure; avoid throwing from the UI event.
+    }
   }
 
   function renderInspectorContent() {
@@ -86,9 +178,9 @@ export function WorkbenchPage() {
       return (
         <LineInspector
           line={selectedLine}
-          busy={false}
+          busy={saveSubtitle.isPending}
           onChangeLine={updateLine}
-          onSave={handleSave}
+          onSave={() => void handleSave()}
         />
       );
     }
@@ -97,9 +189,9 @@ export function WorkbenchPage() {
       return (
         <AnalysisInspector
           config={analysisConfig}
-          busy={false}
+          busy={!activeProjectId || taskActive}
           onConfigChange={setAnalysisConfig}
-          onStart={() => undefined}
+          onStart={() => void handleStartAnalysis()}
           onCancel={() => undefined}
           onRetry={() => undefined}
         />
@@ -110,9 +202,9 @@ export function WorkbenchPage() {
       return (
         <TranslationInspector
           config={translationConfig}
-          busy={false}
+          busy={!activeProjectId || taskActive}
           onConfigChange={setTranslationConfig}
-          onStart={() => undefined}
+          onStart={() => void handleStartTranslation()}
           onCancel={() => undefined}
           onRetry={() => undefined}
         />
@@ -125,16 +217,10 @@ export function WorkbenchPage() {
           mode={exportMode}
           result={exportResult}
           canExport={canExport}
-          disabledReason={
-            canExport
-              ? null
-              : hasUnsavedChanges
-                ? t("inspector.exportDisabledUnsaved")
-                : t("inspector.exportDisabledNoLines")
-          }
-          busy={false}
+          disabledReason={exportDisabledReason}
+          busy={exportSrt.isPending}
           onModeChange={setExportMode}
-          onExport={handleExport}
+          onExport={() => void handleExport()}
         />
       );
     }
@@ -164,10 +250,10 @@ export function WorkbenchPage() {
       }}
     >
       <TopToolbar
-        canSave={hasUnsavedChanges}
-        canExport={hasSubtitleRows}
+        canSave={hasUnsavedChanges && !saveSubtitle.isPending}
+        canExport={Boolean(activeProjectId)}
         onInspectorMode={setInspectorMode}
-        onSave={handleSave}
+        onSave={() => void handleSave()}
       />
 
       <Box
@@ -189,18 +275,24 @@ export function WorkbenchPage() {
           }}
         >
           <Box p="md" bg="#111827" style={{ minHeight: 0 }}>
-            <VideoPreviewPanel sourceVideoPath={null} selectedLine={selectedLine} />
+            <VideoPreviewPanel
+              sourceVideoPath={activeProjectId ? project.data?.sourceVideoPath ?? null : null}
+              selectedLine={selectedLine}
+            />
           </Box>
 
           <SubtitleGrid
-            lines={subtitleDocument.lines}
+            lines={subtitleLines}
             selectedLineId={selectedLineId}
             filter={subtitleFilter}
             onFilterChange={setSubtitleFilter}
             onSelectLine={setSelectedLineId}
           />
 
-          <TimelineStrip durationMs={subtitleDocument.durationMs} lineCount={subtitleDocument.lines.length} />
+          <TimelineStrip
+            durationMs={subtitleDocument?.durationMs ?? project.data?.durationMs ?? 0}
+            lineCount={subtitleLines.length}
+          />
         </Box>
 
         <InspectorPanel mode={inspectorMode} layout={isNarrow ? "stacked" : "side"}>

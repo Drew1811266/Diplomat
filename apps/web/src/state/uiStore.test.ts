@@ -6,15 +6,21 @@ describe("uiStore", () => {
     useUiStore.getState().resetUiState();
   });
 
-  it("tracks page, inspector mode, selected line, and language", () => {
+  it("tracks page, active project, inspector mode, selected line, and language", () => {
     useUiStore.getState().setPage("settings");
+    useUiStore.getState().setActiveProjectId("project-demo");
     useUiStore.getState().setSelectedLineId("line-1");
     useUiStore.getState().setLanguage("zh");
 
     expect(useUiStore.getState().currentPage).toBe("settings");
+    expect(useUiStore.getState().activeProjectId).toBe("project-demo");
     expect(useUiStore.getState().inspectorMode).toBe("line");
     expect(useUiStore.getState().selectedLineId).toBe("line-1");
     expect(useUiStore.getState().language).toBe("zh");
+
+    useUiStore.getState().resetUiState();
+
+    expect(useUiStore.getState().activeProjectId).toBeNull();
   });
 
   it.each(["analysis", "translation", "export", "settings-lite"] as const)(

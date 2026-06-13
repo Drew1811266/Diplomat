@@ -3,7 +3,7 @@ import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { useUiStore } from "../src/state/uiStore";
-import { projectFixture } from "../src/test/fixtures";
+import { analyzedDocumentFixture, projectFixture } from "../src/test/fixtures";
 import { renderWithProviders } from "../src/test/render";
 
 function jsonResponse(payload: unknown): Response {
@@ -43,6 +43,12 @@ function stubStartupFetch() {
       }
       if (url.endsWith("/projects")) {
         return jsonResponse({ projects: [projectFixture] });
+      }
+      if (url.endsWith("/projects/project-demo")) {
+        return jsonResponse(projectFixture);
+      }
+      if (url.endsWith("/projects/project-demo/subtitle")) {
+        return jsonResponse(analyzedDocumentFixture);
       }
       throw new Error(`Unexpected fetch: ${url}`);
     })
@@ -103,5 +109,6 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Open" }));
     expect(await screen.findByRole("main", { name: "Workbench" })).toBeVisible();
+    expect(useUiStore.getState().activeProjectId).toBe("project-demo");
   });
 });
