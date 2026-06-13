@@ -13,14 +13,23 @@
   },
   "dependencies": {
     "@diplomat/shared": "workspace:*",
+    "@mantine/core": "^9.3.1",
+    "@mantine/hooks": "^9.3.1",
+    "@mantine/notifications": "^9.3.1",
+    "@tabler/icons-react": "^3.44.0",
+    "@tanstack/react-query": "^5.101.0",
     "@tauri-apps/api": "2.5.0",
     "@vitejs/plugin-react": "^4.5.0",
+    "i18next": "^26.3.1",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-i18next": "^17.0.8",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "jsdom": "^26.1.0",
