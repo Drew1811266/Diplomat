@@ -1,19 +1,38 @@
-import { Badge, Box, Center, Group, Stack, Text } from "@mantine/core";
+import { Box, Stack, Text } from "@mantine/core";
+import type { SubtitleLine } from "@diplomat/shared";
 import { useMediaQuery } from "@mantine/hooks";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { InspectorPanel } from "../components/InspectorPanel";
+import { LineInspector } from "../components/inspectors/LineInspector";
+import { SubtitleGrid, type SubtitleGridFilter } from "../components/SubtitleGrid";
 import { TimelineStrip } from "../components/TimelineStrip";
 import { TopToolbar } from "../components/TopToolbar";
 import { VideoPreviewPanel } from "../components/VideoPreviewPanel";
 import { useUiStore } from "../state/uiStore";
+import { analyzedDocumentFixture } from "../test/fixtures";
 
 export function WorkbenchPage() {
   const { t } = useTranslation();
   const isNarrow = useMediaQuery("(max-width: 900px)");
   const inspectorMode = useUiStore((state) => state.inspectorMode);
   const setInspectorMode = useUiStore((state) => state.setInspectorMode);
-  const selectedLine = null;
+  const selectedLineId = useUiStore((state) => state.selectedLineId);
+  const setSelectedLineId = useUiStore((state) => state.setSelectedLineId);
+  const [subtitleDocument, setSubtitleDocument] = useState(analyzedDocumentFixture);
+  const [subtitleFilter, setSubtitleFilter] = useState<SubtitleGridFilter>("all");
   const layout = isNarrow ? "stacked" : "split";
+  const selectedLine = useMemo(
+    () => subtitleDocument.lines.find((line) => line.id === selectedLineId) ?? null,
+    [selectedLineId, subtitleDocument.lines]
+  );
+
+  function updateLine(nextLine: SubtitleLine) {
+    setSubtitleDocument((currentDocument) => ({
+      ...currentDocument,
+      lines: currentDocument.lines.map((line) => (line.id === nextLine.id ? nextLine : line))
+    }));
+  }
 
   return (
     <Box
@@ -59,51 +78,32 @@ export function WorkbenchPage() {
             <VideoPreviewPanel sourceVideoPath={null} selectedLine={selectedLine} />
           </Box>
 
-          <Box
-            component="section"
-            role="region"
-            aria-label={t("workbench.subtitleGrid")}
-            bg="#ffffff"
-            style={{
-              minHeight: 0,
-              borderTop: "1px solid #cbd5e1",
-              overflow: "hidden",
-              display: "grid",
-              gridTemplateRows: "36px minmax(0, 1fr)"
-            }}
-          >
-            <Group
-              h={36}
-              px="sm"
-              justify="space-between"
-              wrap="nowrap"
-              style={{ borderBottom: "1px solid #e2e8f0" }}
-            >
-              <Text size="sm" fw={700} c="#0f172a">
-                {t("workbench.subtitleGrid")}
-              </Text>
-              <Badge size="sm" variant="light" color="gray">
-                {t("status.ready")}
-              </Badge>
-            </Group>
-            <Center data-testid="subtitle-grid-body" p="md" style={{ minHeight: 0, overflow: "auto" }}>
-              <Stack align="center" gap={4}>
-                <Text size="sm" fw={700} c="#334155">
-                  {t("workbench.noDocument")}
-                </Text>
-              </Stack>
-            </Center>
-          </Box>
+          <SubtitleGrid
+            lines={subtitleDocument.lines}
+            selectedLineId={selectedLineId}
+            filter={subtitleFilter}
+            onFilterChange={setSubtitleFilter}
+            onSelectLine={setSelectedLineId}
+          />
 
-          <TimelineStrip durationMs={0} lineCount={0} />
+          <TimelineStrip durationMs={subtitleDocument.durationMs} lineCount={subtitleDocument.lines.length} />
         </Box>
 
         <InspectorPanel mode={inspectorMode} layout={isNarrow ? "stacked" : "side"}>
-          <Stack gap="sm">
-            <Text size="sm" c="#334155">
-              {inspectorMode === "line" ? t("inspector.emptyLine") : t("status.ready")}
-            </Text>
-          </Stack>
+          {inspectorMode === "line" ? (
+            <LineInspector
+              line={selectedLine}
+              busy={false}
+              onChangeLine={updateLine}
+              onSave={() => undefined}
+            />
+          ) : (
+            <Stack gap="sm">
+              <Text size="sm" c="#334155">
+                {t("status.ready")}
+              </Text>
+            </Stack>
+          )}
         </InspectorPanel>
       </Box>
     </Box>

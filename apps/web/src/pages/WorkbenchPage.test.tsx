@@ -1,4 +1,5 @@
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appI18n } from "../app/i18n";
 import { useUiStore } from "../state/uiStore";
@@ -51,6 +52,19 @@ describe("WorkbenchPage", () => {
     expect(screen.getByTestId("inspector-body")).toHaveStyle({ overflow: "auto" });
   });
 
+  it("selects a subtitle row, returns to line inspector mode, and updates preview overlay", async () => {
+    const user = userEvent.setup();
+    useUiStore.getState().setInspectorMode("translation");
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+
+    expect(screen.getByRole("heading", { name: "Line" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Source text")).toHaveValue("原始字幕文本");
+    expect(within(screen.getByLabelText("Video preview")).getByText("原始字幕文本")).toBeInTheDocument();
+  });
+
   it("uses localized workbench accessibility labels", async () => {
     await appI18n.changeLanguage("zh");
 
@@ -62,6 +76,6 @@ describe("WorkbenchPage", () => {
     expect(screen.getByLabelText("字幕表格")).toBeInTheDocument();
     expect(screen.getByLabelText("检查器")).toBeInTheDocument();
     expect(screen.getByLabelText("时间线")).toBeInTheDocument();
-    expect(screen.getByText("0 行字幕")).toBeInTheDocument();
+    expect(screen.getByText("1 行字幕")).toBeInTheDocument();
   });
 });

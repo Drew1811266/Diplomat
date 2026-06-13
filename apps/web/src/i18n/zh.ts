@@ -47,6 +47,41 @@ export const zh = {
     previewUnavailable: "视频预览不可用",
     subtitleGrid: "字幕表格"
   },
+  subtitleGrid: {
+    region: "字幕表格面板",
+    rows: "{{count}} 行",
+    filters: {
+      label: "字幕筛选",
+      all: "全部",
+      missing: "缺失译文"
+    },
+    columns: {
+      id: "ID",
+      start: "开始",
+      end: "结束",
+      source: "源文",
+      translation: "译文",
+      review: "审阅",
+      status: "状态"
+    },
+    selectLine: "选择字幕 {{id}}",
+    empty: "暂无字幕行",
+    noFilterMatches: "当前筛选下没有字幕行。",
+    noSourceText: "无源文",
+    noTranslatedText: "无译文",
+    reviewStatus: {
+      draft: "草稿",
+      reviewed: "已审阅",
+      approved: "已批准"
+    },
+    translationStatus: {
+      not_requested: "未请求",
+      queued: "排队中",
+      translated: "已翻译",
+      edited: "已编辑",
+      failed: "失败"
+    }
+  },
   inspector: {
     line: "字幕行",
     analysis: "分析",

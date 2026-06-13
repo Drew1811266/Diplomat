@@ -47,6 +47,41 @@ export const en = {
     previewUnavailable: "Video preview unavailable",
     subtitleGrid: "Subtitle Grid"
   },
+  subtitleGrid: {
+    region: "Subtitle grid panel",
+    rows: "{{count}} rows",
+    filters: {
+      label: "Subtitle filters",
+      all: "All",
+      missing: "Missing translations"
+    },
+    columns: {
+      id: "ID",
+      start: "Start",
+      end: "End",
+      source: "Source",
+      translation: "Translation",
+      review: "Review",
+      status: "Status"
+    },
+    selectLine: "Select line {{id}}",
+    empty: "No subtitle rows",
+    noFilterMatches: "No subtitle rows match the current filter.",
+    noSourceText: "No source text",
+    noTranslatedText: "No translated text",
+    reviewStatus: {
+      draft: "Draft",
+      reviewed: "Reviewed",
+      approved: "Approved"
+    },
+    translationStatus: {
+      not_requested: "Not requested",
+      queued: "Queued",
+      translated: "Translated",
+      edited: "Edited",
+      failed: "Failed"
+    }
+  },
   inspector: {
     line: "Line",
     analysis: "Analysis",
