@@ -1,10 +1,37 @@
 # Diplomat 0.2 Frontend Workbench
 
-This document tracks the 0.2 desktop shell E2E target. The desktop smoke target runs through the existing Web Playwright configuration in headed Chromium so it is stable on developer machines while the real Tauri automation path is still being hardened.
+This document tracks the 0.2 frontend workbench release checks and desktop shell E2E target. Playwright checks are run as explicit release/manual commands instead of from `scripts/check.ps1` because browser cache, headed mode, and visual baselines can vary by developer or CI environment.
+
+## 0.2 Manual/Release Checklist
+
+Run the deterministic web checks from the repository root:
+
+```powershell
+corepack pnpm --dir apps/web test
+corepack pnpm --dir apps/web typecheck
+```
+
+Run the web E2E suite separately:
+
+```powershell
+corepack pnpm --dir apps/web e2e
+```
+
+Run the desktop smoke target on a machine with a headed browser available:
+
+```powershell
+corepack pnpm --dir apps/web e2e:desktop
+```
+
+Only update the visual baseline when the 0.2 workbench visual change is intentional, then review the generated PNG diff before committing:
+
+```powershell
+corepack pnpm --dir apps/web e2e:update
+```
 
 ## Current Smoke Target
 
-Run the desktop smoke target from the repository root:
+The desktop smoke target runs through the existing Web Playwright configuration in headed Chromium so it is stable on developer machines while the real Tauri automation path is still being hardened. Run it from the repository root:
 
 ```powershell
 corepack pnpm --dir apps/web e2e:desktop
