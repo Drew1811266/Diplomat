@@ -87,7 +87,9 @@ export const en = {
     analysis: "Analysis",
     translation: "Translation",
     export: "Export",
-    emptyLine: "Select a subtitle row to edit timing and text."
+    emptyLine: "Select a subtitle row to edit timing and text.",
+    exportDisabledNoLines: "No subtitle rows are available to export.",
+    exportResult: "SRT exported: {{exportPath}}"
   },
   fields: {
     projectName: "Project name",
@@ -103,9 +105,19 @@ export const en = {
     device: "Device",
     computeType: "Compute type",
     initialPrompt: "Initial prompt",
+    translationMode: "Translation mode",
     endpoint: "Endpoint",
     apiKeyEnv: "API key env",
     exportMode: "Export mode"
+  },
+  translationModes: {
+    missing_only: "missing only",
+    overwrite_all: "overwrite all"
+  },
+  exportModes: {
+    source: "source",
+    target: "target",
+    bilingual: "bilingual"
   },
   actions: {
     start: "Start",

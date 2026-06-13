@@ -65,6 +65,24 @@ describe("WorkbenchPage", () => {
     expect(within(screen.getByLabelText("Video preview")).getByText("原始字幕文本")).toBeInTheDocument();
   });
 
+  it("switches inspector modes from the toolbar", async () => {
+    const user = userEvent.setup();
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await user.click(screen.getByRole("button", { name: "Analyze" }));
+    expect(screen.getByRole("heading", { name: "Analysis" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Provider" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Translate" }));
+    expect(screen.getByRole("heading", { name: "Translation" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Target language")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    expect(screen.getByRole("heading", { name: "Export" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Export mode" })).toBeInTheDocument();
+  });
+
   it("uses localized workbench accessibility labels", async () => {
     await appI18n.changeLanguage("zh");
 

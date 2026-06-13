@@ -1,16 +1,43 @@
 import { Box, Stack, Text } from "@mantine/core";
-import type { SubtitleLine } from "@diplomat/shared";
+import type {
+  AnalysisJobRequest,
+  SrtExportMode,
+  SrtExportResponse,
+  SubtitleLine,
+  TranslationJobRequest
+} from "@diplomat/shared";
 import { useMediaQuery } from "@mantine/hooks";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { InspectorPanel } from "../components/InspectorPanel";
+import { AnalysisInspector } from "../components/inspectors/AnalysisInspector";
+import { ExportInspector } from "../components/inspectors/ExportInspector";
 import { LineInspector } from "../components/inspectors/LineInspector";
+import { TranslationInspector } from "../components/inspectors/TranslationInspector";
 import { SubtitleGrid, type SubtitleGridFilter } from "../components/SubtitleGrid";
 import { TimelineStrip } from "../components/TimelineStrip";
 import { TopToolbar } from "../components/TopToolbar";
 import { VideoPreviewPanel } from "../components/VideoPreviewPanel";
 import { useUiStore } from "../state/uiStore";
 import { analyzedDocumentFixture } from "../test/fixtures";
+
+const defaultAnalysisConfig: AnalysisJobRequest = {
+  provider: "fake",
+  modelNameOrPath: null,
+  device: "cpu",
+  computeType: "int8",
+  sourceLanguage: null,
+  initialPrompt: null
+};
+
+const defaultTranslationConfig: TranslationJobRequest = {
+  provider: "fake",
+  sourceLanguage: "zh",
+  targetLanguage: "en",
+  mode: "missing_only",
+  endpoint: null,
+  apiKeyEnv: null
+};
 
 export function WorkbenchPage() {
   const { t } = useTranslation();
@@ -21,7 +48,12 @@ export function WorkbenchPage() {
   const setSelectedLineId = useUiStore((state) => state.setSelectedLineId);
   const [subtitleDocument, setSubtitleDocument] = useState(analyzedDocumentFixture);
   const [subtitleFilter, setSubtitleFilter] = useState<SubtitleGridFilter>("all");
+  const [analysisConfig, setAnalysisConfig] = useState(defaultAnalysisConfig);
+  const [translationConfig, setTranslationConfig] = useState(defaultTranslationConfig);
+  const [exportMode, setExportMode] = useState<SrtExportMode>("bilingual");
+  const [exportResult, setExportResult] = useState<SrtExportResponse | null>(null);
   const layout = isNarrow ? "stacked" : "split";
+  const canExport = subtitleDocument.lines.length > 0;
   const selectedLine = useMemo(
     () => subtitleDocument.lines.find((line) => line.id === selectedLineId) ?? null,
     [selectedLineId, subtitleDocument.lines]
@@ -32,6 +64,75 @@ export function WorkbenchPage() {
       ...currentDocument,
       lines: currentDocument.lines.map((line) => (line.id === nextLine.id ? nextLine : line))
     }));
+  }
+
+  function handleExport() {
+    setExportResult({
+      projectId: analyzedDocumentFixture.projectId,
+      exportPath: `fixture-${exportMode}.srt`,
+      mode: exportMode
+    });
+  }
+
+  function renderInspectorContent() {
+    if (inspectorMode === "line") {
+      return (
+        <LineInspector
+          line={selectedLine}
+          busy={false}
+          onChangeLine={updateLine}
+          onSave={() => undefined}
+        />
+      );
+    }
+
+    if (inspectorMode === "analysis") {
+      return (
+        <AnalysisInspector
+          config={analysisConfig}
+          busy={false}
+          onConfigChange={setAnalysisConfig}
+          onStart={() => undefined}
+          onCancel={() => undefined}
+          onRetry={() => undefined}
+        />
+      );
+    }
+
+    if (inspectorMode === "translation") {
+      return (
+        <TranslationInspector
+          config={translationConfig}
+          busy={false}
+          onConfigChange={setTranslationConfig}
+          onStart={() => undefined}
+          onCancel={() => undefined}
+          onRetry={() => undefined}
+        />
+      );
+    }
+
+    if (inspectorMode === "export") {
+      return (
+        <ExportInspector
+          mode={exportMode}
+          result={exportResult}
+          canExport={canExport}
+          disabledReason={canExport ? null : t("inspector.exportDisabledNoLines")}
+          busy={false}
+          onModeChange={setExportMode}
+          onExport={handleExport}
+        />
+      );
+    }
+
+    return (
+      <Stack gap="sm">
+        <Text size="sm" c="#334155">
+          {t("status.ready")}
+        </Text>
+      </Stack>
+    );
   }
 
   return (
@@ -51,7 +152,7 @@ export function WorkbenchPage() {
     >
       <TopToolbar
         canSave={false}
-        canExport
+        canExport={canExport}
         onInspectorMode={setInspectorMode}
         onSave={() => undefined}
       />
@@ -90,20 +191,7 @@ export function WorkbenchPage() {
         </Box>
 
         <InspectorPanel mode={inspectorMode} layout={isNarrow ? "stacked" : "side"}>
-          {inspectorMode === "line" ? (
-            <LineInspector
-              line={selectedLine}
-              busy={false}
-              onChangeLine={updateLine}
-              onSave={() => undefined}
-            />
-          ) : (
-            <Stack gap="sm">
-              <Text size="sm" c="#334155">
-                {t("status.ready")}
-              </Text>
-            </Stack>
-          )}
+          {renderInspectorContent()}
         </InspectorPanel>
       </Box>
     </Box>

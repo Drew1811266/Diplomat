@@ -87,7 +87,9 @@ export const zh = {
     analysis: "分析",
     translation: "翻译",
     export: "导出",
-    emptyLine: "请选择一条字幕来编辑时间和文本。"
+    emptyLine: "请选择一条字幕来编辑时间和文本。",
+    exportDisabledNoLines: "暂无可导出的字幕行。",
+    exportResult: "SRT 已导出：{{exportPath}}"
   },
   fields: {
     projectName: "项目名称",
@@ -103,9 +105,19 @@ export const zh = {
     device: "设备",
     computeType: "计算类型",
     initialPrompt: "初始提示词",
+    translationMode: "翻译模式",
     endpoint: "服务地址",
     apiKeyEnv: "API key 环境变量",
     exportMode: "导出模式"
+  },
+  translationModes: {
+    missing_only: "仅缺失项",
+    overwrite_all: "覆盖全部"
+  },
+  exportModes: {
+    source: "源文",
+    target: "译文",
+    bilingual: "双语"
   },
   actions: {
     start: "开始",
