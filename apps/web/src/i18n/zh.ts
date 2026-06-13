@@ -142,8 +142,12 @@ export const zh = {
     title: "设置",
     language: "界面语言",
     theme: "主题",
+    themeLight: "浅色",
     worker: "Worker",
+    workerUrl: "Worker URL",
     defaults: "默认值",
+    defaultSourceLanguage: "默认源语言",
+    defaultTargetLanguage: "默认目标语言",
     defaultExportMode: "默认导出模式"
   },
   status: {

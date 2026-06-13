@@ -142,8 +142,12 @@ export const en = {
     title: "Settings",
     language: "Interface language",
     theme: "Theme",
+    themeLight: "Light",
     worker: "Worker",
+    workerUrl: "Worker URL",
     defaults: "Defaults",
+    defaultSourceLanguage: "Default source language",
+    defaultTargetLanguage: "Default target language",
     defaultExportMode: "Default export mode"
   },
   status: {

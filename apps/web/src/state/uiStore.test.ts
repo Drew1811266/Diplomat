@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { useUiStore } from "./uiStore";
+import { LANGUAGE_STORAGE_KEY, getInitialLanguage, useUiStore } from "./uiStore";
 
 describe("uiStore", () => {
   beforeEach(() => {
+    localStorage.clear();
     useUiStore.getState().resetUiState();
   });
 
@@ -21,6 +22,29 @@ describe("uiStore", () => {
     useUiStore.getState().resetUiState();
 
     expect(useUiStore.getState().activeProjectId).toBeNull();
+  });
+
+  it("reads a valid persisted language and falls back to English for missing or invalid values", () => {
+    expect(getInitialLanguage()).toBe("en");
+
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, "zh");
+    expect(getInitialLanguage()).toBe("zh");
+
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, "fr");
+    expect(getInitialLanguage()).toBe("en");
+  });
+
+  it("persists language changes and reset keeps the user's stored language", () => {
+    useUiStore.getState().setLanguage("zh");
+    useUiStore.getState().setPage("settings");
+
+    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("zh");
+
+    useUiStore.getState().resetUiState();
+
+    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("zh");
+    expect(useUiStore.getState().language).toBe("zh");
+    expect(useUiStore.getState().currentPage).toBe("projects");
   });
 
   it.each(["analysis", "translation", "export", "settings-lite"] as const)(
