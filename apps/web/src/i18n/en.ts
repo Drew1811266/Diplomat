@@ -1,0 +1,90 @@
+export const en = {
+  app: {
+    name: "Diplomat",
+    subtitle: "Subtitle Workbench"
+  },
+  nav: {
+    projects: "Projects",
+    workbench: "Workbench",
+    tasks: "Tasks",
+    settings: "Settings"
+  },
+  projectCenter: {
+    title: "Project Center",
+    description: "Open a recent subtitle project or import a video to start a new one.",
+    recentProjects: "Recent Projects",
+    createProject: "Create Project",
+    importVideo: "Import Video",
+    noProjects: "No recent projects",
+    noProjectsHint: "Import a video to create your first local project.",
+    workerReady: "Worker ready",
+    workerStarting: "Worker starting",
+    workerUnavailable: "Worker unavailable",
+    retryWorker: "Retry Worker"
+  },
+  toolbar: {
+    import: "Import",
+    analyze: "Analyze",
+    translate: "Translate",
+    save: "Save",
+    export: "Export"
+  },
+  workbench: {
+    noProject: "No project selected",
+    noDocument: "No subtitle document",
+    unsaved: "Unsaved changes",
+    saved: "Saved",
+    previewUnavailable: "Video preview unavailable",
+    subtitleGrid: "Subtitle Grid"
+  },
+  inspector: {
+    line: "Line",
+    analysis: "Analysis",
+    translation: "Translation",
+    export: "Export",
+    emptyLine: "Select a subtitle row to edit timing and text."
+  },
+  fields: {
+    projectName: "Project name",
+    sourceVideoPath: "Source video path",
+    sourceLanguage: "Source language",
+    targetLanguage: "Target language",
+    startMs: "Start ms",
+    endMs: "End ms",
+    sourceText: "Source text",
+    translatedText: "Translated text",
+    provider: "Provider",
+    model: "Model",
+    device: "Device",
+    computeType: "Compute type",
+    initialPrompt: "Initial prompt",
+    endpoint: "Endpoint",
+    apiKeyEnv: "API key env",
+    exportMode: "Export mode"
+  },
+  actions: {
+    start: "Start",
+    cancel: "Cancel",
+    retry: "Retry",
+    open: "Open",
+    save: "Save",
+    close: "Close"
+  },
+  settings: {
+    title: "Settings",
+    language: "Interface language",
+    theme: "Theme",
+    worker: "Worker",
+    defaults: "Defaults",
+    defaultExportMode: "Default export mode"
+  },
+  status: {
+    ready: "Ready",
+    running: "Running",
+    queued: "Queued",
+    completed: "Completed",
+    failed: "Failed",
+    canceled: "Canceled",
+    blocked: "Blocked"
+  }
+} as const;
