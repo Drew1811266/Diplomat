@@ -8,6 +8,7 @@
     "check": "pnpm test && pnpm typecheck",
     "dev": "vite",
     "e2e": "playwright test",
+    "e2e:desktop": "playwright test e2e/desktop-smoke.spec.ts --headed",
     "e2e:update": "playwright test --update-snapshots",
     "e2e:ui": "playwright test --ui",
     "build": "vite build",
