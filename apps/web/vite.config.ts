@@ -4,6 +4,7 @@ import { defineConfig, type UserConfig } from "vite";
 type VitestConfig = {
   test: {
     environment: "jsdom";
+    include: string[];
     setupFiles: string[];
   };
 };
@@ -16,6 +17,7 @@ const config = {
   },
   test: {
     environment: "jsdom",
+    include: ["src/**/*.{test,spec}.{ts,tsx}", "tests/**/*.{test,spec}.{ts,tsx}"],
     setupFiles: ["@testing-library/jest-dom/vitest"]
   }
 } satisfies UserConfig & VitestConfig;
