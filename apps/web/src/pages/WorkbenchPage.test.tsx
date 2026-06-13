@@ -1,5 +1,6 @@
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { SubtitleDocument, TaskResponse } from "@diplomat/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appI18n } from "../app/i18n";
 import { useUiStore } from "../state/uiStore";
@@ -24,6 +25,16 @@ const liveSubtitleDocument = {
   ]
 };
 
+const refreshedSubtitleDocument = {
+  ...liveSubtitleDocument,
+  lines: [
+    {
+      ...liveSubtitleDocument.lines[0],
+      sourceText: "Server refreshed subtitle"
+    }
+  ]
+};
+
 function stubMatchMedia(matches: boolean) {
   vi.stubGlobal("matchMedia", () => ({
     matches,
@@ -33,16 +44,39 @@ function stubMatchMedia(matches: boolean) {
 }
 
 type ActiveProjectFetchOptions = {
-  analysisTask?: typeof completedAnalysisTaskFixture;
-  translationTask?: typeof completedTranslationTaskFixture;
+  projectError?: { status: number; detail: string };
+  subtitleError?: { status: number; detail: string };
+  saveError?: { status: number; detail: string };
+  analysisError?: { status: number; detail: string };
+  translationError?: { status: number; detail: string };
+  exportError?: { status: number; detail: string };
+  analysisTask?: TaskResponse;
+  translationTask?: TaskResponse;
+  taskResponses?: TaskResponse[];
+  subtitleDocuments?: SubtitleDocument[];
 };
 
 function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
-  let currentDocument = liveSubtitleDocument;
+  let currentDocument: SubtitleDocument = options.subtitleDocuments?.[0] ?? liveSubtitleDocument;
+  let subtitleGetCount = 0;
+  let taskFetchCount = 0;
+
+  function errorResponse(error: { status: number; detail: string }): Response {
+    return {
+      ok: false,
+      status: error.status,
+      json: async () => ({ detail: error.detail })
+    } as Response;
+  }
+
   const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
 
     if (url.endsWith("/projects/project-demo") && init?.method === undefined) {
+      if (options.projectError) {
+        return errorResponse(options.projectError);
+      }
+
       return {
         ok: true,
         status: 200,
@@ -51,14 +85,28 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
     }
 
     if (url.endsWith("/projects/project-demo/subtitle") && init?.method === undefined) {
+      if (options.subtitleError) {
+        return errorResponse(options.subtitleError);
+      }
+
+      const document =
+        options.subtitleDocuments?.[
+          Math.min(subtitleGetCount, options.subtitleDocuments.length - 1)
+        ] ?? currentDocument;
+      subtitleGetCount += 1;
+
       return {
         ok: true,
         status: 200,
-        json: async () => currentDocument
+        json: async () => document
       } as Response;
     }
 
     if (url.endsWith("/projects/project-demo/subtitle") && init?.method === "PUT") {
+      if (options.saveError) {
+        return errorResponse(options.saveError);
+      }
+
       const body = JSON.parse(String(init.body)) as { document: typeof liveSubtitleDocument };
       currentDocument = body.document;
       return {
@@ -69,6 +117,10 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
     }
 
     if (url.endsWith("/projects/project-demo/analysis-jobs") && init?.method === "POST") {
+      if (options.analysisError) {
+        return errorResponse(options.analysisError);
+      }
+
       return {
         ok: true,
         status: 200,
@@ -77,6 +129,10 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
     }
 
     if (url.endsWith("/projects/project-demo/translation-jobs") && init?.method === "POST") {
+      if (options.translationError) {
+        return errorResponse(options.translationError);
+      }
+
       return {
         ok: true,
         status: 200,
@@ -85,6 +141,10 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
     }
 
     if (url.endsWith("/projects/project-demo/exports/srt") && init?.method === "POST") {
+      if (options.exportError) {
+        return errorResponse(options.exportError);
+      }
+
       return {
         ok: true,
         status: 200,
@@ -93,6 +153,20 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
           exportPath: "D:/Diplomat/projects/project-demo/demo.srt",
           mode: "bilingual"
         })
+      } as Response;
+    }
+
+    if (url.endsWith("/tasks/task-1") && init?.method === undefined) {
+      const task =
+        options.taskResponses?.[
+          Math.min(taskFetchCount, options.taskResponses.length - 1)
+        ] ?? completedAnalysisTaskFixture;
+      taskFetchCount += 1;
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => task
       } as Response;
     }
 
@@ -122,6 +196,26 @@ describe("WorkbenchPage", () => {
     expect(screen.getByText("No project selected")).toBeInTheDocument();
     expect(screen.getByText("0 subtitle rows")).toBeInTheDocument();
     expect(screen.queryByText("原始字幕文本")).not.toBeInTheDocument();
+  });
+
+  it("shows project query errors instead of treating the workbench as empty", async () => {
+    stubActiveProjectFetch({ projectError: { status: 500, detail: "Project unavailable" } });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("Could not load project.", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByText("Worker request failed: 500: Project unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("No subtitle rows are available to export.")).not.toBeInTheDocument();
+  });
+
+  it("shows subtitle query errors instead of treating the workbench as empty", async () => {
+    stubActiveProjectFetch({ subtitleError: { status: 404, detail: "Subtitle missing" } });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("Could not load subtitle document.")).toBeInTheDocument();
+    expect(screen.getByText("Worker request failed: 404: Subtitle missing")).toBeInTheDocument();
+    expect(screen.queryByText("No subtitle rows are available to export.")).not.toBeInTheDocument();
   });
 
   it("renders the media-centered workbench regions", async () => {
@@ -257,6 +351,58 @@ describe("WorkbenchPage", () => {
     expect(within(toolbar).getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
+  it("keeps the local draft when a background subtitle refetch returns newer data", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubActiveProjectFetch({
+      analysisTask: runningAnalysisTaskFixture,
+      taskResponses: [completedAnalysisTaskFixture],
+      subtitleDocuments: [liveSubtitleDocument, refreshedSubtitleDocument]
+    });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.clear(screen.getByLabelText("Source text"));
+    await user.type(screen.getByLabelText("Source text"), "Local draft survives refetch");
+
+    await user.click(screen.getByRole("button", { name: "Analyze" }));
+    await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Start" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(
+          ([input, init]) =>
+            String(input).endsWith("/projects/project-demo/subtitle") && init?.method === undefined
+        )
+      ).toHaveLength(2)
+    );
+
+    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    expect(screen.getByLabelText("Source text")).toHaveValue("Local draft survives refetch");
+    expect(screen.queryByText("Server refreshed subtitle")).not.toBeInTheDocument();
+  });
+
+  it("keeps draft edits and shows an error when saving subtitles fails", async () => {
+    const user = userEvent.setup();
+    stubActiveProjectFetch({ saveError: { status: 500, detail: "Save failed" } });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.clear(screen.getByLabelText("Source text"));
+    await user.type(screen.getByLabelText("Source text"), "Unsaved after failed PUT");
+
+    const toolbar = screen.getByRole("toolbar", { name: "Project tools" });
+    const toolbarSave = within(toolbar).getByRole("button", { name: "Save" });
+    await user.click(toolbarSave);
+
+    expect(await screen.findByText("Worker request failed: 500: Save failed")).toBeInTheDocument();
+    expect(screen.getByLabelText("Source text")).toHaveValue("Unsaved after failed PUT");
+    expect(toolbarSave).toBeEnabled();
+  });
+
   it("starts analysis and translation jobs and exports through worker mutations", async () => {
     const user = userEvent.setup();
     const fetchMock = stubActiveProjectFetch();
@@ -308,9 +454,37 @@ describe("WorkbenchPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows visible errors for analysis, translation, and export mutation failures", async () => {
+    const user = userEvent.setup();
+    stubActiveProjectFetch({
+      analysisError: { status: 500, detail: "Analysis failed" },
+      translationError: { status: 500, detail: "Translation failed" },
+      exportError: { status: 500, detail: "Export failed" }
+    });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Analyze" }));
+    await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Start" }));
+    expect(await screen.findByText("Worker request failed: 500: Analysis failed")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Translate" }));
+    await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Start" }));
+    expect(await screen.findByText("Worker request failed: 500: Translation failed")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Export" }));
+    expect(await screen.findByText("Worker request failed: 500: Export failed")).toBeInTheDocument();
+  });
+
   it("blocks export while the latest local task is active", async () => {
     const user = userEvent.setup();
-    stubActiveProjectFetch({ analysisTask: runningAnalysisTaskFixture });
+    stubActiveProjectFetch({
+      analysisTask: runningAnalysisTaskFixture,
+      taskResponses: [runningAnalysisTaskFixture]
+    });
 
     renderWithProviders(<WorkbenchPage />);
 
@@ -323,6 +497,27 @@ describe("WorkbenchPage", () => {
     const inspector = screen.getByLabelText("Inspector");
     expect(within(inspector).getByRole("button", { name: "Export" })).toBeDisabled();
     expect(within(inspector).getByText("Wait for analysis or translation to finish.")).toBeInTheDocument();
+  });
+
+  it("uses localized task-active export blocking copy", async () => {
+    const user = userEvent.setup();
+    await appI18n.changeLanguage("zh");
+    stubActiveProjectFetch({
+      analysisTask: runningAnalysisTaskFixture,
+      taskResponses: [runningAnalysisTaskFixture]
+    });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "分析" }));
+    await user.click(within(screen.getByLabelText("检查器")).getByRole("button", { name: "开始" }));
+    await user.click(screen.getByRole("button", { name: "导出" }));
+
+    expect(
+      within(screen.getByLabelText("检查器")).getByText("请等待分析或翻译任务完成。")
+    ).toBeInTheDocument();
   });
 
   it("uses localized workbench accessibility labels", async () => {

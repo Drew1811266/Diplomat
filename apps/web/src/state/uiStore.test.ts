@@ -33,4 +33,14 @@ describe("uiStore", () => {
       expect(useUiStore.getState().inspectorMode).toBe("line");
     }
   );
+
+  it("clears the selected subtitle line when the active project changes", () => {
+    useUiStore.getState().setActiveProjectId("project-demo");
+    useUiStore.getState().setSelectedLineId("line-1");
+
+    useUiStore.getState().setActiveProjectId("project-next");
+
+    expect(useUiStore.getState().activeProjectId).toBe("project-next");
+    expect(useUiStore.getState().selectedLineId).toBeNull();
+  });
 });

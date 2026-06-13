@@ -44,6 +44,10 @@ export const en = {
     noDocument: "No subtitle document",
     unsaved: "Unsaved changes",
     saved: "Saved",
+    loadingProject: "Loading project...",
+    loadingSubtitle: "Loading subtitle document...",
+    projectLoadError: "Could not load project.",
+    subtitleLoadError: "Could not load subtitle document.",
     previewUnavailable: "Video preview unavailable",
     subtitleGrid: "Subtitle Grid"
   },
@@ -90,6 +94,8 @@ export const en = {
     emptyLine: "Select a subtitle row to edit timing and text.",
     exportDisabledNoLines: "No subtitle rows are available to export.",
     exportDisabledUnsaved: "Save subtitle edits before exporting.",
+    exportDisabledTaskActive: "Wait for analysis or translation to finish.",
+    exportDisabledDataError: "Resolve project or subtitle errors before exporting.",
     exportResult: "SRT exported: {{exportPath}}"
   },
   fields: {

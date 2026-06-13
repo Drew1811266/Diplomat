@@ -35,7 +35,7 @@ const initialState = {
 export const useUiStore = create<UiState>((set) => ({
   ...initialState,
   setPage: (currentPage) => set({ currentPage }),
-  setActiveProjectId: (activeProjectId) => set({ activeProjectId }),
+  setActiveProjectId: (activeProjectId) => set({ activeProjectId, selectedLineId: null }),
   setInspectorMode: (inspectorMode) => set({ inspectorMode }),
   setSelectedLineId: (selectedLineId) =>
     set({

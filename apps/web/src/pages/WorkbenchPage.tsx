@@ -9,7 +9,7 @@ import type {
   TranslationJobRequest
 } from "@diplomat/shared";
 import { useMediaQuery } from "@mantine/hooks";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { AnalysisInspector } from "../components/inspectors/AnalysisInspector";
@@ -29,6 +29,7 @@ import {
 import {
   isTaskActive,
   useCreateAnalysisJobMutation,
+  useTaskQuery,
   useCreateTranslationJobMutation
 } from "../queries/taskQueries";
 import { useUiStore } from "../state/uiStore";
@@ -52,7 +53,47 @@ const defaultTranslationConfig: TranslationJobRequest = {
 };
 
 const emptySubtitleLines: SubtitleLine[] = [];
-const taskActiveExportReason = "Wait for analysis or translation to finish.";
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : null;
+}
+
+function StatusNotice({
+  title,
+  message,
+  tone = "info"
+}: {
+  title: string;
+  message?: string | null;
+  tone?: "info" | "error";
+}) {
+  return (
+    <Box
+      role={tone === "error" ? "alert" : "status"}
+      p="sm"
+      bg={tone === "error" ? "#fef2f2" : "#f8fafc"}
+      style={{
+        borderTop: "1px solid #cbd5e1",
+        borderBottom: "1px solid #e2e8f0"
+      }}
+    >
+      <Text size="sm" fw={800} c={tone === "error" ? "red" : "#334155"}>
+        {title}
+      </Text>
+      {message ? (
+        <Text size="sm" c={tone === "error" ? "red" : "dimmed"}>
+          {message}
+        </Text>
+      ) : null}
+    </Box>
+  );
+}
+
+function ErrorMessage({ error }: { error: unknown }) {
+  const message = getErrorMessage(error);
+
+  return message ? <StatusNotice title={message} tone="error" /> : null;
+}
 
 export function WorkbenchPage() {
   const { t } = useTranslation();
@@ -75,22 +116,37 @@ export function WorkbenchPage() {
   const [exportMode, setExportMode] = useState<SrtExportMode>("bilingual");
   const [exportResult, setExportResult] = useState<SrtExportResponse | null>(null);
   const [latestTask, setLatestTask] = useState<TaskResponse | null>(null);
+  const [latestTaskId, setLatestTaskId] = useState<string | null>(null);
+  const task = useTaskQuery(latestTaskId);
+  const refetchedTaskId = useRef<string | null>(null);
+  const polledTask = task.data;
   const subtitleDocument = draftDocument ?? subtitle.data ?? null;
   const subtitleLines = subtitleDocument?.lines ?? emptySubtitleLines;
   const hasUnsavedChanges = Boolean(draftDocument);
   const layout = isNarrow ? "stacked" : "split";
   const hasSubtitleRows = subtitleLines.length > 0;
+  const observedTask = polledTask ?? latestTask;
   const taskActive =
-    isTaskActive(latestTask) || createAnalysisJob.isPending || createTranslationJob.isPending;
+    isTaskActive(observedTask) || createAnalysisJob.isPending || createTranslationJob.isPending;
+  const hasProjectError = project.isError;
+  const hasSubtitleError = subtitle.isError;
+  const dataBlocked = project.isPending || subtitle.isPending || hasProjectError || hasSubtitleError;
   const canExport = Boolean(
-    activeProjectId && subtitleDocument && hasSubtitleRows && !hasUnsavedChanges && !taskActive
+    activeProjectId &&
+      subtitleDocument &&
+      hasSubtitleRows &&
+      !hasUnsavedChanges &&
+      !taskActive &&
+      !dataBlocked
   );
   const exportDisabledReason = canExport
     ? null
     : taskActive
-      ? taskActiveExportReason
+      ? t("inspector.exportDisabledTaskActive")
       : hasUnsavedChanges
         ? t("inspector.exportDisabledUnsaved")
+        : hasProjectError || hasSubtitleError
+          ? t("inspector.exportDisabledDataError")
         : activeProjectId
           ? t("inspector.exportDisabledNoLines")
           : t("workbench.noProject");
@@ -101,12 +157,30 @@ export function WorkbenchPage() {
 
   useEffect(() => {
     setDraftDocument(null);
-  }, [activeProjectId, subtitle.dataUpdatedAt]);
+  }, [activeProjectId]);
 
   useEffect(() => {
     setExportResult(null);
     setLatestTask(null);
+    setLatestTaskId(null);
+    refetchedTaskId.current = null;
   }, [activeProjectId]);
+
+  useEffect(() => {
+    const finishedTask = polledTask;
+    if (
+      !finishedTask ||
+      finishedTask.status !== "completed" ||
+      refetchedTaskId.current === finishedTask.taskId
+    ) {
+      return;
+    }
+
+    refetchedTaskId.current = finishedTask.taskId;
+    if (finishedTask.type === "analysis" || finishedTask.type === "translation") {
+      void subtitle.refetch();
+    }
+  }, [polledTask, subtitle.refetch]);
 
   function updateLine(nextLine: SubtitleLine) {
     if (!subtitleDocument) {
@@ -143,7 +217,9 @@ export function WorkbenchPage() {
     }
 
     try {
-      setLatestTask(await createAnalysisJob.mutateAsync(analysisConfig));
+      const nextTask = await createAnalysisJob.mutateAsync(analysisConfig);
+      setLatestTask(nextTask);
+      setLatestTaskId(nextTask.taskId);
     } catch {
       // Mutation state surfaces the failure; avoid throwing from the UI event.
     }
@@ -155,7 +231,9 @@ export function WorkbenchPage() {
     }
 
     try {
-      setLatestTask(await createTranslationJob.mutateAsync(translationConfig));
+      const nextTask = await createTranslationJob.mutateAsync(translationConfig);
+      setLatestTask(nextTask);
+      setLatestTaskId(nextTask.taskId);
     } catch {
       // Mutation state surfaces the failure; avoid throwing from the UI event.
     }
@@ -176,52 +254,64 @@ export function WorkbenchPage() {
   function renderInspectorContent() {
     if (inspectorMode === "line") {
       return (
-        <LineInspector
-          line={selectedLine}
-          busy={saveSubtitle.isPending}
-          onChangeLine={updateLine}
-          onSave={() => void handleSave()}
-        />
+        <Stack gap="sm">
+          <ErrorMessage error={saveSubtitle.error} />
+          <LineInspector
+            line={selectedLine}
+            busy={saveSubtitle.isPending}
+            onChangeLine={updateLine}
+            onSave={() => void handleSave()}
+          />
+        </Stack>
       );
     }
 
     if (inspectorMode === "analysis") {
       return (
-        <AnalysisInspector
-          config={analysisConfig}
-          busy={!activeProjectId || taskActive}
-          onConfigChange={setAnalysisConfig}
-          onStart={() => void handleStartAnalysis()}
-          onCancel={() => undefined}
-          onRetry={() => undefined}
-        />
+        <Stack gap="sm">
+          <ErrorMessage error={createAnalysisJob.error} />
+          <AnalysisInspector
+            config={analysisConfig}
+            busy={!activeProjectId || taskActive}
+            onConfigChange={setAnalysisConfig}
+            onStart={() => void handleStartAnalysis()}
+            onCancel={() => undefined}
+            onRetry={() => undefined}
+          />
+        </Stack>
       );
     }
 
     if (inspectorMode === "translation") {
       return (
-        <TranslationInspector
-          config={translationConfig}
-          busy={!activeProjectId || taskActive}
-          onConfigChange={setTranslationConfig}
-          onStart={() => void handleStartTranslation()}
-          onCancel={() => undefined}
-          onRetry={() => undefined}
-        />
+        <Stack gap="sm">
+          <ErrorMessage error={createTranslationJob.error} />
+          <TranslationInspector
+            config={translationConfig}
+            busy={!activeProjectId || taskActive}
+            onConfigChange={setTranslationConfig}
+            onStart={() => void handleStartTranslation()}
+            onCancel={() => undefined}
+            onRetry={() => undefined}
+          />
+        </Stack>
       );
     }
 
     if (inspectorMode === "export") {
       return (
-        <ExportInspector
-          mode={exportMode}
-          result={exportResult}
-          canExport={canExport}
-          disabledReason={exportDisabledReason}
-          busy={exportSrt.isPending}
-          onModeChange={setExportMode}
-          onExport={() => void handleExport()}
-        />
+        <Stack gap="sm">
+          <ErrorMessage error={exportSrt.error} />
+          <ExportInspector
+            mode={exportMode}
+            result={exportResult}
+            canExport={canExport}
+            disabledReason={exportDisabledReason}
+            busy={exportSrt.isPending}
+            onModeChange={setExportMode}
+            onExport={() => void handleExport()}
+          />
+        </Stack>
       );
     }
 
@@ -233,6 +323,48 @@ export function WorkbenchPage() {
       </Stack>
     );
   }
+
+  function renderDataNotice() {
+    if (!activeProjectId) {
+      return null;
+    }
+
+    if (project.isPending) {
+      return <StatusNotice title={t("workbench.loadingProject")} />;
+    }
+
+    if (project.isError) {
+      return (
+        <StatusNotice
+          title={t("workbench.projectLoadError")}
+          message={getErrorMessage(project.error)}
+          tone="error"
+        />
+      );
+    }
+
+    if (subtitle.isPending) {
+      return <StatusNotice title={t("workbench.loadingSubtitle")} />;
+    }
+
+    if (subtitle.isError) {
+      return (
+        <StatusNotice
+          title={t("workbench.subtitleLoadError")}
+          message={getErrorMessage(subtitle.error)}
+          tone="error"
+        />
+      );
+    }
+
+    if (subtitle.data && subtitle.data.lines.length === 0) {
+      return <StatusNotice title={t("workbench.noDocument")} />;
+    }
+
+    return null;
+  }
+
+  const dataNotice = renderDataNotice();
 
   return (
     <Box
@@ -281,13 +413,23 @@ export function WorkbenchPage() {
             />
           </Box>
 
-          <SubtitleGrid
-            lines={subtitleLines}
-            selectedLineId={selectedLineId}
-            filter={subtitleFilter}
-            onFilterChange={setSubtitleFilter}
-            onSelectLine={setSelectedLineId}
-          />
+          <Box
+            style={{
+              display: "grid",
+              gridTemplateRows: dataNotice ? "auto minmax(0, 1fr)" : "minmax(0, 1fr)",
+              minHeight: 0,
+              overflow: "hidden"
+            }}
+          >
+            {dataNotice}
+            <SubtitleGrid
+              lines={subtitleLines}
+              selectedLineId={selectedLineId}
+              filter={subtitleFilter}
+              onFilterChange={setSubtitleFilter}
+              onSelectLine={setSelectedLineId}
+            />
+          </Box>
 
           <TimelineStrip
             durationMs={subtitleDocument?.durationMs ?? project.data?.durationMs ?? 0}

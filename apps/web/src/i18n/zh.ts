@@ -44,6 +44,10 @@ export const zh = {
     noDocument: "暂无字幕文档",
     unsaved: "有未保存修改",
     saved: "已保存",
+    loadingProject: "正在加载项目...",
+    loadingSubtitle: "正在加载字幕文档...",
+    projectLoadError: "无法加载项目。",
+    subtitleLoadError: "无法加载字幕文档。",
     previewUnavailable: "视频预览不可用",
     subtitleGrid: "字幕表格"
   },
@@ -90,6 +94,8 @@ export const zh = {
     emptyLine: "请选择一条字幕来编辑时间和文本。",
     exportDisabledNoLines: "暂无可导出的字幕行。",
     exportDisabledUnsaved: "请先保存字幕修改再导出。",
+    exportDisabledTaskActive: "请等待分析或翻译任务完成。",
+    exportDisabledDataError: "请先解决项目或字幕错误再导出。",
     exportResult: "SRT 已导出：{{exportPath}}"
   },
   fields: {
