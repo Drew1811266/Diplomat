@@ -358,9 +358,13 @@ def test_translation_settings_default_to_project_languages(tmp_path: Path) -> No
 
     assert settings.project_id == project.project_id
     assert settings.provider == "fake"
+    assert settings.model_id is None
+    assert settings.model_name_or_path is None
     assert settings.source_language == "zh"
     assert settings.target_language == "en"
     assert settings.mode == "missing_only"
+    assert settings.device == "cpu"
+    assert settings.compute_type == "int8"
 
 
 def test_translation_settings_can_be_saved_and_reopened(tmp_path: Path) -> None:
@@ -376,18 +380,93 @@ def test_translation_settings_can_be_saved_and_reopened(tmp_path: Path) -> None:
 
     saved = store.save_translation_settings(
         project.project_id,
-        provider="libretranslate",
+        provider="ct2-marian",
+        model_id="translation.opus-mt.en-zh",
+        model_name_or_path=None,
         source_language="en",
         target_language="zh",
         mode="overwrite_all",
-        endpoint="http://localhost:5000",
-        api_key_env="LIBRETRANSLATE_API_KEY",
+        device="cuda",
+        compute_type="float16",
     )
     reopened = ProjectStore(database_path).get_translation_settings(project.project_id)
 
-    assert saved.provider == "libretranslate"
-    assert reopened.endpoint == "http://localhost:5000"
-    assert reopened.api_key_env == "LIBRETRANSLATE_API_KEY"
+    assert saved.provider == "ct2-marian"
+    assert saved.model_id == "translation.opus-mt.en-zh"
+    assert reopened.model_id == "translation.opus-mt.en-zh"
+    assert reopened.model_name_or_path is None
+    assert reopened.device == "cuda"
+    assert reopened.compute_type == "float16"
+
+
+def test_translation_settings_table_migrates_local_model_columns(tmp_path: Path) -> None:
+    database_path = tmp_path / "diplomat.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE projects (
+                project_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                source_video_path TEXT NOT NULL,
+                project_dir TEXT NOT NULL,
+                duration_ms INTEGER NOT NULL,
+                source_language TEXT NOT NULL,
+                target_language TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE translation_settings (
+                project_id TEXT PRIMARY KEY,
+                provider TEXT NOT NULL,
+                source_language TEXT NOT NULL,
+                target_language TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                endpoint TEXT,
+                api_key_env TEXT,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            "INSERT INTO projects VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "project-old-settings",
+                "Old Settings",
+                str(tmp_path / "old.mp4"),
+                str(tmp_path / "projects" / "project-old-settings"),
+                1000,
+                "zh",
+                "en",
+                "2026-06-01T00:00:00+00:00",
+                "2026-06-01T00:00:00+00:00",
+            ),
+        )
+        connection.execute(
+            "INSERT INTO translation_settings VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "project-old-settings",
+                "libretranslate",
+                "zh",
+                "en",
+                "missing_only",
+                "http://localhost:5000",
+                "LIBRETRANSLATE_API_KEY",
+                "2026-06-01T00:00:00+00:00",
+            ),
+        )
+
+    settings = ProjectStore(database_path).get_translation_settings("project-old-settings")
+
+    assert settings.provider == "libretranslate"
+    assert settings.model_id is None
+    assert settings.model_name_or_path is None
+    assert settings.device == "cpu"
+    assert settings.compute_type == "int8"
+    assert settings.endpoint == "http://localhost:5000"
 
 
 def test_project_store_migrates_m2a_database_without_rewriting_subtitle(tmp_path: Path) -> None:

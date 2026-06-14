@@ -91,11 +91,37 @@ describe("TranslationJobRequestSchema", () => {
       })
     ).toEqual({
       provider: "fake",
+      modelId: null,
+      modelNameOrPath: null,
       sourceLanguage: "en",
       targetLanguage: "zh",
       mode: "missing_only",
+      device: "cpu",
+      computeType: "int8",
       endpoint: null,
       apiKeyEnv: null
+    });
+  });
+
+  it("accepts curated local translation model settings", () => {
+    const request = TranslationJobRequestSchema.parse({
+      provider: "ct2-marian",
+      modelId: "translation.opus-mt.zh-en",
+      sourceLanguage: "zh",
+      targetLanguage: "en",
+      mode: "missing_only",
+      device: "cuda",
+      computeType: "float16"
+    });
+
+    expect(request).toMatchObject({
+      provider: "ct2-marian",
+      modelId: "translation.opus-mt.zh-en",
+      modelNameOrPath: null,
+      sourceLanguage: "zh",
+      targetLanguage: "en",
+      device: "cuda",
+      computeType: "float16"
     });
   });
 });
@@ -105,9 +131,13 @@ describe("TranslationSettingsResponseSchema", () => {
     const settings = TranslationSettingsResponseSchema.parse({
       projectId: "project-1",
       provider: "fake",
+      modelId: null,
+      modelNameOrPath: null,
       sourceLanguage: "en",
       targetLanguage: "zh",
       mode: "overwrite_all",
+      device: "cpu",
+      computeType: "int8",
       endpoint: null,
       apiKeyEnv: null,
       updatedAt: "2026-06-07T00:00:00+00:00"

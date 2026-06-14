@@ -1126,24 +1126,31 @@ def test_translation_settings_request_defaults_to_fake_missing_only() -> None:
     request = TranslationSettingsRequest(sourceLanguage="en", targetLanguage="zh")
 
     assert request.provider == "fake"
+    assert request.model_id is None
+    assert request.model_name_or_path is None
     assert request.source_language == "en"
     assert request.target_language == "zh"
     assert request.mode == "missing_only"
+    assert request.device == "cpu"
+    assert request.compute_type == "int8"
     assert request.endpoint is None
     assert request.api_key_env is None
 
     configured = TranslationSettingsRequest(
-        provider="libretranslate",
+        provider="ct2-marian",
+        modelId="translation.opus-mt.zh-en",
         sourceLanguage="zh",
         targetLanguage="en",
         mode="overwrite_all",
-        endpoint="http://translate.local",
-        apiKeyEnv="LIBRETRANSLATE_API_KEY",
+        device="cuda",
+        computeType="float16",
     )
 
-    assert configured.provider == "libretranslate"
+    assert configured.provider == "ct2-marian"
+    assert configured.model_id == "translation.opus-mt.zh-en"
     assert configured.mode == "overwrite_all"
-    assert configured.api_key_env == "LIBRETRANSLATE_API_KEY"
+    assert configured.device == "cuda"
+    assert configured.compute_type == "float16"
 
 
 def test_default_data_dir_uses_configured_dir_then_local_app_data(monkeypatch, tmp_path: Path) -> None:

@@ -175,10 +175,14 @@ class AnalysisJobRequest(CamelModel):
 
 
 class TranslationSettingsRequest(CamelModel):
-    provider: Literal["fake", "libretranslate"] = "fake"
+    provider: Literal["fake", "libretranslate", "ct2-marian", "local-llm"] = "fake"
+    model_id: str | None = Field(default=None, alias="modelId")
+    model_name_or_path: str | None = Field(default=None, alias="modelNameOrPath")
     source_language: str = Field(alias="sourceLanguage", min_length=2, max_length=12)
     target_language: str = Field(alias="targetLanguage", min_length=2, max_length=12)
     mode: Literal["missing_only", "overwrite_all"] = "missing_only"
+    device: str = "cpu"
+    compute_type: str = Field(default="int8", alias="computeType")
     endpoint: str | None = None
     api_key_env: str | None = Field(default=None, alias="apiKeyEnv")
 

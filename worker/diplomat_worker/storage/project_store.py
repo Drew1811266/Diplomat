@@ -9,7 +9,7 @@ from pathlib import Path
 
 from diplomat_worker.schemas.subtitle import SubtitleDocument
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class StorageMigrationError(RuntimeError):
@@ -50,9 +50,13 @@ class TaskRecord:
 class TranslationSettingsRecord:
     project_id: str
     provider: str
+    model_id: str | None
+    model_name_or_path: str | None
     source_language: str
     target_language: str
     mode: str
+    device: str
+    compute_type: str
     endpoint: str | None
     api_key_env: str | None
     updated_at: str
@@ -137,6 +141,7 @@ class ProjectStore:
                 self._create_projects_table(connection)
             self._ensure_tasks_table(connection)
             self._ensure_translation_settings_table(connection)
+            self._ensure_translation_settings_columns(connection)
             self._ensure_model_installations_table(connection)
             self._set_schema_version(connection)
             connection.commit()
@@ -170,6 +175,12 @@ class ProjectStore:
 
     def _project_columns(self, connection: sqlite3.Connection) -> set[str]:
         return {row["name"] for row in connection.execute("PRAGMA table_info(projects)").fetchall()}
+
+    def _translation_settings_columns(self, connection: sqlite3.Connection) -> set[str]:
+        return {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(translation_settings)").fetchall()
+        }
 
     def _create_projects_table(self, connection: sqlite3.Connection) -> None:
         connection.execute(
@@ -216,9 +227,13 @@ class ProjectStore:
             CREATE TABLE IF NOT EXISTS translation_settings (
                 project_id TEXT PRIMARY KEY,
                 provider TEXT NOT NULL,
+                model_id TEXT,
+                model_name_or_path TEXT,
                 source_language TEXT NOT NULL,
                 target_language TEXT NOT NULL,
                 mode TEXT NOT NULL,
+                device TEXT NOT NULL DEFAULT 'cpu',
+                compute_type TEXT NOT NULL DEFAULT 'int8',
                 endpoint TEXT,
                 api_key_env TEXT,
                 updated_at TEXT NOT NULL,
@@ -226,6 +241,20 @@ class ProjectStore:
             )
             """
         )
+
+    def _ensure_translation_settings_columns(self, connection: sqlite3.Connection) -> None:
+        columns = self._translation_settings_columns(connection)
+        migrations = {
+            "model_id": "ALTER TABLE translation_settings ADD COLUMN model_id TEXT",
+            "model_name_or_path": "ALTER TABLE translation_settings ADD COLUMN model_name_or_path TEXT",
+            "device": "ALTER TABLE translation_settings ADD COLUMN device TEXT NOT NULL DEFAULT 'cpu'",
+            "compute_type": (
+                "ALTER TABLE translation_settings ADD COLUMN compute_type TEXT NOT NULL DEFAULT 'int8'"
+            ),
+        }
+        for column, statement in migrations.items():
+            if column not in columns:
+                connection.execute(statement)
 
     def _ensure_model_installations_table(self, connection: sqlite3.Connection) -> None:
         connection.execute(
@@ -593,9 +622,13 @@ class ProjectStore:
                 json.dumps(
                     {
                         "provider": settings.provider,
+                        "modelId": settings.model_id,
+                        "modelNameOrPath": settings.model_name_or_path,
                         "sourceLanguage": settings.source_language,
                         "targetLanguage": settings.target_language,
                         "mode": settings.mode,
+                        "device": settings.device,
+                        "computeType": settings.compute_type,
                         "endpoint": settings.endpoint,
                         "apiKeyEnv": settings.api_key_env,
                     },
@@ -648,9 +681,13 @@ class ProjectStore:
                 self.save_translation_settings(
                     project.project_id,
                     provider=settings["provider"],
+                    model_id=settings.get("modelId"),
+                    model_name_or_path=settings.get("modelNameOrPath"),
                     source_language=settings["sourceLanguage"],
                     target_language=settings["targetLanguage"],
                     mode=settings["mode"],
+                    device=settings.get("device", "cpu"),
+                    compute_type=settings.get("computeType", "int8"),
                     endpoint=settings.get("endpoint"),
                     api_key_env=settings.get("apiKeyEnv"),
                 )
@@ -859,9 +896,13 @@ class ProjectStore:
                 SELECT
                     project_id,
                     provider,
+                    model_id,
+                    model_name_or_path,
                     source_language,
                     target_language,
                     mode,
+                    device,
+                    compute_type,
                     endpoint,
                     api_key_env,
                     updated_at
@@ -875,9 +916,13 @@ class ProjectStore:
         return TranslationSettingsRecord(
             project_id=project.project_id,
             provider="fake",
+            model_id=None,
+            model_name_or_path=None,
             source_language=project.source_language,
             target_language=project.target_language or "en",
             mode="missing_only",
+            device="cpu",
+            compute_type="int8",
             endpoint=None,
             api_key_env=None,
             updated_at=project.updated_at,
@@ -890,6 +935,10 @@ class ProjectStore:
         source_language: str,
         target_language: str,
         mode: str,
+        model_id: str | None = None,
+        model_name_or_path: str | None = None,
+        device: str = "cpu",
+        compute_type: str = "int8",
         endpoint: str | None = None,
         api_key_env: str | None = None,
     ) -> TranslationSettingsRecord:
@@ -900,6 +949,10 @@ class ProjectStore:
             raise ValueError("target_language must be at least 2 characters")
         if mode not in {"missing_only", "overwrite_all"}:
             raise ValueError("Unsupported translation mode")
+        if not device.strip():
+            raise ValueError("device must not be empty")
+        if not compute_type.strip():
+            raise ValueError("compute_type must not be empty")
         now = self._utc_now()
         with self._connect() as connection:
             connection.execute(
@@ -907,19 +960,27 @@ class ProjectStore:
                 INSERT INTO translation_settings (
                     project_id,
                     provider,
+                    model_id,
+                    model_name_or_path,
                     source_language,
                     target_language,
                     mode,
+                    device,
+                    compute_type,
                     endpoint,
                     api_key_env,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(project_id) DO UPDATE SET
                     provider = excluded.provider,
+                    model_id = excluded.model_id,
+                    model_name_or_path = excluded.model_name_or_path,
                     source_language = excluded.source_language,
                     target_language = excluded.target_language,
                     mode = excluded.mode,
+                    device = excluded.device,
+                    compute_type = excluded.compute_type,
                     endpoint = excluded.endpoint,
                     api_key_env = excluded.api_key_env,
                     updated_at = excluded.updated_at
@@ -927,9 +988,13 @@ class ProjectStore:
                 (
                     project_id,
                     provider,
+                    model_id,
+                    model_name_or_path,
                     source_language,
                     target_language,
                     mode,
+                    device,
+                    compute_type,
                     endpoint,
                     api_key_env,
                     now,
@@ -942,9 +1007,13 @@ class ProjectStore:
         return TranslationSettingsRecord(
             project_id=row["project_id"],
             provider=row["provider"],
+            model_id=row["model_id"],
+            model_name_or_path=row["model_name_or_path"],
             source_language=row["source_language"],
             target_language=row["target_language"],
             mode=row["mode"],
+            device=row["device"],
+            compute_type=row["compute_type"],
             endpoint=row["endpoint"],
             api_key_env=row["api_key_env"],
             updated_at=row["updated_at"],

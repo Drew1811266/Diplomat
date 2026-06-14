@@ -5,17 +5,29 @@ from typing import Literal
 from diplomat_worker.translation.fake import FakeTranslationProvider
 from diplomat_worker.translation.libretranslate import LibreTranslateProvider
 
-TranslationProviderName = Literal["fake", "libretranslate"]
+TranslationProviderName = Literal["fake", "libretranslate", "ct2-marian", "local-llm"]
 
 
 @dataclass(frozen=True)
 class TranslationProviderConfig:
     provider: TranslationProviderName = "fake"
+    model_id: str | None = None
+    model_name_or_path: str | None = None
+    device: str = "cpu"
+    compute_type: str = "int8"
     endpoint: str | None = None
     api_key_env: str | None = None
 
     def to_request_payload(self) -> dict[str, str]:
         payload = {"provider": self.provider}
+        if self.model_id:
+            payload["modelId"] = self.model_id
+        if self.model_name_or_path:
+            payload["modelNameOrPath"] = self.model_name_or_path
+        if self.provider != "fake" or self.device != "cpu":
+            payload["device"] = self.device
+        if self.provider != "fake" or self.compute_type != "int8":
+            payload["computeType"] = self.compute_type
         if self.endpoint:
             payload["endpoint"] = self.endpoint
         if self.api_key_env:
@@ -26,6 +38,10 @@ class TranslationProviderConfig:
     def from_request_payload(cls, payload: dict) -> "TranslationProviderConfig":
         return cls(
             provider=payload.get("provider", "fake"),
+            model_id=payload.get("modelId") or payload.get("model_id"),
+            model_name_or_path=payload.get("modelNameOrPath") or payload.get("model_name_or_path"),
+            device=payload.get("device", "cpu"),
+            compute_type=payload.get("computeType") or payload.get("compute_type", "int8"),
             endpoint=payload.get("endpoint"),
             api_key_env=payload.get("apiKeyEnv") or payload.get("api_key_env"),
         )
