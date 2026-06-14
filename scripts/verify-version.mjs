@@ -18,7 +18,7 @@ function matchVersion(relativePath, pattern) {
 
 function cargoLockPackageVersion(packageName) {
   const lock = readText("apps/desktop/src-tauri/Cargo.lock");
-  const packageBlocks = lock.split(/\n\[\[package\]\]\n/g);
+  const packageBlocks = lock.split(/\r?\n\[\[package\]\]\r?\n/g);
   for (const block of packageBlocks) {
     const name = block.match(/^name = "([^"]+)"/m)?.[1];
     if (name === packageName) {
