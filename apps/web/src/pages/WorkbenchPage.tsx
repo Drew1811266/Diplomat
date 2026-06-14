@@ -599,9 +599,10 @@ export function WorkbenchPage() {
         }}
       >
         <Box
+          data-testid="workbench-media-stack"
           style={{
             display: "grid",
-            gridTemplateRows: "minmax(240px, 45vh) minmax(0, 1fr) auto",
+            gridTemplateRows: "minmax(200px, 34vh) minmax(140px, 1fr) auto",
             minHeight: 0
           }}
         >

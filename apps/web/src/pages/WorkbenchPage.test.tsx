@@ -449,6 +449,9 @@ describe("WorkbenchPage", () => {
   it("keeps growing subtitle and inspector content independently scrollable", () => {
     renderWithProviders(<WorkbenchPage />);
 
+    expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
+      gridTemplateRows: "minmax(200px, 34vh) minmax(140px, 1fr) auto"
+    });
     expect(screen.getByTestId("subtitle-grid-body")).toHaveStyle({ overflow: "auto" });
     expect(screen.getByTestId("inspector-body")).toHaveStyle({ overflow: "auto" });
   });
