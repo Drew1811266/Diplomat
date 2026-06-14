@@ -111,6 +111,21 @@ impl RuntimeDiagnostics {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ToolStatus {
+    status: String,
+    path: String,
+    version: Option<String>,
+    message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ToolProbeError {
+    Missing(String),
+    CommandFailed(String),
+}
+
 fn path_to_string(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
@@ -130,6 +145,75 @@ fn runtime_directories() -> Result<RuntimeDirectories, String> {
 
 fn worker_environment(directories: &RuntimeDirectories) -> Vec<(String, String)> {
     vec![("DIPLOMAT_DATA_DIR".to_string(), directories.data.clone())]
+}
+
+fn configured_tool_path(configured: Option<&str>, fallback: &str) -> String {
+    configured
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(fallback)
+        .to_string()
+}
+
+fn probe_cli_tool(path: &str) -> Result<String, ToolProbeError> {
+    let output = Command::new(path).arg("-version").output().map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            ToolProbeError::Missing(format!(
+                "{path} was not found. Install FFmpeg or configure the bundled runtime path."
+            ))
+        } else {
+            ToolProbeError::CommandFailed(format!("Unable to run {path}: {error}"))
+        }
+    })?;
+
+    if !output.status.success() {
+        return Err(ToolProbeError::CommandFailed(format!(
+            "{path} -version exited with status {}",
+            output.status
+        )));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn tool_status_from_probe(path: &str, result: Result<String, ToolProbeError>) -> ToolStatus {
+    match result {
+        Ok(output) => {
+            let version = output.lines().next().unwrap_or("").trim().to_string();
+            ToolStatus {
+                status: "available".to_string(),
+                path: path.to_string(),
+                version: if version.is_empty() {
+                    None
+                } else {
+                    Some(version)
+                },
+                message: format!("{path} is available."),
+            }
+        }
+        Err(ToolProbeError::Missing(message)) => ToolStatus {
+            status: "missing".to_string(),
+            path: path.to_string(),
+            version: None,
+            message,
+        },
+        Err(ToolProbeError::CommandFailed(message)) => ToolStatus {
+            status: "error".to_string(),
+            path: path.to_string(),
+            version: None,
+            message,
+        },
+    }
+}
+
+fn ffmpeg_status() -> ToolStatus {
+    let path = configured_tool_path(env::var("DIPLOMAT_FFMPEG_PATH").ok().as_deref(), "ffmpeg");
+    tool_status_from_probe(&path, probe_cli_tool(&path))
+}
+
+fn ffprobe_status() -> ToolStatus {
+    let path = configured_tool_path(env::var("DIPLOMAT_FFPROBE_PATH").ok().as_deref(), "ffprobe");
+    tool_status_from_probe(&path, probe_cli_tool(&path))
 }
 
 #[tauri::command]
@@ -513,5 +597,61 @@ mod tests {
                 r"C:\Diplomat\data".to_string()
             )]
         );
+    }
+
+    #[test]
+    fn tool_status_available_uses_first_version_line() {
+        let status = tool_status_from_probe(
+            "ffmpeg",
+            Ok("ffmpeg version 7.1-full_build\nconfiguration: --enable-gpl".to_string()),
+        );
+
+        assert_eq!(status.status, "available");
+        assert_eq!(status.path, "ffmpeg");
+        assert_eq!(
+            status.version,
+            Some("ffmpeg version 7.1-full_build".to_string())
+        );
+        assert_eq!(status.message, "ffmpeg is available.");
+    }
+
+    #[test]
+    fn tool_status_missing_reports_missing() {
+        let status = tool_status_from_probe(
+            "ffmpeg",
+            Err(ToolProbeError::Missing("program not found".to_string())),
+        );
+
+        assert_eq!(status.status, "missing");
+        assert_eq!(status.path, "ffmpeg");
+        assert_eq!(status.version, None);
+        assert_eq!(status.message, "program not found");
+    }
+
+    #[test]
+    fn tool_status_error_reports_command_failure() {
+        let status = tool_status_from_probe(
+            "ffprobe",
+            Err(ToolProbeError::CommandFailed("exit code 1".to_string())),
+        );
+
+        assert_eq!(status.status, "error");
+        assert_eq!(status.path, "ffprobe");
+        assert_eq!(status.version, None);
+        assert_eq!(status.message, "exit code 1");
+    }
+
+    #[test]
+    fn configured_tool_path_uses_environment_before_default() {
+        let path = configured_tool_path(Some("C:/Tools/ffmpeg.exe"), "ffmpeg");
+
+        assert_eq!(path, "C:/Tools/ffmpeg.exe");
+    }
+
+    #[test]
+    fn configured_tool_path_uses_default_when_environment_is_empty() {
+        let path = configured_tool_path(Some("  "), "ffmpeg");
+
+        assert_eq!(path, "ffmpeg");
     }
 }
