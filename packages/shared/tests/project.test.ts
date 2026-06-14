@@ -259,6 +259,18 @@ describe("Project management schemas", () => {
     expect(backup.bytesWritten).toBe(1024);
   });
 
+  it("accepts clear draft maintenance responses", () => {
+    const response = ProjectMaintenanceResponseSchema.parse({
+      projectId: "project-1",
+      action: "clear_draft",
+      filesAffected: 1,
+      bytesAffected: 0,
+      message: "Subtitle draft cleared."
+    });
+
+    expect(response.action).toBe("clear_draft");
+  });
+
   it("accepts an import request with a restore name", () => {
     const request = ProjectImportRequestSchema.parse({
       packagePath: "D:/backups/demo.diplomat-project.zip",

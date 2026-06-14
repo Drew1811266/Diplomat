@@ -38,6 +38,12 @@ class AnalysisJobManager:
     def create_analysis_job(self, project_id: str, config: AsrModelConfig) -> TaskRecord:
         project = self.runtime.store.get_project(project_id)
         self._resolve_config(config, project.source_language)
+        if self.runtime.store.has_subtitle_document(project_id):
+            self.runtime.store.create_subtitle_snapshot(
+                project_id,
+                reason="analysis_overwrite",
+                label="Before analysis overwrite",
+            )
         task = self.runtime.store.create_task(
             project_id=project_id,
             task_type="analysis",

@@ -76,6 +76,7 @@ export const ProjectMaintenanceActionSchema = z.enum([
   "delete",
   "cleanup_cache",
   "cleanup_exports",
+  "clear_draft",
   "import"
 ]);
 

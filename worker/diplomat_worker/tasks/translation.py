@@ -41,6 +41,12 @@ class TranslationJobManager:
         if mode not in {"missing_only", "overwrite_all"}:
             raise ValueError("Unsupported translation mode")
         self._resolve_config(provider_config, source_language, target_language)
+        if mode == "overwrite_all" and self.runtime.store.has_subtitle_document(project_id):
+            self.runtime.store.create_subtitle_snapshot(
+                project_id,
+                reason="translation_overwrite",
+                label="Before translation overwrite",
+            )
         task = self.runtime.store.create_task(
             project_id=project_id,
             task_type="translation",

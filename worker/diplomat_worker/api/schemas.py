@@ -77,7 +77,7 @@ class ProjectDiagnosticsResponse(CamelModel):
 
 class ProjectMaintenanceResponse(CamelModel):
     project_id: str = Field(alias="projectId")
-    action: Literal["delete", "cleanup_cache", "cleanup_exports", "import"]
+    action: Literal["delete", "cleanup_cache", "cleanup_exports", "clear_draft", "import"]
     files_affected: int = Field(alias="filesAffected", ge=0)
     bytes_affected: int = Field(alias="bytesAffected", ge=0)
     message: str
@@ -206,6 +206,47 @@ class AnalyzeProjectResponse(CamelModel):
 
 class SubtitleDocumentRequest(CamelModel):
     document: SubtitleDocument
+
+
+SnapshotReason = Literal[
+    "manual",
+    "analysis_overwrite",
+    "translation_overwrite",
+    "batch_timing",
+    "burn_in_export_preparation",
+    "restore",
+]
+
+
+class SubtitleDraftResponse(CamelModel):
+    project_id: str = Field(alias="projectId")
+    updated_at: str = Field(alias="updatedAt")
+    line_count: int = Field(alias="lineCount", ge=0)
+    document: SubtitleDocument
+
+
+class SubtitleSnapshotCreateRequest(CamelModel):
+    reason: SnapshotReason = "manual"
+    label: str | None = None
+    document: SubtitleDocument | None = None
+
+
+class SubtitleSnapshotSummaryResponse(CamelModel):
+    snapshot_id: str = Field(alias="snapshotId")
+    project_id: str = Field(alias="projectId")
+    reason: SnapshotReason
+    label: str | None = None
+    created_at: str = Field(alias="createdAt")
+    line_count: int = Field(alias="lineCount", ge=0)
+
+
+class SubtitleSnapshotResponse(SubtitleSnapshotSummaryResponse):
+    document: SubtitleDocument
+
+
+class SubtitleSnapshotListResponse(CamelModel):
+    project_id: str = Field(alias="projectId")
+    snapshots: list[SubtitleSnapshotSummaryResponse]
 
 
 class WaveformPeakResponse(CamelModel):
