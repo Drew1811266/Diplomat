@@ -208,6 +208,22 @@ class SubtitleDocumentRequest(CamelModel):
     document: SubtitleDocument
 
 
+class WaveformPeakResponse(CamelModel):
+    index: int = Field(ge=0)
+    start_ms: int = Field(alias="startMs", ge=0)
+    end_ms: int = Field(alias="endMs", ge=0)
+    min: float = Field(ge=-1, le=1)
+    max: float = Field(ge=-1, le=1)
+
+
+class WaveformResponse(CamelModel):
+    project_id: str = Field(alias="projectId")
+    duration_ms: int = Field(alias="durationMs", ge=0)
+    sample_rate: int = Field(alias="sampleRate", gt=0)
+    peak_count: int = Field(alias="peakCount", ge=0)
+    peaks: list[WaveformPeakResponse]
+
+
 class SrtExportRequest(CamelModel):
     mode: Literal["source", "target", "bilingual"] = "bilingual"
 
