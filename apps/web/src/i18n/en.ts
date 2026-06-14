@@ -117,6 +117,7 @@ export const en = {
       status: "Status"
     },
     selectLine: "Select line {{id}}",
+    timingIssueCount: "{{count}} timing issue",
     empty: "No subtitle rows",
     noFilterMatches: "No subtitle rows match the current filter.",
     noSourceText: "No source text",

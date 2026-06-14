@@ -115,6 +115,7 @@ export const zh = {
       status: "状态"
     },
     selectLine: "选择字幕 {{id}}",
+    timingIssueCount: "{{count}} 个时间问题",
     empty: "暂无字幕行",
     noFilterMatches: "当前筛选下没有字幕行。",
     noSourceText: "无源文",
