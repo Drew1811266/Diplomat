@@ -3,6 +3,9 @@ $ErrorActionPreference = "Stop"
 Write-Host "Installing JavaScript dependencies if needed"
 corepack pnpm install --frozen-lockfile
 
+Write-Host "Verifying release version metadata"
+node .\scripts\verify-version.mjs
+
 Write-Host "Running TypeScript package checks"
 corepack pnpm -r test
 corepack pnpm -r typecheck
