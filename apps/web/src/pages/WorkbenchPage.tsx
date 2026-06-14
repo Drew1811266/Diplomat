@@ -1,8 +1,9 @@
 import { Box, Button, Group, Kbd, Modal, Stack, Text } from "@mantine/core";
 import type {
   AnalysisJobRequest,
-  SrtExportMode,
-  SrtExportResponse,
+  SubtitleExportFormat,
+  SubtitleExportMode,
+  SubtitleExportResponse,
   SubtitleDocument,
   SubtitleLine,
   TaskResponse,
@@ -36,10 +37,22 @@ import {
   updateHistory,
   type OffsetScope
 } from "../lib/subtitleEditing";
+import {
+  defaultSubtitleStyle,
+  hasBlockingTimingIssues,
+  subtitleStyleWithDefaults
+} from "../lib/subtitleStyles";
 import { validateSubtitleTiming } from "../lib/timingValidation";
-import { useExportSrtMutation } from "../queries/exportQueries";
+import { useSubtitleExportMutation } from "../queries/exportQueries";
 import { useModelsQuery } from "../queries/modelQueries";
 import { useProjectQuery } from "../queries/projectQueries";
+import {
+  useApplyStylePresetMutation,
+  useCreateStylePresetMutation,
+  useDeleteStylePresetMutation,
+  useStylePresetsQuery,
+  useUpdateStylePresetMutation
+} from "../queries/stylePresetQueries";
 import {
   useCreateSubtitleSnapshotMutation,
   useDeleteSubtitleDraftMutation,
@@ -155,7 +168,12 @@ export function WorkbenchPage() {
   const createWaveformJob = useCreateWaveformJobMutation(activeProjectId);
   const cancelTask = useCancelTaskMutation();
   const retryTask = useRetryTaskMutation();
-  const exportSrt = useExportSrtMutation(activeProjectId);
+  const exportSubtitles = useSubtitleExportMutation(activeProjectId);
+  const stylePresets = useStylePresetsQuery(activeProjectId);
+  const createStylePreset = useCreateStylePresetMutation(activeProjectId);
+  const updateStylePreset = useUpdateStylePresetMutation(activeProjectId);
+  const deleteStylePreset = useDeleteStylePresetMutation(activeProjectId);
+  const applyStylePreset = useApplyStylePresetMutation(activeProjectId);
   const [draftDocument, setDraftDocument] = useState<SubtitleDocument | null>(null);
   const [historyPast, setHistoryPast] = useState<SubtitleDocument[]>([]);
   const [historyFuture, setHistoryFuture] = useState<SubtitleDocument[]>([]);
@@ -165,8 +183,11 @@ export function WorkbenchPage() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [analysisConfig, setAnalysisConfig] = useState(defaultAnalysisConfig);
   const [translationConfig, setTranslationConfig] = useState(defaultTranslationConfig);
-  const [exportMode, setExportMode] = useState<SrtExportMode>("bilingual");
-  const [exportResult, setExportResult] = useState<SrtExportResponse | null>(null);
+  const [exportFormat, setExportFormat] = useState<SubtitleExportFormat>("srt");
+  const [exportMode, setExportMode] = useState<SubtitleExportMode>("bilingual");
+  const [exportResult, setExportResult] = useState<SubtitleExportResponse | null>(null);
+  const [styleDraft, setStyleDraft] = useState(defaultSubtitleStyle);
+  const [showSafeArea, setShowSafeArea] = useState(false);
   const [latestTask, setLatestTask] = useState<TaskResponse | null>(null);
   const [latestTaskId, setLatestTaskId] = useState<string | null>(null);
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
@@ -180,11 +201,18 @@ export function WorkbenchPage() {
   const subtitleDocument = draftDocument ?? subtitle.data ?? null;
   const subtitleLines = subtitleDocument?.lines ?? emptySubtitleLines;
   const modelCatalog = models.data?.models ?? [];
+  const stylePresetList = stylePresets.data?.presets ?? [];
+  const activeStylePreset =
+    stylePresetList.find((preset) => preset.id === stylePresets.data?.activePresetId) ??
+    stylePresetList[0] ??
+    null;
   const hasUnsavedChanges = Boolean(draftDocument);
   const hasUnresolvedDraft = hasUnsavedChanges || Boolean(serverDraft);
   const recoveryPanelVisible = Boolean(serverDraft || snapshotSummaries.length > 0);
   const layout = isNarrow ? "stacked" : "split";
   const hasSubtitleRows = subtitleLines.length > 0;
+  const timingValidation = useMemo(() => validateSubtitleTiming(subtitleLines), [subtitleLines]);
+  const hasTimingExportErrors = hasBlockingTimingIssues(timingValidation);
   const observedTask = polledTask ?? latestTask;
   const taskOperationPending = cancelTask.isPending || retryTask.isPending;
   const taskActive =
@@ -223,7 +251,8 @@ export function WorkbenchPage() {
       hasSubtitleRows &&
       !hasUnresolvedDraft &&
       !taskActive &&
-      !dataBlocked
+      !dataBlocked &&
+      !hasTimingExportErrors
   );
   const exportDisabledReason = canExport
     ? null
@@ -233,14 +262,15 @@ export function WorkbenchPage() {
         ? t("inspector.exportDisabledUnsaved")
         : hasProjectError || hasSubtitleError
           ? t("inspector.exportDisabledDataError")
-        : activeProjectId
-          ? t("inspector.exportDisabledNoLines")
-          : t("workbench.noProject");
+          : hasTimingExportErrors
+            ? t("inspector.exportDisabledTiming")
+            : activeProjectId
+              ? t("inspector.exportDisabledNoLines")
+              : t("workbench.noProject");
   const selectedLine = useMemo(
     () => subtitleLines.find((line) => line.id === selectedLineId) ?? null,
     [selectedLineId, subtitleLines]
   );
-  const timingValidation = useMemo(() => validateSubtitleTiming(subtitleLines), [subtitleLines]);
   const activeLineId = useMemo(
     () =>
       subtitleLines.find(
@@ -265,6 +295,9 @@ export function WorkbenchPage() {
     setOffsetMs(0);
     setOffsetScope("selected");
     setShortcutsOpen(false);
+    setExportFormat("srt");
+    setStyleDraft(defaultSubtitleStyle);
+    setShowSafeArea(false);
     lastAutosavedDraftRef.current = null;
   }, [activeProjectId]);
 
@@ -277,6 +310,13 @@ export function WorkbenchPage() {
     setCurrentTimeMs(0);
     setSeekRequestMs(null);
   }, [activeProjectId]);
+
+  useEffect(() => {
+    const nextStyle = subtitleStyleWithDefaults(
+      activeStylePreset?.style ?? subtitleDocument?.styles[0] ?? defaultSubtitleStyle
+    );
+    setStyleDraft(nextStyle);
+  }, [activeProjectId, activeStylePreset?.id, activeStylePreset?.style, subtitleDocument?.styles]);
 
   useEffect(() => {
     const finishedTask = polledTask;
@@ -646,9 +686,57 @@ export function WorkbenchPage() {
     }
 
     try {
-      setExportResult(await exportSrt.mutateAsync(exportMode));
+      setExportResult(
+        await exportSubtitles.mutateAsync({
+          format: exportFormat,
+          mode: exportMode,
+          stylePresetId: stylePresets.data?.activePresetId ?? null,
+          style: styleDraft
+        })
+      );
     } catch {
       // Mutation state surfaces the failure; avoid throwing from the UI event.
+    }
+  }
+
+  async function handleCreateStylePreset(name: string, style: typeof styleDraft) {
+    try {
+      await createStylePreset.mutateAsync({ name, style });
+      void stylePresets.refetch();
+    } catch {
+      // Mutation state surfaces the failure.
+    }
+  }
+
+  async function handleUpdateStylePreset(
+    presetId: string,
+    input: { name?: string; style?: typeof styleDraft }
+  ) {
+    try {
+      await updateStylePreset.mutateAsync({ presetId, input });
+      void stylePresets.refetch();
+    } catch {
+      // Mutation state surfaces the failure.
+    }
+  }
+
+  async function handleDeleteStylePreset(presetId: string) {
+    try {
+      await deleteStylePreset.mutateAsync(presetId);
+      void stylePresets.refetch();
+    } catch {
+      // Mutation state surfaces the failure.
+    }
+  }
+
+  async function handleApplyStylePreset(presetId: string) {
+    try {
+      const applied = await applyStylePreset.mutateAsync(presetId);
+      setStyleDraft(subtitleStyleWithDefaults(applied.style));
+      void subtitle.refetch();
+      void stylePresets.refetch();
+    } catch {
+      // Mutation state surfaces the failure.
     }
   }
 
@@ -706,16 +794,42 @@ export function WorkbenchPage() {
     }
 
     if (inspectorMode === "export") {
+      const exportError =
+        exportSubtitles.error ??
+        createStylePreset.error ??
+        updateStylePreset.error ??
+        deleteStylePreset.error ??
+        applyStylePreset.error;
+      const presetBusy =
+        stylePresets.isPending ||
+        createStylePreset.isPending ||
+        updateStylePreset.isPending ||
+        deleteStylePreset.isPending ||
+        applyStylePreset.isPending;
       return (
         <Stack gap="sm">
-          <ErrorMessage error={exportSrt.error} />
+          <ErrorMessage error={exportError} />
           <ExportInspector
+            format={exportFormat}
             mode={exportMode}
             result={exportResult}
             canExport={canExport}
             disabledReason={exportDisabledReason}
-            busy={exportSrt.isPending}
+            busy={exportSubtitles.isPending}
+            validationIssues={timingValidation.issues}
+            style={styleDraft}
+            presets={stylePresetList}
+            activePresetId={stylePresets.data?.activePresetId ?? null}
+            presetBusy={presetBusy}
+            showSafeArea={showSafeArea}
+            onFormatChange={setExportFormat}
             onModeChange={setExportMode}
+            onStyleChange={setStyleDraft}
+            onCreatePreset={(name, style) => void handleCreateStylePreset(name, style)}
+            onUpdatePreset={(presetId, input) => void handleUpdateStylePreset(presetId, input)}
+            onDeletePreset={(presetId) => void handleDeleteStylePreset(presetId)}
+            onApplyPreset={(presetId) => void handleApplyStylePreset(presetId)}
+            onShowSafeAreaChange={setShowSafeArea}
             onExport={() => void handleExport()}
           />
         </Stack>
@@ -910,6 +1024,8 @@ export function WorkbenchPage() {
             <VideoPreviewPanel
               mediaUrl={mediaUrl}
               selectedLine={selectedLine}
+              previewStyle={styleDraft}
+              showSafeArea={showSafeArea}
               seekRequestMs={seekRequestMs}
               onTimeUpdate={setCurrentTimeMs}
             />

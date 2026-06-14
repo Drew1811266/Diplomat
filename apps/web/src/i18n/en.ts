@@ -189,7 +189,8 @@ export const en = {
     exportDisabledUnsaved: "Save subtitle edits before exporting.",
     exportDisabledTaskActive: "Wait for analysis or translation to finish.",
     exportDisabledDataError: "Resolve project or subtitle errors before exporting.",
-    exportResult: "SRT exported: {{exportPath}}",
+    exportDisabledTiming: "Fix timing errors before exporting.",
+    exportResult: "{{format}} exported: {{exportPath}}",
     selectModel: "Select model",
     noAsrModelAvailable: "No installed ASR model",
     installAsrModelFirst: "Install an ASR model from Models before starting local transcription.",
@@ -218,7 +219,8 @@ export const en = {
     translationMode: "Translation mode",
     endpoint: "Endpoint",
     apiKeyEnv: "API key env",
-    exportMode: "Export mode"
+    exportMode: "Export mode",
+    exportFormat: "Format"
   },
   translationModes: {
     missing_only: "missing only",
@@ -229,9 +231,50 @@ export const en = {
     target: "target",
     bilingual: "bilingual"
   },
+  exportFormats: {
+    srt: "SRT",
+    vtt: "VTT",
+    ass: "ASS"
+  },
+  stylePresets: {
+    select: "Style preset",
+    name: "Preset name",
+    save: "Save preset",
+    apply: "Apply preset",
+    update: "Update preset",
+    rename: "Rename",
+    delete: "Delete"
+  },
+  styleEditor: {
+    fontFamily: "Font family",
+    fontSize: "Font size",
+    primaryColor: "Primary color",
+    secondaryColor: "Secondary color",
+    outline: "Outline",
+    shadow: "Shadow",
+    backgroundBar: "Background bar",
+    backgroundColor: "Background color",
+    alignment: "Alignment",
+    marginV: "Vertical margin",
+    lineSpacing: "Line spacing",
+    bilingualLayout: "Bilingual layout",
+    safeArea: "Safe area",
+    safeAreaMargin: "Safe margin",
+    alignments: {
+      left: "Left",
+      center: "Center",
+      right: "Right"
+    },
+    bilingualLayouts: {
+      "source-above-target": "Source above target",
+      target_top: "Target above source"
+    }
+  },
   validation: {
     requiredField: "{{field}} is required.",
-    languageCodeLength: "Use 2 to 12 characters."
+    languageCodeLength: "Use 2 to 12 characters.",
+    exportErrors: "Fix {{count}} timing error before exporting.",
+    exportWarnings: "{{count}} timing warning will be included."
   },
   actions: {
     start: "Start",

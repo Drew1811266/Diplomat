@@ -80,4 +80,31 @@ describe("VideoPreviewPanel", () => {
     expect(screen.getByText("选中的字幕")).toBeVisible();
     expect(screen.getByText("Selected subtitle")).toBeVisible();
   });
+
+  it("renders styled subtitle preview and safe area overlay", () => {
+    const style = {
+      ...analyzedDocumentFixture.styles[0]!,
+      primaryColor: "#ffeecc",
+      secondaryColor: "#88f7ff",
+      fontSize: 44,
+      backgroundBar: true
+    };
+
+    renderWithProviders(
+      <VideoPreviewPanel
+        mediaUrl="http://worker.test/projects/project-1/media/source"
+        selectedLine={{
+          ...analyzedDocumentFixture.lines[0]!,
+          sourceText: "Styled source",
+          translatedText: "Styled target"
+        }}
+        previewStyle={style}
+        showSafeArea
+      />
+    );
+
+    expect(screen.getByText("Styled source")).toHaveStyle({ color: "#ffeecc" });
+    expect(screen.getByText("Styled target")).toHaveStyle({ color: "#88f7ff" });
+    expect(screen.getByTestId("subtitle-safe-area")).toBeInTheDocument();
+  });
 });

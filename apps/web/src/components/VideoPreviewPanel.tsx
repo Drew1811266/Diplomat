@@ -1,12 +1,20 @@
 import { Box, Center, Stack, Text } from "@mantine/core";
-import type { SubtitleLine } from "@diplomat/shared";
+import type { SubtitleLine, SubtitleStyle } from "@diplomat/shared";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  previewContainerStyle,
+  previewStyleToCss,
+  safeAreaStyle,
+  subtitleStyleWithDefaults
+} from "../lib/subtitleStyles";
 
 type VideoPreviewPanelProps = {
   mediaUrl?: string | null;
   sourceVideoPath?: string | null;
   selectedLine: SubtitleLine | null;
+  previewStyle?: SubtitleStyle | null;
+  showSafeArea?: boolean;
   seekRequestMs?: number | null;
   onTimeUpdate?: (timeMs: number) => void;
 };
@@ -15,12 +23,26 @@ export function VideoPreviewPanel({
   mediaUrl,
   sourceVideoPath,
   selectedLine,
+  previewStyle = null,
+  showSafeArea = false,
   seekRequestMs = null,
   onTimeUpdate
 }: VideoPreviewPanelProps) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const resolvedMediaUrl = mediaUrl ?? sourceVideoPath ?? null;
+  const normalizedStyle = subtitleStyleWithDefaults(previewStyle);
+  const orderedPreviewLines =
+    normalizedStyle.bilingualLayout.replace("-", "_") === "target_top" ||
+    normalizedStyle.bilingualLayout === "target-above-source"
+      ? [
+          { key: "target", text: selectedLine?.translatedText ?? "", color: normalizedStyle.secondaryColor },
+          { key: "source", text: selectedLine?.sourceText ?? "", color: normalizedStyle.primaryColor }
+        ]
+      : [
+          { key: "source", text: selectedLine?.sourceText ?? "", color: normalizedStyle.primaryColor },
+          { key: "target", text: selectedLine?.translatedText ?? "", color: normalizedStyle.secondaryColor }
+        ];
 
   useEffect(() => {
     if (seekRequestMs === null || !videoRef.current) {
@@ -76,14 +98,15 @@ export function VideoPreviewPanel({
         </Center>
       )}
 
+      {showSafeArea ? <Box data-testid="subtitle-safe-area" style={safeAreaStyle(normalizedStyle)} /> : null}
+
       {selectedLine ? (
-        <Center
+        <Box
           style={{
             position: "absolute",
-            left: "14%",
-            right: "14%",
-            bottom: 24,
-            pointerEvents: "none"
+            display: "flex",
+            pointerEvents: "none",
+            ...previewContainerStyle(normalizedStyle)
           }}
         >
           <Stack
@@ -94,20 +117,26 @@ export function VideoPreviewPanel({
             style={{
               maxWidth: "100%",
               borderRadius: 4,
-              background: "rgba(15, 23, 42, 0.86)",
-              boxShadow: "0 8px 28px rgba(0,0,0,0.32)"
+              boxShadow: "0 8px 28px rgba(0,0,0,0.32)",
+              ...previewStyleToCss(normalizedStyle)
             }}
           >
-            <Text size="sm" fw={700} ta="center" c="white" lineClamp={2}>
-              {selectedLine.sourceText}
-            </Text>
-            {selectedLine.translatedText ? (
-              <Text size="xs" ta="center" c="teal.1" lineClamp={2}>
-                {selectedLine.translatedText}
-              </Text>
-            ) : null}
+            {orderedPreviewLines
+              .filter((line) => line.text.trim())
+              .map((line) => (
+                <Text
+                  key={line.key}
+                  fw={700}
+                  ta={normalizedStyle.alignment.includes("left") ? "left" : normalizedStyle.alignment.includes("right") ? "right" : "center"}
+                  c={line.color}
+                  lineClamp={2}
+                  style={{ fontSize: normalizedStyle.fontSize }}
+                >
+                  {line.text}
+                </Text>
+              ))}
           </Stack>
-        </Center>
+        </Box>
       ) : null}
     </Box>
   );

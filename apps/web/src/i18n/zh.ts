@@ -187,7 +187,8 @@ export const zh = {
     exportDisabledUnsaved: "请先保存字幕修改再导出。",
     exportDisabledTaskActive: "请等待分析或翻译任务完成。",
     exportDisabledDataError: "请先解决项目或字幕错误再导出。",
-    exportResult: "SRT 已导出：{{exportPath}}",
+    exportDisabledTiming: "请先修复时间错误再导出。",
+    exportResult: "{{format}} 已导出：{{exportPath}}",
     selectModel: "选择模型",
     noAsrModelAvailable: "没有已安装的 ASR 模型",
     installAsrModelFirst: "请先在“模型”中安装 ASR 模型，再开始本地转写。",
@@ -216,7 +217,8 @@ export const zh = {
     translationMode: "翻译模式",
     endpoint: "服务地址",
     apiKeyEnv: "API key 环境变量",
-    exportMode: "导出模式"
+    exportMode: "导出模式",
+    exportFormat: "格式"
   },
   translationModes: {
     missing_only: "仅缺失项",
@@ -227,9 +229,50 @@ export const zh = {
     target: "译文",
     bilingual: "双语"
   },
+  exportFormats: {
+    srt: "SRT",
+    vtt: "VTT",
+    ass: "ASS"
+  },
+  stylePresets: {
+    select: "样式预设",
+    name: "预设名称",
+    save: "保存预设",
+    apply: "应用预设",
+    update: "更新预设",
+    rename: "重命名",
+    delete: "删除"
+  },
+  styleEditor: {
+    fontFamily: "字体",
+    fontSize: "字号",
+    primaryColor: "主色",
+    secondaryColor: "副色",
+    outline: "描边",
+    shadow: "阴影",
+    backgroundBar: "背景条",
+    backgroundColor: "背景色",
+    alignment: "对齐",
+    marginV: "垂直边距",
+    lineSpacing: "行距",
+    bilingualLayout: "双语布局",
+    safeArea: "安全区",
+    safeAreaMargin: "安全边距",
+    alignments: {
+      left: "左",
+      center: "居中",
+      right: "右"
+    },
+    bilingualLayouts: {
+      "source-above-target": "源文在上",
+      target_top: "译文在上"
+    }
+  },
   validation: {
     requiredField: "{{field}}为必填项。",
-    languageCodeLength: "请输入 2 到 12 个字符。"
+    languageCodeLength: "请输入 2 到 12 个字符。",
+    exportErrors: "请先修复 {{count}} 个时间错误再导出。",
+    exportWarnings: "将带着 {{count}} 个时间警告导出。"
   },
   actions: {
     start: "开始",
