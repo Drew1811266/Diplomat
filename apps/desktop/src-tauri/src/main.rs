@@ -258,8 +258,18 @@ fn packaged_worker_candidate() -> Option<PathBuf> {
     env::current_exe()
         .ok()
         .and_then(|path| path.parent().map(Path::to_path_buf))
-        .map(|dir| dir.join("diplomat-worker.exe"))
-        .filter(|path| path.exists())
+        .and_then(|dir| {
+            packaged_worker_candidates(&dir)
+                .into_iter()
+                .find(|path| path.exists())
+        })
+}
+
+fn packaged_worker_candidates(exe_dir: &Path) -> Vec<PathBuf> {
+    vec![
+        exe_dir.join("diplomat-worker.exe"),
+        exe_dir.join("diplomat-worker-x86_64-pc-windows-msvc.exe"),
+    ]
 }
 
 fn packaged_or_configured_tool_path(
@@ -910,6 +920,21 @@ mod tests {
         .expect_err("missing packaged worker and repo root should fail");
 
         assert!(error.contains("Unable to locate Diplomat repository root"));
+    }
+
+    #[test]
+    fn packaged_worker_candidates_include_tauri_windows_sidecar_name() {
+        let candidates = packaged_worker_candidates(&PathBuf::from(r"C:\Program Files\Diplomat"));
+
+        assert_eq!(
+            candidates,
+            vec![
+                PathBuf::from(r"C:\Program Files\Diplomat\diplomat-worker.exe"),
+                PathBuf::from(
+                    r"C:\Program Files\Diplomat\diplomat-worker-x86_64-pc-windows-msvc.exe"
+                ),
+            ]
+        );
     }
 
     #[test]
