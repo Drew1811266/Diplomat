@@ -3,6 +3,50 @@ import { SubtitleDocumentSchema } from "./subtitle";
 
 const LanguageCodeSchema = z.string().min(2).max(12);
 
+export const ProjectStatusSchema = z.enum([
+  "not_transcribed",
+  "transcribed",
+  "translated",
+  "dirty_draft",
+  "exported",
+  "failed",
+  "corrupted",
+  "migration_failed"
+]);
+
+export const ProjectWarningCodeSchema = z.enum([
+  "source_missing",
+  "project_dir_missing",
+  "subtitle_corrupted",
+  "unsafe_project_path",
+  "migration_failed"
+]);
+
+export const ProjectWarningSchema = z.object({
+  code: ProjectWarningCodeSchema,
+  message: z.string().min(1)
+});
+
+export const ProjectDiagnosticsSchema = z.object({
+  status: ProjectStatusSchema,
+  warnings: z.array(ProjectWarningSchema),
+  sourceVideoExists: z.boolean(),
+  projectDirExists: z.boolean(),
+  diskUsageBytes: z.number().int().nonnegative(),
+  cacheUsageBytes: z.number().int().nonnegative(),
+  exportUsageBytes: z.number().int().nonnegative(),
+  exportCount: z.number().int().nonnegative(),
+  subtitleLineCount: z.number().int().nonnegative(),
+  translatedLineCount: z.number().int().nonnegative(),
+  activeTaskCount: z.number().int().nonnegative(),
+  failedTaskCount: z.number().int().nonnegative(),
+  latestTaskStatus: z.string().nullable(),
+  exportsDir: z.string().min(1),
+  cacheDir: z.string().min(1),
+  logsDir: z.string().min(1),
+  backupsDir: z.string().min(1)
+});
+
 export const CreateProjectRequestSchema = z.object({
   name: z.string().min(1),
   sourceVideoPath: z.string().min(1),
@@ -20,11 +64,39 @@ export const ProjectResponseSchema = z.object({
   targetLanguage: z.string().nullable(),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
-  hasSubtitleDocument: z.boolean()
+  hasSubtitleDocument: z.boolean(),
+  diagnostics: ProjectDiagnosticsSchema
 });
 
 export const ProjectListResponseSchema = z.object({
   projects: z.array(ProjectResponseSchema)
+});
+
+export const ProjectMaintenanceActionSchema = z.enum([
+  "delete",
+  "cleanup_cache",
+  "cleanup_exports",
+  "import"
+]);
+
+export const ProjectMaintenanceResponseSchema = z.object({
+  projectId: z.string().min(1),
+  action: ProjectMaintenanceActionSchema,
+  filesAffected: z.number().int().nonnegative(),
+  bytesAffected: z.number().int().nonnegative(),
+  message: z.string().min(1)
+});
+
+export const ProjectBackupResponseSchema = z.object({
+  projectId: z.string().min(1),
+  packagePath: z.string().min(1),
+  bytesWritten: z.number().int().nonnegative(),
+  message: z.string().min(1)
+});
+
+export const ProjectImportRequestSchema = z.object({
+  packagePath: z.string().min(1),
+  restoreName: z.string().min(1).nullable().default(null)
 });
 
 export const AnalyzeProjectResponseSchema = z.object({
@@ -40,7 +112,15 @@ export const SubtitleDocumentRequestSchema = z.object({
 });
 
 export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
+export type ProjectStatus = z.infer<typeof ProjectStatusSchema>;
+export type ProjectWarningCode = z.infer<typeof ProjectWarningCodeSchema>;
+export type ProjectWarning = z.infer<typeof ProjectWarningSchema>;
+export type ProjectDiagnostics = z.infer<typeof ProjectDiagnosticsSchema>;
 export type ProjectResponse = z.infer<typeof ProjectResponseSchema>;
 export type ProjectListResponse = z.infer<typeof ProjectListResponseSchema>;
+export type ProjectMaintenanceAction = z.infer<typeof ProjectMaintenanceActionSchema>;
+export type ProjectMaintenanceResponse = z.infer<typeof ProjectMaintenanceResponseSchema>;
+export type ProjectBackupResponse = z.infer<typeof ProjectBackupResponseSchema>;
+export type ProjectImportRequest = z.infer<typeof ProjectImportRequestSchema>;
 export type AnalyzeProjectResponse = z.infer<typeof AnalyzeProjectResponseSchema>;
 export type SubtitleDocumentRequest = z.infer<typeof SubtitleDocumentRequestSchema>;
