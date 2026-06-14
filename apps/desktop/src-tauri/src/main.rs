@@ -44,6 +44,94 @@ impl WorkerStatus {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeDirectories {
+    data: String,
+    projects: String,
+    models: String,
+    downloads: String,
+    exports: String,
+    cache: String,
+    logs: String,
+    diagnostics: String,
+}
+
+impl RuntimeDirectories {
+    fn from_base(base: &Path) -> Self {
+        let data = base.join("data");
+        Self {
+            data: path_to_string(&data),
+            projects: path_to_string(&data.join("projects")),
+            models: path_to_string(&base.join("models")),
+            downloads: path_to_string(&base.join("downloads")),
+            exports: path_to_string(&base.join("exports")),
+            cache: path_to_string(&base.join("cache")),
+            logs: path_to_string(&base.join("logs")),
+            diagnostics: path_to_string(&base.join("diagnostics")),
+        }
+    }
+
+    fn ensure_created(&self) -> Result<(), String> {
+        for path in [
+            &self.data,
+            &self.projects,
+            &self.models,
+            &self.downloads,
+            &self.exports,
+            &self.cache,
+            &self.logs,
+            &self.diagnostics,
+        ] {
+            fs::create_dir_all(Path::new(path))
+                .map_err(|error| format!("Unable to create runtime directory {path}: {error}"))?;
+        }
+        Ok(())
+    }
+
+    fn logs_path(&self) -> PathBuf {
+        PathBuf::from(&self.logs)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeDiagnostics {
+    worker_stdout_log: String,
+    worker_stderr_log: String,
+}
+
+impl RuntimeDiagnostics {
+    fn from_directories(directories: &RuntimeDirectories) -> Self {
+        let logs = directories.logs_path();
+        Self {
+            worker_stdout_log: path_to_string(&logs.join("worker.stdout.log")),
+            worker_stderr_log: path_to_string(&logs.join("worker.stderr.log")),
+        }
+    }
+}
+
+fn path_to_string(path: &Path) -> String {
+    path.to_string_lossy().to_string()
+}
+
+fn app_base_dir() -> PathBuf {
+    env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(env::temp_dir)
+        .join("Diplomat")
+}
+
+fn runtime_directories() -> Result<RuntimeDirectories, String> {
+    let directories = RuntimeDirectories::from_base(&app_base_dir());
+    directories.ensure_created()?;
+    Ok(directories)
+}
+
+fn worker_environment(directories: &RuntimeDirectories) -> Vec<(String, String)> {
+    vec![("DIPLOMAT_DATA_DIR".to_string(), directories.data.clone())]
+}
+
 #[tauri::command]
 fn worker_endpoint() -> &'static str {
     WORKER_ENDPOINT
@@ -357,5 +445,73 @@ mod tests {
 
         assert_eq!(status.status, "stopped");
         assert_eq!(status.owner, "none");
+    }
+
+    #[test]
+    fn runtime_directories_are_derived_from_base_path() {
+        let base = PathBuf::from(r"C:\Users\Drew\AppData\Local\Diplomat");
+        let directories = RuntimeDirectories::from_base(&base);
+
+        assert_eq!(
+            directories.data,
+            r"C:\Users\Drew\AppData\Local\Diplomat\data"
+        );
+        assert_eq!(
+            directories.projects,
+            r"C:\Users\Drew\AppData\Local\Diplomat\data\projects"
+        );
+        assert_eq!(
+            directories.models,
+            r"C:\Users\Drew\AppData\Local\Diplomat\models"
+        );
+        assert_eq!(
+            directories.downloads,
+            r"C:\Users\Drew\AppData\Local\Diplomat\downloads"
+        );
+        assert_eq!(
+            directories.exports,
+            r"C:\Users\Drew\AppData\Local\Diplomat\exports"
+        );
+        assert_eq!(
+            directories.cache,
+            r"C:\Users\Drew\AppData\Local\Diplomat\cache"
+        );
+        assert_eq!(
+            directories.logs,
+            r"C:\Users\Drew\AppData\Local\Diplomat\logs"
+        );
+        assert_eq!(
+            directories.diagnostics,
+            r"C:\Users\Drew\AppData\Local\Diplomat\diagnostics"
+        );
+    }
+
+    #[test]
+    fn runtime_diagnostics_paths_use_log_directory() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let diagnostics = RuntimeDiagnostics::from_directories(&directories);
+
+        assert_eq!(
+            diagnostics.worker_stdout_log,
+            r"C:\Diplomat\logs\worker.stdout.log"
+        );
+        assert_eq!(
+            diagnostics.worker_stderr_log,
+            r"C:\Diplomat\logs\worker.stderr.log"
+        );
+    }
+
+    #[test]
+    fn worker_environment_sets_data_directory() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let environment = worker_environment(&directories);
+
+        assert_eq!(
+            environment,
+            vec![(
+                "DIPLOMAT_DATA_DIR".to_string(),
+                r"C:\Diplomat\data".to_string()
+            )]
+        );
     }
 }
