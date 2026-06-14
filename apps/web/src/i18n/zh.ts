@@ -300,6 +300,7 @@ export const zh = {
     desktopRuntimeUnavailable: "浏览器模式下无法使用桌面运行时控制。",
     workerEndpoint: "Worker 地址",
     workerStatus: "Worker 状态",
+    workerLauncher: "Worker 启动方式",
     ffmpegStatus: "FFmpeg 状态",
     ffprobeStatus: "FFprobe 状态",
     ffmpegVersion: "FFmpeg 版本",

@@ -6,6 +6,8 @@ dist/
 build/
 target/
 apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/binaries/
+apps/desktop/src-tauri/resources/
 .venv/
 venv/
 __pycache__/

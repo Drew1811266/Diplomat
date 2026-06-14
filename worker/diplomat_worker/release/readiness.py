@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Literal, Mapping
 from urllib.parse import urlparse
 
+from diplomat_worker import __version__ as EXPECTED_RELEASE_VERSION
 from diplomat_worker.models.registry import ModelRegistryEntry
 
 ReleaseSeverity = Literal["pass", "warning", "blocker"]
@@ -85,19 +86,19 @@ def build_release_readiness_report(
 
 
 def _version_check(version: str) -> ReleaseReadinessCheck:
-    if version == "0.3.0":
+    if version == EXPECTED_RELEASE_VERSION:
         return ReleaseReadinessCheck(
             id="version_metadata",
             label="Version metadata",
             severity="pass",
-            message="Worker release version is 0.3.0.",
+            message=f"Worker release version is {EXPECTED_RELEASE_VERSION}.",
         )
     return ReleaseReadinessCheck(
         id="version_metadata",
         label="Version metadata",
         severity="blocker",
-        message=f"Worker release version is {version}; expected 0.3.0.",
-        remediation="Update all release metadata to 0.3.0.",
+        message=f"Worker release version is {version}; expected {EXPECTED_RELEASE_VERSION}.",
+        remediation=f"Update all release metadata to {EXPECTED_RELEASE_VERSION}.",
     )
 
 

@@ -22,6 +22,64 @@ const WORKER_HOST: &str = "127.0.0.1:8765";
 #[derive(Default)]
 struct WorkerProcessState {
     child: Option<Child>,
+    launcher: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WorkerLaunchConfig {
+    mode: String,
+    program: PathBuf,
+    args: Vec<String>,
+    current_dir: Option<PathBuf>,
+    env: Vec<(String, String)>,
+}
+
+impl WorkerLaunchConfig {
+    fn packaged(
+        worker_path: PathBuf,
+        directories: &RuntimeDirectories,
+        ffmpeg_path: String,
+        ffprobe_path: String,
+    ) -> Self {
+        let mut env = worker_environment(directories);
+        env.push(("DIPLOMAT_FFMPEG_PATH".to_string(), ffmpeg_path));
+        env.push(("DIPLOMAT_FFPROBE_PATH".to_string(), ffprobe_path));
+        Self {
+            mode: "packaged".to_string(),
+            program: worker_path,
+            args: Vec::new(),
+            current_dir: None,
+            env,
+        }
+    }
+
+    fn development(
+        repo_root: PathBuf,
+        directories: &RuntimeDirectories,
+        ffmpeg_path: String,
+        ffprobe_path: String,
+    ) -> Self {
+        let mut env = worker_environment(directories);
+        env.push(("DIPLOMAT_FFMPEG_PATH".to_string(), ffmpeg_path));
+        env.push(("DIPLOMAT_FFPROBE_PATH".to_string(), ffprobe_path));
+        Self {
+            mode: "development".to_string(),
+            program: PathBuf::from("python"),
+            args: vec![
+                "-m".to_string(),
+                "uvicorn".to_string(),
+                "diplomat_worker.api.app:app".to_string(),
+                "--app-dir".to_string(),
+                "worker".to_string(),
+                "--host".to_string(),
+                "127.0.0.1".to_string(),
+                "--port".to_string(),
+                "8765".to_string(),
+            ],
+            current_dir: Some(repo_root),
+            env,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -124,6 +182,7 @@ struct ToolStatus {
 #[serde(rename_all = "camelCase")]
 struct RuntimeStatus {
     mode: String,
+    worker_launcher: String,
     worker: WorkerStatus,
     directories: RuntimeDirectories,
     ffmpeg: ToolStatus,
@@ -134,6 +193,7 @@ struct RuntimeStatus {
 impl RuntimeStatus {
     fn new(
         worker: WorkerStatus,
+        worker_launcher: &str,
         directories: RuntimeDirectories,
         ffmpeg: ToolStatus,
         ffprobe: ToolStatus,
@@ -141,6 +201,7 @@ impl RuntimeStatus {
         let diagnostics = RuntimeDiagnostics::from_directories(&directories);
         Self {
             mode: "desktop".to_string(),
+            worker_launcher: worker_launcher.to_string(),
             worker,
             directories,
             ffmpeg,
@@ -177,12 +238,67 @@ fn worker_environment(directories: &RuntimeDirectories) -> Vec<(String, String)>
     vec![("DIPLOMAT_DATA_DIR".to_string(), directories.data.clone())]
 }
 
-fn configured_tool_path(configured: Option<&str>, fallback: &str) -> String {
-    configured
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(fallback)
-        .to_string()
+fn packaged_resource_candidate(name: &str) -> Option<PathBuf> {
+    env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .map(|dir| dir.join("resources").join(name))
+        .filter(|path| path.exists())
+}
+
+fn packaged_worker_candidate() -> Option<PathBuf> {
+    env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .and_then(|dir| {
+            packaged_worker_candidates(&dir)
+                .into_iter()
+                .find(|path| path.exists())
+        })
+}
+
+fn packaged_worker_candidates(exe_dir: &Path) -> Vec<PathBuf> {
+    vec![
+        exe_dir.join("diplomat-worker.exe"),
+        exe_dir.join("diplomat-worker-x86_64-pc-windows-msvc.exe"),
+    ]
+}
+
+fn packaged_or_configured_tool_path(
+    configured: Option<&str>,
+    packaged: Option<PathBuf>,
+    fallback: &str,
+) -> String {
+    if let Some(value) = configured.map(str::trim).filter(|value| !value.is_empty()) {
+        return value.to_string();
+    }
+    if let Some(path) = packaged {
+        return path_to_string(&path);
+    }
+    fallback.to_string()
+}
+
+fn worker_launch_config_from_candidates(
+    packaged_worker: Option<PathBuf>,
+    repo_root: Result<PathBuf, String>,
+    directories: &RuntimeDirectories,
+    ffmpeg_path: String,
+    ffprobe_path: String,
+) -> Result<WorkerLaunchConfig, String> {
+    if let Some(worker_path) = packaged_worker {
+        return Ok(WorkerLaunchConfig::packaged(
+            worker_path,
+            directories,
+            ffmpeg_path,
+            ffprobe_path,
+        ));
+    }
+    Ok(WorkerLaunchConfig::development(
+        repo_root?,
+        directories,
+        ffmpeg_path,
+        ffprobe_path,
+    ))
 }
 
 fn probe_cli_tool(path: &str) -> Result<String, ToolProbeError> {
@@ -240,12 +356,20 @@ fn tool_status_from_probe(path: &str, result: Result<String, ToolProbeError>) ->
 }
 
 fn ffmpeg_status() -> ToolStatus {
-    let path = configured_tool_path(env::var("DIPLOMAT_FFMPEG_PATH").ok().as_deref(), "ffmpeg");
+    let path = packaged_or_configured_tool_path(
+        env::var("DIPLOMAT_FFMPEG_PATH").ok().as_deref(),
+        packaged_resource_candidate("ffmpeg.exe"),
+        "ffmpeg",
+    );
     tool_status_from_probe(&path, probe_cli_tool(&path))
 }
 
 fn ffprobe_status() -> ToolStatus {
-    let path = configured_tool_path(env::var("DIPLOMAT_FFPROBE_PATH").ok().as_deref(), "ffprobe");
+    let path = packaged_or_configured_tool_path(
+        env::var("DIPLOMAT_FFPROBE_PATH").ok().as_deref(),
+        packaged_resource_candidate("ffprobe.exe"),
+        "ffprobe",
+    );
     tool_status_from_probe(&path, probe_cli_tool(&path))
 }
 
@@ -300,9 +424,22 @@ fn runtime_status(state: State<'_, Mutex<WorkerProcessState>>) -> Result<Runtime
             classify_worker_probe(probe_worker_health())
         }
     };
+    let worker_launcher = {
+        let guard = state
+            .lock()
+            .map_err(|_| "Worker process state lock is poisoned".to_string())?;
+        guard.launcher.clone().unwrap_or_else(|| {
+            if worker.status == "running" && worker.owner == "diplomat" {
+                "external".to_string()
+            } else {
+                "none".to_string()
+            }
+        })
+    };
 
     Ok(RuntimeStatus::new(
         worker,
+        &worker_launcher,
         directories,
         ffmpeg_status(),
         ffprobe_status(),
@@ -334,9 +471,25 @@ fn start_worker(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerSta
         ));
     }
 
-    let repo_root = find_repo_root()?;
     let directories = runtime_directories()?;
     let diagnostics = RuntimeDiagnostics::from_directories(&directories);
+    let ffmpeg_path = packaged_or_configured_tool_path(
+        env::var("DIPLOMAT_FFMPEG_PATH").ok().as_deref(),
+        packaged_resource_candidate("ffmpeg.exe"),
+        "ffmpeg",
+    );
+    let ffprobe_path = packaged_or_configured_tool_path(
+        env::var("DIPLOMAT_FFPROBE_PATH").ok().as_deref(),
+        packaged_resource_candidate("ffprobe.exe"),
+        "ffprobe",
+    );
+    let launch_config = worker_launch_config_from_candidates(
+        packaged_worker_candidate(),
+        find_repo_root(),
+        &directories,
+        ffmpeg_path,
+        ffprobe_path,
+    )?;
     let stdout = OpenOptions::new()
         .create(true)
         .append(true)
@@ -348,24 +501,16 @@ fn start_worker(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerSta
         .open(Path::new(&diagnostics.worker_stderr_log))
         .map_err(|error| format!("Unable to open Worker stderr log: {error}"))?;
 
-    let mut command = Command::new("python");
+    let mut command = Command::new(&launch_config.program);
     command
-        .args([
-            "-m",
-            "uvicorn",
-            "diplomat_worker.api.app:app",
-            "--app-dir",
-            "worker",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "8765",
-        ])
-        .current_dir(repo_root)
+        .args(&launch_config.args)
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
-    for (key, value) in worker_environment(&directories) {
+    if let Some(current_dir) = &launch_config.current_dir {
+        command.current_dir(current_dir);
+    }
+    for (key, value) in &launch_config.env {
         command.env(key, value);
     }
     let child = command
@@ -373,6 +518,7 @@ fn start_worker(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerSta
         .map_err(|error| format!("Unable to start Diplomat Worker: {error}"))?;
 
     guard.child = Some(child);
+    guard.launcher = Some(launch_config.mode.clone());
     drop(guard);
 
     for _ in 0..10 {
@@ -401,6 +547,7 @@ fn stop_worker(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerStat
             .map_err(|error| format!("Unable to stop Worker process: {error}"))?;
         let _ = child.wait();
     }
+    guard.launcher = None;
 
     Ok(WorkerStatus::new(
         "stopped",
@@ -466,6 +613,7 @@ fn clear_exited_child(state: &mut WorkerProcessState) {
     };
     if matches!(child.try_wait(), Ok(Some(_))) {
         state.child = None;
+        state.launcher = None;
     }
 }
 
@@ -654,6 +802,134 @@ mod tests {
     }
 
     #[test]
+    fn packaged_worker_command_uses_sidecar_path_and_app_dirs() {
+        let directories =
+            RuntimeDirectories::from_base(&PathBuf::from(r"C:\Users\Drew\AppData\Local\Diplomat"));
+        let config = WorkerLaunchConfig::packaged(
+            PathBuf::from(r"C:\Program Files\Diplomat\diplomat-worker.exe"),
+            &directories,
+            r"C:\Program Files\Diplomat\resources\ffmpeg.exe".to_string(),
+            r"C:\Program Files\Diplomat\resources\ffprobe.exe".to_string(),
+        );
+
+        assert_eq!(
+            config.program,
+            PathBuf::from(r"C:\Program Files\Diplomat\diplomat-worker.exe")
+        );
+        assert_eq!(config.args, Vec::<String>::new());
+        assert!(config.env.iter().any(|(key, value)| {
+            key == "DIPLOMAT_DATA_DIR" && value.ends_with(r"Diplomat\data")
+        }));
+        assert!(config.env.iter().any(|(key, value)| {
+            key == "DIPLOMAT_FFMPEG_PATH" && value.ends_with("ffmpeg.exe")
+        }));
+        assert!(config.env.iter().any(|(key, value)| {
+            key == "DIPLOMAT_FFPROBE_PATH" && value.ends_with("ffprobe.exe")
+        }));
+        assert_eq!(config.mode, "packaged");
+    }
+
+    #[test]
+    fn development_worker_command_keeps_repo_app_dir() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let config = WorkerLaunchConfig::development(
+            PathBuf::from(r"D:\Software Project\Diplomat"),
+            &directories,
+            "ffmpeg".to_string(),
+            "ffprobe".to_string(),
+        );
+
+        assert_eq!(config.program, PathBuf::from("python"));
+        assert_eq!(
+            config.args,
+            vec![
+                "-m",
+                "uvicorn",
+                "diplomat_worker.api.app:app",
+                "--app-dir",
+                "worker",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8765",
+            ]
+        );
+        assert_eq!(
+            config.current_dir,
+            Some(PathBuf::from(r"D:\Software Project\Diplomat"))
+        );
+        assert_eq!(config.mode, "development");
+    }
+
+    #[test]
+    fn packaged_launch_config_does_not_require_repo_root() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let config = worker_launch_config_from_candidates(
+            Some(PathBuf::from(r"C:\Program Files\Diplomat\diplomat-worker.exe")),
+            Err("repo root unavailable".to_string()),
+            &directories,
+            "ffmpeg".to_string(),
+            "ffprobe".to_string(),
+        )
+        .expect("packaged launch should not require a repo root");
+
+        assert_eq!(config.mode, "packaged");
+        assert_eq!(
+            config.program,
+            PathBuf::from(r"C:\Program Files\Diplomat\diplomat-worker.exe")
+        );
+    }
+
+    #[test]
+    fn development_launch_config_uses_repo_when_no_packaged_worker() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let config = worker_launch_config_from_candidates(
+            None,
+            Ok(PathBuf::from(r"D:\Software Project\Diplomat")),
+            &directories,
+            "ffmpeg".to_string(),
+            "ffprobe".to_string(),
+        )
+        .expect("development launch should use repo root");
+
+        assert_eq!(config.mode, "development");
+        assert_eq!(
+            config.current_dir,
+            Some(PathBuf::from(r"D:\Software Project\Diplomat"))
+        );
+    }
+
+    #[test]
+    fn launch_config_returns_repo_error_without_packaged_worker() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let error = worker_launch_config_from_candidates(
+            None,
+            Err("Unable to locate Diplomat repository root for Worker startup.".to_string()),
+            &directories,
+            "ffmpeg".to_string(),
+            "ffprobe".to_string(),
+        )
+        .expect_err("missing packaged worker and repo root should fail");
+
+        assert!(error.contains("Unable to locate Diplomat repository root"));
+    }
+
+    #[test]
+    fn packaged_worker_candidates_include_tauri_windows_sidecar_name() {
+        let candidates = packaged_worker_candidates(&PathBuf::from(r"C:\Program Files\Diplomat"));
+
+        assert_eq!(
+            candidates,
+            vec![
+                PathBuf::from(r"C:\Program Files\Diplomat\diplomat-worker.exe"),
+                PathBuf::from(
+                    r"C:\Program Files\Diplomat\diplomat-worker-x86_64-pc-windows-msvc.exe"
+                ),
+            ]
+        );
+    }
+
+    #[test]
     fn tool_status_available_uses_first_version_line() {
         let status = tool_status_from_probe(
             "ffmpeg",
@@ -696,15 +972,37 @@ mod tests {
     }
 
     #[test]
-    fn configured_tool_path_uses_environment_before_default() {
-        let path = configured_tool_path(Some("C:/Tools/ffmpeg.exe"), "ffmpeg");
+    fn packaged_resource_path_prefers_env_override() {
+        let path = packaged_or_configured_tool_path(
+            Some("C:/Tools/ffmpeg.exe"),
+            Some(PathBuf::from(
+                r"C:\Program Files\Diplomat\resources\ffmpeg.exe",
+            )),
+            "ffmpeg",
+        );
 
         assert_eq!(path, "C:/Tools/ffmpeg.exe");
     }
 
     #[test]
-    fn configured_tool_path_uses_default_when_environment_is_empty() {
-        let path = configured_tool_path(Some("  "), "ffmpeg");
+    fn packaged_resource_path_uses_resource_when_env_missing() {
+        let path = packaged_or_configured_tool_path(
+            None,
+            Some(PathBuf::from(
+                r"C:\Program Files\Diplomat\resources\ffprobe.exe",
+            )),
+            "ffprobe",
+        );
+
+        assert_eq!(
+            path,
+            r"C:\Program Files\Diplomat\resources\ffprobe.exe"
+        );
+    }
+
+    #[test]
+    fn packaged_resource_path_falls_back_to_path_name() {
+        let path = packaged_or_configured_tool_path(None, None, "ffmpeg");
 
         assert_eq!(path, "ffmpeg");
     }
@@ -726,9 +1024,10 @@ mod tests {
             message: "ffprobe was not found.".to_string(),
         };
 
-        let status = RuntimeStatus::new(worker, directories, ffmpeg, ffprobe);
+        let status = RuntimeStatus::new(worker, "development", directories, ffmpeg, ffprobe);
 
         assert_eq!(status.mode, "desktop");
+        assert_eq!(status.worker_launcher, "development");
         assert_eq!(status.worker.status, "stopped");
         assert_eq!(status.directories.data, r"C:\Diplomat\data");
         assert_eq!(status.ffmpeg.status, "available");

@@ -240,6 +240,10 @@ export function SettingsPage() {
                   label={t("settings.workerStatus")}
                   value={runtimeStatus.worker.status}
                 />
+                <ReadonlyField
+                  label={t("settings.workerLauncher")}
+                  value={runtimeStatus.workerLauncher}
+                />
               </Group>
               <Group grow align="flex-start">
                 <ReadonlyField

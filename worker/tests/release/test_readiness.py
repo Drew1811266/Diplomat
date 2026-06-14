@@ -1,3 +1,4 @@
+from diplomat_worker import __version__
 from diplomat_worker.models.registry import ModelRegistryEntry, built_in_model_registry
 from diplomat_worker.release.readiness import build_release_readiness_report
 
@@ -35,7 +36,7 @@ def test_release_readiness_flags_placeholder_model_checksums() -> None:
         }
     )
     report = build_release_readiness_report(
-        version="0.3.0",
+        version=__version__,
         registry=[placeholder_entry],
         ffmpeg_status={"status": "available", "message": "FFmpeg available"},
         ffprobe_status={"status": "available", "message": "FFprobe available"},
@@ -61,7 +62,7 @@ def test_release_readiness_flags_bare_hugging_face_repository_sources() -> None:
         }
     )
     report = build_release_readiness_report(
-        version="0.3.0",
+        version=__version__,
         registry=[bare_repo_entry],
         ffmpeg_status={"status": "available", "message": "FFmpeg available"},
         ffprobe_status={"status": "available", "message": "FFprobe available"},
@@ -78,7 +79,7 @@ def test_release_readiness_flags_bare_hugging_face_repository_sources() -> None:
 
 def test_built_in_registry_is_release_ready_when_tools_and_docs_pass() -> None:
     report = build_release_readiness_report(
-        version="0.3.0",
+        version=__version__,
         registry=built_in_model_registry(),
         ffmpeg_status={"status": "available", "message": "FFmpeg available"},
         ffprobe_status={"status": "available", "message": "FFprobe available"},
@@ -93,7 +94,7 @@ def test_built_in_registry_is_release_ready_when_tools_and_docs_pass() -> None:
 
 def test_release_readiness_passes_when_inputs_are_audited() -> None:
     report = build_release_readiness_report(
-        version="0.3.0",
+        version=__version__,
         registry=[fixture_entry()],
         ffmpeg_status={"status": "available", "message": "FFmpeg available"},
         ffprobe_status={"status": "available", "message": "FFprobe available"},

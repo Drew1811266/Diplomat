@@ -43,6 +43,7 @@ export type DesktopRuntimeDiagnostics = {
 
 export type DesktopRuntimeStatus = {
   mode: string;
+  workerLauncher: string;
   worker: DesktopWorkerStatus;
   directories: DesktopRuntimeDirectories;
   ffmpeg: DesktopToolStatus;

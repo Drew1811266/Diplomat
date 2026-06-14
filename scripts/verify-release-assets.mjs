@@ -3,7 +3,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const expectedVersion = "0.3.0";
+const expectedVersion = readJson("package.json").version;
+const releaseDocVersion = "0.3.0";
 
 const requiredIcons = ["icons/icon.ico", "icons/icon.png"];
 const requiredReleaseDocs = [
@@ -34,9 +35,27 @@ const tauriConfig = readJson("apps/desktop/src-tauri/tauri.conf.json");
 const bundle = tauriConfig.bundle ?? {};
 const bundleTargets = Array.isArray(bundle.targets) ? bundle.targets : [bundle.targets];
 const bundleIcons = Array.isArray(bundle.icon) ? bundle.icon : [];
+const externalBin = Array.isArray(bundle.externalBin) ? bundle.externalBin : [];
+const resources = Array.isArray(bundle.resources) ? bundle.resources : [];
 
 expect(bundle.active === true, "Tauri bundle.active must be true for the 0.3 desktop release.");
+expect(
+  tauriConfig.version === expectedVersion,
+  `Tauri version must match package.json version ${expectedVersion}.`
+);
 expect(bundleTargets.includes("nsis"), "Tauri bundle.targets must include the Windows nsis target.");
+expect(
+  externalBin.includes("binaries/diplomat-worker"),
+  "Tauri bundle.externalBin must include the Worker sidecar."
+);
+expect(
+  resources.includes("resources/ffmpeg.exe"),
+  "Tauri bundle.resources must include resources/ffmpeg.exe."
+);
+expect(
+  resources.includes("resources/ffprobe.exe"),
+  "Tauri bundle.resources must include resources/ffprobe.exe."
+);
 
 for (const icon of requiredIcons) {
   expect(bundleIcons.includes(icon), `Tauri bundle.icon must include ${icon}.`);
@@ -53,8 +72,8 @@ for (const doc of requiredReleaseDocs) {
   if (existsSync(absolutePath)) {
     const content = readFileSync(absolutePath, "utf8");
     expect(
-      content.includes(`Diplomat ${expectedVersion}`),
-      `Release document must mention Diplomat ${expectedVersion}: ${relativePath}.`
+      content.includes(`Diplomat ${releaseDocVersion}`),
+      `Release document must mention Diplomat ${releaseDocVersion}: ${relativePath}.`
     );
   }
 }
