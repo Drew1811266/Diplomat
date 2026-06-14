@@ -250,6 +250,14 @@ fn packaged_resource_candidate(name: &str) -> Option<PathBuf> {
         .filter(|path| path.exists())
 }
 
+fn packaged_worker_candidate() -> Option<PathBuf> {
+    env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .map(|dir| dir.join("diplomat-worker.exe"))
+        .filter(|path| path.exists())
+}
+
 fn packaged_or_configured_tool_path(
     configured: Option<&str>,
     packaged: Option<PathBuf>,
@@ -262,6 +270,29 @@ fn packaged_or_configured_tool_path(
         return path_to_string(&path);
     }
     fallback.to_string()
+}
+
+fn worker_launch_config_from_candidates(
+    packaged_worker: Option<PathBuf>,
+    repo_root: Result<PathBuf, String>,
+    directories: &RuntimeDirectories,
+    ffmpeg_path: String,
+    ffprobe_path: String,
+) -> Result<WorkerLaunchConfig, String> {
+    if let Some(worker_path) = packaged_worker {
+        return Ok(WorkerLaunchConfig::packaged(
+            worker_path,
+            directories,
+            ffmpeg_path,
+            ffprobe_path,
+        ));
+    }
+    Ok(WorkerLaunchConfig::development(
+        repo_root?,
+        directories,
+        ffmpeg_path,
+        ffprobe_path,
+    ))
 }
 
 fn probe_cli_tool(path: &str) -> Result<String, ToolProbeError> {
@@ -421,9 +452,25 @@ fn start_worker(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerSta
         ));
     }
 
-    let repo_root = find_repo_root()?;
     let directories = runtime_directories()?;
     let diagnostics = RuntimeDiagnostics::from_directories(&directories);
+    let ffmpeg_path = packaged_or_configured_tool_path(
+        env::var("DIPLOMAT_FFMPEG_PATH").ok().as_deref(),
+        packaged_resource_candidate("ffmpeg.exe"),
+        "ffmpeg",
+    );
+    let ffprobe_path = packaged_or_configured_tool_path(
+        env::var("DIPLOMAT_FFPROBE_PATH").ok().as_deref(),
+        packaged_resource_candidate("ffprobe.exe"),
+        "ffprobe",
+    );
+    let launch_config = worker_launch_config_from_candidates(
+        packaged_worker_candidate(),
+        find_repo_root(),
+        &directories,
+        ffmpeg_path,
+        ffprobe_path,
+    )?;
     let stdout = OpenOptions::new()
         .create(true)
         .append(true)
@@ -435,24 +482,16 @@ fn start_worker(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerSta
         .open(Path::new(&diagnostics.worker_stderr_log))
         .map_err(|error| format!("Unable to open Worker stderr log: {error}"))?;
 
-    let mut command = Command::new("python");
+    let mut command = Command::new(&launch_config.program);
     command
-        .args([
-            "-m",
-            "uvicorn",
-            "diplomat_worker.api.app:app",
-            "--app-dir",
-            "worker",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "8765",
-        ])
-        .current_dir(repo_root)
+        .args(&launch_config.args)
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
-    for (key, value) in worker_environment(&directories) {
+    if let Some(current_dir) = &launch_config.current_dir {
+        command.current_dir(current_dir);
+    }
+    for (key, value) in &launch_config.env {
         command.env(key, value);
     }
     let child = command
@@ -798,6 +837,59 @@ mod tests {
             Some(PathBuf::from(r"D:\Software Project\Diplomat"))
         );
         assert_eq!(config.mode, "development");
+    }
+
+    #[test]
+    fn packaged_launch_config_does_not_require_repo_root() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let config = worker_launch_config_from_candidates(
+            Some(PathBuf::from(r"C:\Program Files\Diplomat\diplomat-worker.exe")),
+            Err("repo root unavailable".to_string()),
+            &directories,
+            "ffmpeg".to_string(),
+            "ffprobe".to_string(),
+        )
+        .expect("packaged launch should not require a repo root");
+
+        assert_eq!(config.mode, "packaged");
+        assert_eq!(
+            config.program,
+            PathBuf::from(r"C:\Program Files\Diplomat\diplomat-worker.exe")
+        );
+    }
+
+    #[test]
+    fn development_launch_config_uses_repo_when_no_packaged_worker() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let config = worker_launch_config_from_candidates(
+            None,
+            Ok(PathBuf::from(r"D:\Software Project\Diplomat")),
+            &directories,
+            "ffmpeg".to_string(),
+            "ffprobe".to_string(),
+        )
+        .expect("development launch should use repo root");
+
+        assert_eq!(config.mode, "development");
+        assert_eq!(
+            config.current_dir,
+            Some(PathBuf::from(r"D:\Software Project\Diplomat"))
+        );
+    }
+
+    #[test]
+    fn launch_config_returns_repo_error_without_packaged_worker() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let error = worker_launch_config_from_candidates(
+            None,
+            Err("Unable to locate Diplomat repository root for Worker startup.".to_string()),
+            &directories,
+            "ffmpeg".to_string(),
+            "ffprobe".to_string(),
+        )
+        .expect_err("missing packaged worker and repo root should fail");
+
+        assert!(error.contains("Unable to locate Diplomat repository root"));
     }
 
     #[test]
