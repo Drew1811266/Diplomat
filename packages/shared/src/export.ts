@@ -35,6 +35,18 @@ export const SubtitleExportResponseSchema = z.object({
   warnings: z.array(ExportValidationIssueSchema).default([])
 });
 
+export const BurnInExportRequestSchema = z.object({
+  mode: SubtitleExportModeSchema.default("bilingual"),
+  stylePresetId: z.string().min(1).nullable().default(null),
+  style: SubtitleStyleSchema.nullable().default(null),
+  outputPath: z.string().min(1).nullable().default(null),
+  videoCodec: z.literal("libx264").default("libx264"),
+  crf: z.number().int().min(0).max(51).default(18),
+  preset: z
+    .enum(["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow"])
+    .default("medium")
+});
+
 export const StylePresetSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -84,6 +96,8 @@ export type ExportValidationIssue = z.infer<typeof ExportValidationIssueSchema>;
 export type SubtitleExportRequestInput = z.input<typeof SubtitleExportRequestSchema>;
 export type SubtitleExportRequest = z.infer<typeof SubtitleExportRequestSchema>;
 export type SubtitleExportResponse = z.infer<typeof SubtitleExportResponseSchema>;
+export type BurnInExportRequestInput = z.input<typeof BurnInExportRequestSchema>;
+export type BurnInExportRequest = z.infer<typeof BurnInExportRequestSchema>;
 export type StylePreset = z.infer<typeof StylePresetSchema>;
 export type StylePresetListResponse = z.infer<typeof StylePresetListResponseSchema>;
 export type StylePresetCreateRequest = z.infer<typeof StylePresetCreateRequestSchema>;

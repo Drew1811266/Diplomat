@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BurnInExportRequestSchema,
   StylePresetCreateRequestSchema,
   StylePresetListResponseSchema,
   SubtitleExportRequestSchema,
@@ -108,5 +109,34 @@ describe("StylePreset schemas", () => {
     });
 
     expect(list.presets[0]?.style.backgroundBar).toBe(true);
+  });
+});
+
+describe("BurnInExportRequestSchema", () => {
+  it("parses burn-in export requests with defaults", () => {
+    const request = BurnInExportRequestSchema.parse({});
+
+    expect(request.mode).toBe("bilingual");
+    expect(request.stylePresetId).toBeNull();
+    expect(request.style).toBeNull();
+    expect(request.outputPath).toBeNull();
+    expect(request.videoCodec).toBe("libx264");
+    expect(request.crf).toBe(18);
+    expect(request.preset).toBe("medium");
+  });
+
+  it("parses burn-in export requests with an inline style", () => {
+    const request = BurnInExportRequestSchema.parse({
+      mode: "target",
+      stylePresetId: "preset-broadcast",
+      outputPath: "D:/Diplomat/exports/custom.mp4",
+      style,
+      videoCodec: "libx264",
+      crf: 20,
+      preset: "fast"
+    });
+
+    expect(request.mode).toBe("target");
+    expect(request.style?.fontFamily).toBe(style.fontFamily);
   });
 });
