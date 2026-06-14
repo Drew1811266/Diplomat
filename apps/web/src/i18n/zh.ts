@@ -79,6 +79,7 @@ export const zh = {
     labels: {
       projectTools: "项目工具",
       videoPreview: "视频预览",
+      videoPreviewMedia: "视频预览媒体",
       inspector: "检查器",
       timeline: "时间线"
     },

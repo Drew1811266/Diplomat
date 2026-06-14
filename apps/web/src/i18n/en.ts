@@ -81,6 +81,7 @@ export const en = {
     labels: {
       projectTools: "Project tools",
       videoPreview: "Video preview",
+      videoPreviewMedia: "Video preview media",
       inspector: "Inspector",
       timeline: "Timeline"
     },

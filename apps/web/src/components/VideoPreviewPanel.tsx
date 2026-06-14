@@ -1,14 +1,33 @@
 import { Box, Center, Stack, Text } from "@mantine/core";
 import type { SubtitleLine } from "@diplomat/shared";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 type VideoPreviewPanelProps = {
-  sourceVideoPath: string | null;
+  mediaUrl?: string | null;
+  sourceVideoPath?: string | null;
   selectedLine: SubtitleLine | null;
+  seekRequestMs?: number | null;
+  onTimeUpdate?: (timeMs: number) => void;
 };
 
-export function VideoPreviewPanel({ sourceVideoPath, selectedLine }: VideoPreviewPanelProps) {
+export function VideoPreviewPanel({
+  mediaUrl,
+  sourceVideoPath,
+  selectedLine,
+  seekRequestMs = null,
+  onTimeUpdate
+}: VideoPreviewPanelProps) {
   const { t } = useTranslation();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const resolvedMediaUrl = mediaUrl ?? sourceVideoPath ?? null;
+
+  useEffect(() => {
+    if (seekRequestMs === null || !videoRef.current) {
+      return;
+    }
+    videoRef.current.currentTime = Math.max(0, seekRequestMs) / 1000;
+  }, [seekRequestMs]);
 
   return (
     <Box
@@ -27,10 +46,15 @@ export function VideoPreviewPanel({ sourceVideoPath, selectedLine }: VideoPrevie
         boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)"
       }}
     >
-      {sourceVideoPath ? (
+      {resolvedMediaUrl ? (
         <video
-          src={sourceVideoPath}
+          ref={videoRef}
+          aria-label={t("workbench.labels.videoPreviewMedia")}
+          src={resolvedMediaUrl}
           controls
+          onTimeUpdate={(event) =>
+            onTimeUpdate?.(Math.round(event.currentTarget.currentTime * 1000))
+          }
           style={{
             display: "block",
             width: "100%",
