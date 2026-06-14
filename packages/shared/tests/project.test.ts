@@ -8,7 +8,8 @@ import {
   ProjectMaintenanceResponseSchema,
   ProjectResponseSchema,
   ProjectStatusSchema,
-  SubtitleDocumentRequestSchema
+  SubtitleDocumentRequestSchema,
+  WaveformResponseSchema
 } from "../src/project";
 
 const validDocument = {
@@ -284,5 +285,47 @@ describe("SubtitleDocumentRequestSchema", () => {
     const request = SubtitleDocumentRequestSchema.parse({ document: validDocument });
 
     expect(request.document.projectId).toBe("project-1");
+  });
+});
+
+describe("WaveformResponseSchema", () => {
+  it("accepts normalized waveform peaks", () => {
+    const waveform = WaveformResponseSchema.parse({
+      projectId: "project-1",
+      durationMs: 1000,
+      sampleRate: 8000,
+      peakCount: 2,
+      peaks: [
+        { index: 0, startMs: 0, endMs: 500, min: -0.25, max: 0.8 },
+        { index: 1, startMs: 500, endMs: 1000, min: -0.5, max: 0.4 }
+      ]
+    });
+
+    expect(waveform.peakCount).toBe(2);
+    expect(waveform.peaks[0]?.max).toBe(0.8);
+  });
+
+  it("rejects out-of-range waveform peak amplitudes", () => {
+    expect(() =>
+      WaveformResponseSchema.parse({
+        projectId: "project-1",
+        durationMs: 1000,
+        sampleRate: 8000,
+        peakCount: 1,
+        peaks: [{ index: 0, startMs: 0, endMs: 1000, min: -1.25, max: 0.5 }]
+      })
+    ).toThrow();
+  });
+
+  it("rejects mismatched waveform peak counts", () => {
+    expect(() =>
+      WaveformResponseSchema.parse({
+        projectId: "project-1",
+        durationMs: 1000,
+        sampleRate: 8000,
+        peakCount: 2,
+        peaks: [{ index: 0, startMs: 0, endMs: 1000, min: -0.25, max: 0.5 }]
+      })
+    ).toThrow();
   });
 });

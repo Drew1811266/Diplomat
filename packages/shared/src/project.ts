@@ -111,6 +111,30 @@ export const SubtitleDocumentRequestSchema = z.object({
   document: SubtitleDocumentSchema
 });
 
+export const WaveformPeakSchema = z
+  .object({
+    index: z.number().int().nonnegative(),
+    startMs: z.number().int().nonnegative(),
+    endMs: z.number().int().nonnegative(),
+    min: z.number().min(-1).max(1),
+    max: z.number().min(-1).max(1)
+  })
+  .refine((peak) => peak.endMs >= peak.startMs, {
+    message: "waveform peak endMs must be greater than or equal to startMs"
+  });
+
+export const WaveformResponseSchema = z
+  .object({
+    projectId: z.string().min(1),
+    durationMs: z.number().int().nonnegative(),
+    sampleRate: z.number().int().positive(),
+    peakCount: z.number().int().nonnegative(),
+    peaks: z.array(WaveformPeakSchema)
+  })
+  .refine((payload) => payload.peakCount === payload.peaks.length, {
+    message: "waveform peakCount must match peaks length"
+  });
+
 export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
 export type ProjectStatus = z.infer<typeof ProjectStatusSchema>;
 export type ProjectWarningCode = z.infer<typeof ProjectWarningCodeSchema>;
@@ -124,3 +148,5 @@ export type ProjectBackupResponse = z.infer<typeof ProjectBackupResponseSchema>;
 export type ProjectImportRequest = z.infer<typeof ProjectImportRequestSchema>;
 export type AnalyzeProjectResponse = z.infer<typeof AnalyzeProjectResponseSchema>;
 export type SubtitleDocumentRequest = z.infer<typeof SubtitleDocumentRequestSchema>;
+export type WaveformPeak = z.infer<typeof WaveformPeakSchema>;
+export type WaveformResponse = z.infer<typeof WaveformResponseSchema>;

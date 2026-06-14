@@ -9,7 +9,7 @@ export const TaskStatusSchema = z.enum([
   "completed"
 ]);
 
-export const TaskTypeSchema = z.enum(["analysis", "translation", "export"]);
+export const TaskTypeSchema = z.enum(["analysis", "translation", "waveform", "export"]);
 
 export const AnalysisJobRequestSchema = z.object({
   provider: z.enum(["fake", "faster-whisper"]).default("fake"),
