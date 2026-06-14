@@ -3,7 +3,7 @@ import type { AppLanguage } from "../app/i18n";
 
 export const LANGUAGE_STORAGE_KEY = "diplomat.language";
 
-export type AppPage = "projects" | "workbench" | "models" | "tasks" | "settings";
+export type AppPage = "projects" | "workbench" | "models" | "tasks" | "help" | "settings";
 export type InspectorMode = "line" | "analysis" | "translation" | "export" | "settings-lite";
 
 type UiState = {

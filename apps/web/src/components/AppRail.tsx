@@ -3,6 +3,7 @@ import {
   IconChecklist,
   IconDatabase,
   IconFolder,
+  IconHelpCircle,
   IconLayoutDashboard,
   IconSettings
 } from "@tabler/icons-react";
@@ -19,6 +20,7 @@ const navItems = [
   { page: "workbench", icon: IconLayoutDashboard, key: "nav.workbench" },
   { page: "models", icon: IconDatabase, key: "nav.models" },
   { page: "tasks", icon: IconChecklist, key: "nav.tasks" },
+  { page: "help", icon: IconHelpCircle, key: "nav.help" },
   { page: "settings", icon: IconSettings, key: "nav.settings" }
 ] as const;
 

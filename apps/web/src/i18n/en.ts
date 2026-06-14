@@ -8,6 +8,7 @@ export const en = {
     workbench: "Workbench",
     models: "Models",
     tasks: "Tasks",
+    help: "Help",
     settings: "Settings"
   },
   projectCenter: {
@@ -313,10 +314,94 @@ export const en = {
     openData: "Open data",
     openModels: "Open models",
     openLogs: "Open logs",
+    releaseReadiness: "Release readiness",
+    releaseReadinessLoading: "Checking release readiness...",
+    releaseReadinessVersion: "Readiness report for Diplomat {{version}}.",
+    releaseReady: "Release ready",
+    releaseBlocked: "Release blocked",
+    releasePassCount: "{{count}} pass",
+    releaseWarningCount: "{{count}} warning",
+    releaseBlockerCount: "{{count}} blocker",
+    releaseCheckRemediation: "Remediation",
+    releaseSeverities: {
+      pass: "Pass",
+      warning: "Warning",
+      blocker: "Blocker"
+    },
     defaults: "Defaults",
     defaultSourceLanguage: "Default source language",
     defaultTargetLanguage: "Default target language",
     defaultExportMode: "Default export mode"
+  },
+  help: {
+    title: "Help Center",
+    subtitle: "Operational guide for local subtitle production, diagnostics, and release checks.",
+    sections: {
+      firstRun: {
+        title: "First run",
+        items: [
+          "Start the desktop app and confirm the Worker is reachable in Settings.",
+          "Import a local video from Project Center before opening the Workbench.",
+          "Keep source and target language codes consistent across analysis and translation."
+        ]
+      },
+      models: {
+        title: "Model management",
+        items: [
+          "Install only the curated open-source models listed in Models.",
+          "Wait for download, checksum verification, and install status before starting jobs.",
+          "Use the retry action for interrupted downloads instead of adding manual model paths."
+        ]
+      },
+      localWorkflow: {
+        title: "Local workflow",
+        items: [
+          "Create or import one project per source video.",
+          "Run analysis first, then translation when target subtitles are required.",
+          "Use Tasks to track queued, running, completed, failed, and canceled jobs."
+        ]
+      },
+      editing: {
+        title: "Editing",
+        items: [
+          "Review timing warnings before export.",
+          "Use autosaved drafts and snapshots before larger timing or text changes.",
+          "Keep speaker, style, and bilingual layout choices aligned with the final export target."
+        ]
+      },
+      export: {
+        title: "Export",
+        items: [
+          "Save subtitle edits before exporting SRT, VTT, ASS, or burned-in video.",
+          "Resolve blocker validation before starting video render.",
+          "Open the export folder from project actions after render completion."
+        ]
+      },
+      diagnostics: {
+        title: "Diagnostics",
+        items: [
+          "Use Settings to inspect Worker, FFmpeg, FFprobe, data, model, and log paths.",
+          "Open logs from Settings when a background task fails.",
+          "Retry failed jobs only after resolving the reported error."
+        ]
+      },
+      privacy: {
+        title: "Privacy",
+        items: [
+          "Default ASR, translation, editing, and export flows run locally.",
+          "Curated model downloads come from audited open-source sources.",
+          "Remote services are not part of the formal v0.3 workflow."
+        ]
+      },
+      releaseChecklist: {
+        title: "Release checklist",
+        items: [
+          "Use Settings to review the release readiness panel.",
+          "Treat blocker checks as release-stopping issues.",
+          "Confirm packaging, documentation, FFmpeg, model licenses, sources, and checksums before tagging."
+        ]
+      }
+    }
   },
   models: {
     title: "Models",

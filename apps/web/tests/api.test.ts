@@ -19,6 +19,7 @@ import {
   exportSrt,
   fetchModel,
   fetchProject,
+  fetchReleaseReadiness,
   fetchSubtitleDraft,
   fetchSubtitleDocument,
   fetchTask,
@@ -145,6 +146,33 @@ const taskResponse = {
   errorCode: null,
   errorMessage: null,
   diagnosticLogPath: null
+};
+
+const releaseReadinessResponse = {
+  version: "0.3.0",
+  generatedAt: "2026-06-14T00:00:00+00:00",
+  ready: false,
+  summary: {
+    pass: 2,
+    warning: 1,
+    blocker: 1
+  },
+  checks: [
+    {
+      id: "model_registry_checksums",
+      label: "Model registry checksums",
+      severity: "blocker",
+      message: "Model registry contains placeholder checksums.",
+      remediation: "Replace placeholders with audited SHA256 checksums."
+    },
+    {
+      id: "desktop_packaging",
+      label: "Desktop packaging",
+      severity: "pass",
+      message: "Tauri bundle metadata is active.",
+      remediation: null
+    }
+  ]
 };
 
 function stubJsonResponse(payload: unknown, ok = true, status = 200) {
@@ -311,6 +339,13 @@ describe("worker API helpers", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith("http://env-worker.test/health", undefined);
+  });
+
+  it("fetchReleaseReadiness gets the release readiness report", async () => {
+    const fetchMock = stubJsonResponse(releaseReadinessResponse);
+
+    await expect(fetchReleaseReadiness(baseUrl)).resolves.toEqual(releaseReadinessResponse);
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/release/readiness`, undefined);
   });
 
   it("fetchProject gets and parses one project", async () => {

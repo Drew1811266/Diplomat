@@ -43,7 +43,7 @@ function stubStartupFetch() {
     vi.fn<typeof fetch>(async (input) => {
       const url = String(input);
       if (url.endsWith("/health")) {
-        return jsonResponse({ name: "diplomat-worker", status: "ok", version: "0.2.0" });
+        return jsonResponse({ name: "diplomat-worker", status: "ok", version: "0.3.0" });
       }
       if (url.endsWith("/projects")) {
         return jsonResponse({ projects: [projectFixture] });
@@ -56,6 +56,23 @@ function stubStartupFetch() {
       }
       if (url.endsWith("/projects/project-demo/subtitle")) {
         return jsonResponse(analyzedDocumentFixture);
+      }
+      if (url.endsWith("/release/readiness")) {
+        return jsonResponse({
+          version: "0.3.0",
+          generatedAt: "2026-06-14T00:00:00+00:00",
+          ready: false,
+          summary: { pass: 2, warning: 1, blocker: 1 },
+          checks: [
+            {
+              id: "model_registry_checksums",
+              label: "Model registry checksums",
+              severity: "blocker",
+              message: "Model registry contains placeholder checksums.",
+              remediation: "Replace placeholders with audited SHA256 checksums."
+            }
+          ]
+        });
       }
       throw new Error(`Unexpected fetch: ${url}`);
     })
@@ -110,6 +127,9 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
     expect(await screen.findByRole("main", { name: "Tasks" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Help" }));
+    expect(await screen.findByRole("main", { name: "Help Center" })).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(await screen.findByRole("main", { name: "Settings" })).toBeVisible();
