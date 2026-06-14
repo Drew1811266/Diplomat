@@ -31,7 +31,26 @@ const projectResponse = {
   targetLanguage: "en",
   createdAt: "2026-06-07T00:00:00+00:00",
   updatedAt: "2026-06-07T00:01:00+00:00",
-  hasSubtitleDocument: false
+  hasSubtitleDocument: false,
+  diagnostics: {
+    status: "not_transcribed",
+    warnings: [],
+    sourceVideoExists: true,
+    projectDirExists: true,
+    diskUsageBytes: 4096,
+    cacheUsageBytes: 0,
+    exportUsageBytes: 0,
+    exportCount: 0,
+    subtitleLineCount: 0,
+    translatedLineCount: 0,
+    activeTaskCount: 0,
+    failedTaskCount: 0,
+    latestTaskStatus: null,
+    exportsDir: "D:/Diplomat/projects/project-1/exports",
+    cacheDir: "D:/Diplomat/projects/project-1/cache",
+    logsDir: "D:/Diplomat/projects/project-1/logs",
+    backupsDir: "D:/Diplomat/projects/project-1/backups"
+  }
 };
 
 const subtitleDocument: SubtitleDocument = {

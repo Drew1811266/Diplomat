@@ -2,7 +2,10 @@ import {
   AnalysisJobRequestSchema,
   AnalyzeProjectResponseSchema,
   CreateProjectRequestSchema,
+  ProjectBackupResponseSchema,
+  ProjectImportRequestSchema,
   ProjectListResponseSchema,
+  ProjectMaintenanceResponseSchema,
   ProjectResponseSchema,
   SrtExportResponseSchema,
   SubtitleDocumentSchema,
@@ -13,7 +16,10 @@ import {
   type AnalysisJobRequest,
   type AnalyzeProjectResponse,
   type CreateProjectRequest,
+  type ProjectBackupResponse,
+  type ProjectImportRequest,
   type ProjectListResponse,
+  type ProjectMaintenanceResponse,
   type ProjectResponse,
   type SrtExportMode,
   type SrtExportResponse,
@@ -122,6 +128,68 @@ export async function fetchProject(
   return requestJson(
     `${baseUrl}/projects/${projectId}`,
     undefined,
+    (payload) => ProjectResponseSchema.parse(payload)
+  );
+}
+
+export async function cleanupProjectCache(
+  projectId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<ProjectMaintenanceResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/cleanup/cache`,
+    { method: "POST" },
+    (payload) => ProjectMaintenanceResponseSchema.parse(payload)
+  );
+}
+
+export async function cleanupProjectExports(
+  projectId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<ProjectMaintenanceResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/cleanup/exports`,
+    { method: "POST" },
+    (payload) => ProjectMaintenanceResponseSchema.parse(payload)
+  );
+}
+
+export async function deleteProject(
+  projectId: string,
+  deleteFiles = true,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<ProjectMaintenanceResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}?deleteFiles=${deleteFiles ? "true" : "false"}`,
+    { method: "DELETE" },
+    (payload) => ProjectMaintenanceResponseSchema.parse(payload)
+  );
+}
+
+export async function backupProject(
+  projectId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<ProjectBackupResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/backup`,
+    { method: "POST" },
+    (payload) => ProjectBackupResponseSchema.parse(payload)
+  );
+}
+
+export async function importProject(
+  input: ProjectImportRequest,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<ProjectResponse> {
+  const request = ProjectImportRequestSchema.parse(input);
+
+  return requestJson(
+    `${baseUrl}/projects/import`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    },
     (payload) => ProjectResponseSchema.parse(payload)
   );
 }

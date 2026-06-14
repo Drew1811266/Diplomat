@@ -28,10 +28,71 @@ class ProjectResponse(CamelModel):
     created_at: str = Field(alias="createdAt")
     updated_at: str = Field(alias="updatedAt")
     has_subtitle_document: bool = Field(alias="hasSubtitleDocument")
+    diagnostics: "ProjectDiagnosticsResponse"
 
 
 class ProjectListResponse(CamelModel):
     projects: list[ProjectResponse]
+
+
+class ProjectWarningResponse(CamelModel):
+    code: Literal[
+        "source_missing",
+        "project_dir_missing",
+        "subtitle_corrupted",
+        "unsafe_project_path",
+        "migration_failed",
+    ]
+    message: str
+
+
+class ProjectDiagnosticsResponse(CamelModel):
+    status: Literal[
+        "not_transcribed",
+        "transcribed",
+        "translated",
+        "dirty_draft",
+        "exported",
+        "failed",
+        "corrupted",
+        "migration_failed",
+    ]
+    warnings: list[ProjectWarningResponse]
+    source_video_exists: bool = Field(alias="sourceVideoExists")
+    project_dir_exists: bool = Field(alias="projectDirExists")
+    disk_usage_bytes: int = Field(alias="diskUsageBytes", ge=0)
+    cache_usage_bytes: int = Field(alias="cacheUsageBytes", ge=0)
+    export_usage_bytes: int = Field(alias="exportUsageBytes", ge=0)
+    export_count: int = Field(alias="exportCount", ge=0)
+    subtitle_line_count: int = Field(alias="subtitleLineCount", ge=0)
+    translated_line_count: int = Field(alias="translatedLineCount", ge=0)
+    active_task_count: int = Field(alias="activeTaskCount", ge=0)
+    failed_task_count: int = Field(alias="failedTaskCount", ge=0)
+    latest_task_status: str | None = Field(default=None, alias="latestTaskStatus")
+    exports_dir: str = Field(alias="exportsDir")
+    cache_dir: str = Field(alias="cacheDir")
+    logs_dir: str = Field(alias="logsDir")
+    backups_dir: str = Field(alias="backupsDir")
+
+
+class ProjectMaintenanceResponse(CamelModel):
+    project_id: str = Field(alias="projectId")
+    action: Literal["delete", "cleanup_cache", "cleanup_exports", "import"]
+    files_affected: int = Field(alias="filesAffected", ge=0)
+    bytes_affected: int = Field(alias="bytesAffected", ge=0)
+    message: str
+
+
+class ProjectBackupResponse(CamelModel):
+    project_id: str = Field(alias="projectId")
+    package_path: str = Field(alias="packagePath")
+    bytes_written: int = Field(alias="bytesWritten", ge=0)
+    message: str
+
+
+class ProjectImportRequest(CamelModel):
+    package_path: Path = Field(alias="packagePath")
+    restore_name: str | None = Field(default=None, alias="restoreName", min_length=1)
 
 
 class AnalysisJobRequest(CamelModel):

@@ -12,6 +12,7 @@ from diplomat_worker.api.schemas import (
     AnalysisJobRequest,
     CreateProjectRequest,
     ProjectResponse,
+    ProjectDiagnosticsResponse,
     SrtExportRequest,
     TranslationSettingsRequest,
 )
@@ -129,9 +130,14 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("GET", "/health"),
         ("GET", "/projects"),
         ("POST", "/projects"),
+        ("POST", "/projects/import"),
         ("GET", "/projects/{project_id}"),
+        ("DELETE", "/projects/{project_id}"),
         ("POST", "/projects/{project_id}/analyze"),
         ("POST", "/projects/{project_id}/analysis-jobs"),
+        ("POST", "/projects/{project_id}/backup"),
+        ("POST", "/projects/{project_id}/cleanup/cache"),
+        ("POST", "/projects/{project_id}/cleanup/exports"),
         ("GET", "/projects/{project_id}/translation-settings"),
         ("PUT", "/projects/{project_id}/translation-settings"),
         ("POST", "/projects/{project_id}/translation-jobs"),
@@ -143,6 +149,85 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("POST", "/tasks/{task_id}/retry"),
     }
     assert calls == []
+
+
+def test_project_list_includes_diagnostics(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    client = TestClient(app_module.create_app(runtime))
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    client.post(
+        "/projects",
+        json={
+            "name": "Episode 1",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "zh",
+            "targetLanguage": "en",
+        },
+    )
+
+    response = client.get("/projects")
+
+    assert response.status_code == 200
+    diagnostics = response.json()["projects"][0]["diagnostics"]
+    assert diagnostics["status"] == "not_transcribed"
+    assert diagnostics["sourceVideoExists"] is True
+    assert diagnostics["cacheDir"].endswith("cache")
+
+
+def test_project_cleanup_backup_import_and_delete_routes(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    client = TestClient(app_module.create_app(runtime))
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    project_id = client.post(
+        "/projects",
+        json={
+            "name": "Episode 1",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "zh",
+            "targetLanguage": "en",
+        },
+    ).json()["projectId"]
+    project = runtime.store.get_project(project_id)
+    cache_file = project.project_dir / "cache" / "waveform.bin"
+    export_file = project.project_dir / "exports" / "subtitle.srt"
+    cache_file.parent.mkdir()
+    export_file.parent.mkdir()
+    cache_file.write_bytes(b"cache")
+    export_file.write_text("subtitle", encoding="utf-8")
+
+    cache_response = client.post(f"/projects/{project_id}/cleanup/cache")
+    exports_response = client.post(f"/projects/{project_id}/cleanup/exports")
+    backup_response = client.post(f"/projects/{project_id}/backup")
+    import_response = client.post(
+        "/projects/import",
+        json={
+            "packagePath": backup_response.json()["packagePath"],
+            "restoreName": "Restored Episode",
+        },
+    )
+    delete_response = client.delete(f"/projects/{import_response.json()['projectId']}?deleteFiles=true")
+
+    assert cache_response.status_code == 200
+    assert cache_response.json()["action"] == "cleanup_cache"
+    assert exports_response.status_code == 200
+    assert exports_response.json()["action"] == "cleanup_exports"
+    assert backup_response.status_code == 200
+    assert backup_response.json()["packagePath"].endswith(".diplomat-project.zip")
+    assert import_response.status_code == 201
+    assert import_response.json()["name"] == "Restored Episode"
+    assert delete_response.status_code == 200
+    assert delete_response.json()["action"] == "delete"
+
+
+def test_project_maintenance_routes_return_not_found(app_module, tmp_path: Path) -> None:
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
+
+    response = client.post("/projects/missing-project/cleanup/cache")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found"
 
 
 def create_project_with_saved_subtitle(client: TestClient, tmp_path: Path) -> str:
@@ -751,6 +836,25 @@ def test_project_response_populates_by_field_name_and_dumps_by_alias(tmp_path: P
         created_at="2026-06-07T00:00:00+00:00",
         updated_at="2026-06-07T00:01:00+00:00",
         has_subtitle_document=True,
+        diagnostics=ProjectDiagnosticsResponse(
+            status="not_transcribed",
+            warnings=[],
+            source_video_exists=True,
+            project_dir_exists=True,
+            disk_usage_bytes=0,
+            cache_usage_bytes=0,
+            export_usage_bytes=0,
+            export_count=0,
+            subtitle_line_count=0,
+            translated_line_count=0,
+            active_task_count=0,
+            failed_task_count=0,
+            latest_task_status=None,
+            exports_dir=str(project_dir / "exports"),
+            cache_dir=str(project_dir / "cache"),
+            logs_dir=str(project_dir / "logs"),
+            backups_dir=str(project_dir / "backups"),
+        ),
     )
 
     assert response.project_id == "project-1"
@@ -767,6 +871,25 @@ def test_project_response_populates_by_field_name_and_dumps_by_alias(tmp_path: P
         "createdAt": "2026-06-07T00:00:00+00:00",
         "updatedAt": "2026-06-07T00:01:00+00:00",
         "hasSubtitleDocument": True,
+        "diagnostics": {
+            "status": "not_transcribed",
+            "warnings": [],
+            "sourceVideoExists": True,
+            "projectDirExists": True,
+            "diskUsageBytes": 0,
+            "cacheUsageBytes": 0,
+            "exportUsageBytes": 0,
+            "exportCount": 0,
+            "subtitleLineCount": 0,
+            "translatedLineCount": 0,
+            "activeTaskCount": 0,
+            "failedTaskCount": 0,
+            "latestTaskStatus": None,
+            "exportsDir": str(project_dir / "exports"),
+            "cacheDir": str(project_dir / "cache"),
+            "logsDir": str(project_dir / "logs"),
+            "backupsDir": str(project_dir / "backups"),
+        },
     }
 
 
