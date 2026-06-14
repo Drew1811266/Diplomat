@@ -3,14 +3,18 @@ import {
   type CreateProjectInput,
   cancelTask,
   cancelModelDownload,
+  applyStylePreset,
   createAnalysisJob,
   createProject,
+  createStylePreset,
   createSubtitleSnapshot,
   createTranslationJob,
   createWaveformJob,
   deleteSubtitleDraft,
+  deleteStylePreset,
   deleteModel,
   downloadModel,
+  exportSubtitles,
   exportSrt,
   fetchModel,
   fetchProject,
@@ -20,6 +24,7 @@ import {
   fetchWaveform,
   fetchWorkerHealth,
   fetchTranslationSettings,
+  listStylePresets,
   listProjects,
   listModels,
   projectMediaUrl,
@@ -28,6 +33,7 @@ import {
   runProjectAnalysis,
   listSubtitleSnapshots,
   restoreSubtitleSnapshot,
+  updateStylePreset,
   saveSubtitleDraft,
   saveTranslationSettings,
   saveSubtitleDocument
@@ -97,7 +103,10 @@ const subtitleDocument: SubtitleDocument = {
       marginV: 48,
       alignment: "center",
       bilingualLayout: "source-above-target",
-      lineSpacing: 1.15
+      lineSpacing: 1.15,
+      backgroundBar: false,
+      backgroundColor: "#000000cc",
+      safeAreaMargin: 32
     }
   ],
   lines: [
@@ -742,6 +751,102 @@ describe("worker API helpers", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: "target" })
     });
+  });
+
+  it("exportSubtitles posts JSON to the general subtitle export URL and parses warnings", async () => {
+    const response = {
+      projectId: "project-1",
+      exportPath: "D:/Diplomat/projects/project-1/subtitle-bilingual.ass",
+      format: "ass",
+      mode: "bilingual",
+      warnings: [
+        {
+          lineId: "line-1",
+          code: "too_short",
+          severity: "warning",
+          message: "Cue is shorter than 300ms."
+        }
+      ]
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(
+      exportSubtitles("project-1", { format: "ass", mode: "bilingual" }, baseUrl)
+    ).resolves.toEqual({
+      ...response,
+      warnings: response.warnings
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/exports/subtitles`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        format: "ass",
+        mode: "bilingual",
+        stylePresetId: null,
+        style: null
+      })
+    });
+  });
+
+  it("style preset helpers use project style preset routes", async () => {
+    const style = subtitleDocument.styles[0]!;
+    const preset = {
+      id: "preset-default",
+      name: "Default",
+      style,
+      createdAt: "2026-06-14T00:00:00+00:00",
+      updatedAt: "2026-06-14T00:00:00+00:00"
+    };
+    const list = {
+      projectId: "project-1",
+      activePresetId: preset.id,
+      presets: [preset]
+    };
+    const apply = {
+      projectId: "project-1",
+      activePresetId: preset.id,
+      style
+    };
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => list } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 201, json: async () => preset } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => preset } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => apply } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => list } as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listStylePresets("project-1", baseUrl)).resolves.toEqual(list);
+    await expect(createStylePreset("project-1", { name: "Default", style }, baseUrl)).resolves.toEqual(
+      preset
+    );
+    await expect(
+      updateStylePreset("project-1", preset.id, { name: "Default Updated" }, baseUrl)
+    ).resolves.toEqual(preset);
+    await expect(applyStylePreset("project-1", preset.id, baseUrl)).resolves.toEqual(apply);
+    await expect(deleteStylePreset("project-1", preset.id, baseUrl)).resolves.toEqual(list);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, `${baseUrl}/projects/project-1/style-presets`, undefined);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      `${baseUrl}/projects/project-1/style-presets`,
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      `${baseUrl}/projects/project-1/style-presets/${preset.id}`,
+      expect.objectContaining({ method: "PATCH" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      `${baseUrl}/projects/project-1/style-presets/${preset.id}/apply`,
+      { method: "POST" }
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      `${baseUrl}/projects/project-1/style-presets/${preset.id}`,
+      { method: "DELETE" }
+    );
   });
 
   it("throws the worker request status for non-OK responses", async () => {

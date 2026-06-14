@@ -56,7 +56,10 @@ export const demoSubtitleDocument: SubtitleDocument = {
       marginV: 48,
       alignment: "center",
       bilingualLayout: "source-above-target",
-      lineSpacing: 1.15
+      lineSpacing: 1.15,
+      backgroundBar: false,
+      backgroundColor: "#000000cc",
+      safeAreaMargin: 32
     }
   ],
   lines: [

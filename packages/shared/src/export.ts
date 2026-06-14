@@ -81,6 +81,7 @@ export type SubtitleExportFormat = z.infer<typeof SubtitleExportFormatSchema>;
 export type SubtitleExportMode = z.infer<typeof SubtitleExportModeSchema>;
 export type ExportValidationCode = z.infer<typeof ExportValidationCodeSchema>;
 export type ExportValidationIssue = z.infer<typeof ExportValidationIssueSchema>;
+export type SubtitleExportRequestInput = z.input<typeof SubtitleExportRequestSchema>;
 export type SubtitleExportRequest = z.infer<typeof SubtitleExportRequestSchema>;
 export type SubtitleExportResponse = z.infer<typeof SubtitleExportResponseSchema>;
 export type StylePreset = z.infer<typeof StylePresetSchema>;
