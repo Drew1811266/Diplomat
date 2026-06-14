@@ -1,6 +1,8 @@
 import json
+import shutil
 import sqlite3
 import uuid
+import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -54,6 +56,50 @@ class TranslationSettingsRecord:
     endpoint: str | None
     api_key_env: str | None
     updated_at: str
+
+
+@dataclass(frozen=True)
+class ProjectWarning:
+    code: str
+    message: str
+
+
+@dataclass(frozen=True)
+class ProjectDiagnostics:
+    status: str
+    warnings: list[ProjectWarning]
+    source_video_exists: bool
+    project_dir_exists: bool
+    disk_usage_bytes: int
+    cache_usage_bytes: int
+    export_usage_bytes: int
+    export_count: int
+    subtitle_line_count: int
+    translated_line_count: int
+    active_task_count: int
+    failed_task_count: int
+    latest_task_status: str | None
+    exports_dir: Path
+    cache_dir: Path
+    logs_dir: Path
+    backups_dir: Path
+
+
+@dataclass(frozen=True)
+class ProjectMaintenanceResult:
+    project_id: str
+    action: str
+    files_affected: int
+    bytes_affected: int
+    message: str
+
+
+@dataclass(frozen=True)
+class ProjectBackupResult:
+    project_id: str
+    package_path: Path
+    bytes_written: int
+    message: str
 
 
 class ProjectStore:
@@ -359,6 +405,234 @@ class ProjectStore:
             raise KeyError(f"Project not found: {project_id}")
         return self._record_from_row(row)
 
+    def project_child_dir(self, project: ProjectRecord, name: str) -> Path:
+        if name not in {"cache", "exports", "logs", "backups"}:
+            raise ValueError(f"Unsupported project directory: {name}")
+        return project.project_dir / name
+
+    def project_diagnostics(self, project: ProjectRecord) -> ProjectDiagnostics:
+        exports_dir = self.project_child_dir(project, "exports")
+        cache_dir = self.project_child_dir(project, "cache")
+        logs_dir = self.project_child_dir(project, "logs")
+        backups_dir = self.project_child_dir(project, "backups")
+        warnings: list[ProjectWarning] = []
+        source_video_exists = project.source_video_path.is_file()
+        project_dir_exists = project.project_dir.is_dir()
+
+        if not source_video_exists:
+            warnings.append(
+                ProjectWarning(
+                    code="source_missing",
+                    message=f"Source video does not exist: {project.source_video_path}",
+                )
+            )
+        if not project_dir_exists:
+            warnings.append(
+                ProjectWarning(
+                    code="project_dir_missing",
+                    message=f"Project directory does not exist: {project.project_dir}",
+                )
+            )
+
+        subtitle_line_count = 0
+        translated_line_count = 0
+        subtitle_corrupted = False
+        subtitle_path = project.project_dir / "subtitle.diplomat.json"
+        if subtitle_path.is_file():
+            try:
+                document = self.load_subtitle_document(project.project_id)
+                subtitle_line_count = len(document.lines)
+                translated_line_count = sum(
+                    1
+                    for line in document.lines
+                    if line.translated_text.strip()
+                    or line.translation_status in {"translated", "edited"}
+                )
+            except Exception as exc:
+                subtitle_corrupted = True
+                warnings.append(
+                    ProjectWarning(
+                        code="subtitle_corrupted",
+                        message=f"Subtitle document is corrupted: {exc}",
+                    )
+                )
+
+        tasks = self.list_tasks_for_project(project.project_id)
+        active_task_count = sum(1 for task in tasks if task.status in {"queued", "running", "canceling"})
+        failed_task_count = sum(1 for task in tasks if task.status == "failed")
+        latest_task_status = tasks[0].status if tasks else None
+        export_count = self._directory_file_count(exports_dir)
+
+        if subtitle_corrupted:
+            status = "corrupted"
+        elif failed_task_count > 0:
+            status = "failed"
+        elif (project.project_dir / "draft.diplomat.json").is_file():
+            status = "dirty_draft"
+        elif export_count > 0:
+            status = "exported"
+        elif translated_line_count > 0:
+            status = "translated"
+        elif subtitle_line_count > 0:
+            status = "transcribed"
+        else:
+            status = "not_transcribed"
+
+        return ProjectDiagnostics(
+            status=status,
+            warnings=warnings,
+            source_video_exists=source_video_exists,
+            project_dir_exists=project_dir_exists,
+            disk_usage_bytes=self._directory_size(project.project_dir),
+            cache_usage_bytes=self._directory_size(cache_dir),
+            export_usage_bytes=self._directory_size(exports_dir),
+            export_count=export_count,
+            subtitle_line_count=subtitle_line_count,
+            translated_line_count=translated_line_count,
+            active_task_count=active_task_count,
+            failed_task_count=failed_task_count,
+            latest_task_status=latest_task_status,
+            exports_dir=exports_dir,
+            cache_dir=cache_dir,
+            logs_dir=logs_dir,
+            backups_dir=backups_dir,
+        )
+
+    def cleanup_project_cache(self, project_id: str) -> ProjectMaintenanceResult:
+        project = self.get_project(project_id)
+        return self._cleanup_project_child_dir(project, "cache", "cleanup_cache")
+
+    def cleanup_project_exports(self, project_id: str) -> ProjectMaintenanceResult:
+        project = self.get_project(project_id)
+        return self._cleanup_project_child_dir(project, "exports", "cleanup_exports")
+
+    def delete_project(self, project_id: str, delete_files: bool = True) -> ProjectMaintenanceResult:
+        project = self.get_project(project_id)
+        files_affected = 0
+        bytes_affected = 0
+        if delete_files and project.project_dir.exists():
+            self._assert_safe_project_directory(project.project_dir)
+            files_affected, bytes_affected = self._directory_file_stats(project.project_dir)
+
+        with self._connect() as connection:
+            connection.execute("DELETE FROM translation_settings WHERE project_id = ?", (project_id,))
+            connection.execute("DELETE FROM tasks WHERE project_id = ?", (project_id,))
+            cursor = connection.execute("DELETE FROM projects WHERE project_id = ?", (project_id,))
+            connection.commit()
+        if cursor.rowcount == 0:
+            raise KeyError(f"Project not found: {project_id}")
+
+        if delete_files and project.project_dir.exists():
+            shutil.rmtree(project.project_dir)
+
+        return ProjectMaintenanceResult(
+            project_id=project_id,
+            action="delete",
+            files_affected=files_affected,
+            bytes_affected=bytes_affected,
+            message="Project deleted.",
+        )
+
+    def backup_project(self, project_id: str) -> ProjectBackupResult:
+        project = self.get_project(project_id)
+        backups_dir = self.project_child_dir(project, "backups")
+        backups_dir.mkdir(parents=True, exist_ok=True)
+        package_path = backups_dir / f"{self._safe_filename(project.name)}-{project.project_id}.diplomat-project.zip"
+        manifest = {
+            "schemaVersion": "diplomat.project-backup.v1",
+            "project": {
+                "name": project.name,
+                "sourceVideoPath": str(project.source_video_path),
+                "durationMs": project.duration_ms,
+                "sourceLanguage": project.source_language,
+                "targetLanguage": project.target_language,
+            },
+        }
+
+        with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+            subtitle_path = project.project_dir / "subtitle.diplomat.json"
+            if subtitle_path.is_file():
+                archive.write(subtitle_path, "subtitle.diplomat.json")
+            settings = self.get_translation_settings(project.project_id)
+            archive.writestr(
+                "translation-settings.json",
+                json.dumps(
+                    {
+                        "provider": settings.provider,
+                        "sourceLanguage": settings.source_language,
+                        "targetLanguage": settings.target_language,
+                        "mode": settings.mode,
+                        "endpoint": settings.endpoint,
+                        "apiKeyEnv": settings.api_key_env,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            )
+            exports_dir = self.project_child_dir(project, "exports")
+            if exports_dir.is_dir():
+                for item in exports_dir.rglob("*"):
+                    if item.is_file():
+                        archive.write(item, Path("exports") / item.relative_to(exports_dir))
+
+        return ProjectBackupResult(
+            project_id=project_id,
+            package_path=package_path,
+            bytes_written=package_path.stat().st_size,
+            message="Project backup created.",
+        )
+
+    def import_project_backup(self, package_path: Path, restore_name: str | None = None) -> ProjectRecord:
+        package_path = Path(package_path)
+        if not package_path.is_file():
+            raise ValueError(f"Project backup does not exist: {package_path}")
+
+        with zipfile.ZipFile(package_path, "r") as archive:
+            manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+            if manifest.get("schemaVersion") != "diplomat.project-backup.v1":
+                raise ValueError("Unsupported project backup schema version")
+            project_payload = manifest.get("project")
+            if not isinstance(project_payload, dict):
+                raise ValueError("Project backup manifest is missing project metadata")
+
+            project = self.create_project(
+                name=restore_name or str(project_payload["name"]),
+                source_video_path=Path(str(project_payload["sourceVideoPath"])),
+                duration_ms=int(project_payload["durationMs"]),
+                source_language=str(project_payload["sourceLanguage"]),
+                target_language=project_payload.get("targetLanguage"),
+            )
+
+            if "subtitle.diplomat.json" in archive.namelist():
+                subtitle_payload = json.loads(archive.read("subtitle.diplomat.json").decode("utf-8"))
+                subtitle_payload["projectId"] = project.project_id
+                document = SubtitleDocument.model_validate(subtitle_payload)
+                self.save_subtitle_document(project.project_id, document)
+
+            if "translation-settings.json" in archive.namelist():
+                settings = json.loads(archive.read("translation-settings.json").decode("utf-8"))
+                self.save_translation_settings(
+                    project.project_id,
+                    provider=settings["provider"],
+                    source_language=settings["sourceLanguage"],
+                    target_language=settings["targetLanguage"],
+                    mode=settings["mode"],
+                    endpoint=settings.get("endpoint"),
+                    api_key_env=settings.get("apiKeyEnv"),
+                )
+
+            exports_dir = self.project_child_dir(project, "exports")
+            for name in archive.namelist():
+                if not name.startswith("exports/") or name.endswith("/"):
+                    continue
+                target = exports_dir / Path(name).relative_to("exports")
+                self._assert_safe_child_path(exports_dir, target)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(archive.read(name))
+
+        return self.get_project(project.project_id)
+
     def _record_from_row(self, row: sqlite3.Row) -> ProjectRecord:
         return ProjectRecord(
             project_id=row["project_id"],
@@ -578,6 +852,32 @@ class ProjectStore:
             raise KeyError(f"Task not found: {task_id}")
         return self._task_from_row(row)
 
+    def list_tasks_for_project(self, project_id: str) -> list[TaskRecord]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    task_id,
+                    project_id,
+                    type,
+                    status,
+                    progress,
+                    message,
+                    started_at,
+                    updated_at,
+                    completed_at,
+                    error_code,
+                    error_message,
+                    diagnostic_log_path,
+                    request_json
+                FROM tasks
+                WHERE project_id = ?
+                ORDER BY updated_at DESC, rowid DESC
+                """,
+                (project_id,),
+            ).fetchall()
+        return [self._task_from_row(row) for row in rows]
+
     def update_task(
         self,
         task_id: str,
@@ -649,6 +949,75 @@ class ProjectStore:
             diagnostic_log_path=row["diagnostic_log_path"],
             request_payload=json.loads(row["request_json"]),
         )
+
+    def _cleanup_project_child_dir(
+        self,
+        project: ProjectRecord,
+        directory_name: str,
+        action: str,
+    ) -> ProjectMaintenanceResult:
+        path = self.project_child_dir(project, directory_name)
+        self._assert_safe_child_path(project.project_dir, path)
+        files_affected, bytes_affected = self._remove_directory_contents(path)
+        return ProjectMaintenanceResult(
+            project_id=project.project_id,
+            action=action,
+            files_affected=files_affected,
+            bytes_affected=bytes_affected,
+            message=f"Project {directory_name} cleaned.",
+        )
+
+    def _remove_directory_contents(self, path: Path) -> tuple[int, int]:
+        path.mkdir(parents=True, exist_ok=True)
+        files_affected, bytes_affected = self._directory_file_stats(path)
+        for child in list(path.iterdir()):
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+        path.mkdir(parents=True, exist_ok=True)
+        return files_affected, bytes_affected
+
+    def _assert_safe_project_directory(self, path: Path) -> None:
+        resolved = path.resolve()
+        root = self.root_dir.resolve()
+        projects_root = (self.root_dir / "projects").resolve()
+        if not (self._is_relative_to(resolved, projects_root) or self._is_relative_to(resolved, root)):
+            raise ValueError(f"Refusing unsafe project directory deletion: {path}")
+        if resolved == root or resolved == projects_root:
+            raise ValueError(f"Refusing unsafe project directory deletion: {path}")
+
+    def _assert_safe_child_path(self, root: Path, path: Path) -> None:
+        resolved_root = root.resolve()
+        resolved_path = path.resolve()
+        if not self._is_relative_to(resolved_path, resolved_root):
+            raise ValueError(f"Refusing unsafe project child path: {path}")
+
+    def _is_relative_to(self, path: Path, root: Path) -> bool:
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            return False
+
+    def _directory_file_stats(self, path: Path) -> tuple[int, int]:
+        if not path.exists():
+            return 0, 0
+        files = [item for item in path.rglob("*") if item.is_file()]
+        return len(files), sum(item.stat().st_size for item in files)
+
+    def _directory_size(self, path: Path) -> int:
+        return self._directory_file_stats(path)[1]
+
+    def _directory_file_count(self, path: Path) -> int:
+        return self._directory_file_stats(path)[0]
+
+    def _safe_filename(self, value: str) -> str:
+        normalized = "".join(
+            character if character.isalnum() or character in {"-", "_"} else "-"
+            for character in value.strip().lower()
+        ).strip("-")
+        return normalized or "project"
 
     def _utc_now(self) -> str:
         return datetime.now(UTC).isoformat()

@@ -7,6 +7,32 @@ from diplomat_worker.schemas.subtitle import AiOrigin, SubtitleDocument, Subtitl
 from diplomat_worker.storage.project_store import ProjectStore
 
 
+def translated_document(project_id: str) -> SubtitleDocument:
+    return SubtitleDocument(
+        project_id=project_id,
+        media_id="media-1",
+        duration_ms=2500,
+        lines=[
+            SubtitleLine(
+                id="line-1",
+                start_ms=0,
+                end_ms=2500,
+                speaker_id=None,
+                source_language="zh",
+                target_language="en",
+                source_text="你好",
+                translated_text="Hello",
+                words=[],
+                style_overrides={},
+                review_status="draft",
+                ai_origin=AiOrigin(engine="fake-asr", model="fake-v1"),
+                translation_status="translated",
+                notes="",
+            )
+        ],
+    )
+
+
 def test_project_store_creates_project_and_saves_subtitle_document(tmp_path: Path) -> None:
     store = ProjectStore(tmp_path / "diplomat.db")
     project = store.create_project(
@@ -123,6 +149,199 @@ def test_project_store_tracks_subtitle_presence_and_updates_timestamp(tmp_path: 
     after = store.get_project(project.project_id).updated_at
     assert store.has_subtitle_document(project.project_id) is True
     assert after >= before
+
+
+def test_project_store_diagnostics_track_not_transcribed_and_disk_usage(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"video")
+    project = store.create_project(
+        name="Demo",
+        source_video_path=source,
+        duration_ms=1000,
+        source_language="zh",
+        target_language="en",
+    )
+    cache_file = project.project_dir / "cache" / "waveform.bin"
+    cache_file.parent.mkdir()
+    cache_file.write_bytes(b"cache")
+
+    diagnostics = store.project_diagnostics(project)
+
+    assert diagnostics.status == "not_transcribed"
+    assert diagnostics.source_video_exists is True
+    assert diagnostics.project_dir_exists is True
+    assert diagnostics.cache_usage_bytes == 5
+    assert diagnostics.disk_usage_bytes >= 5
+    assert diagnostics.cache_dir == project.project_dir / "cache"
+
+
+def test_project_store_diagnostics_track_translated_exported_failed_and_corrupted(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"video")
+    project = store.create_project(
+        name="Demo",
+        source_video_path=source,
+        duration_ms=1000,
+        source_language="zh",
+        target_language="en",
+    )
+
+    store.save_subtitle_document(project.project_id, translated_document(project.project_id))
+    diagnostics = store.project_diagnostics(store.get_project(project.project_id))
+    assert diagnostics.status == "translated"
+    assert diagnostics.subtitle_line_count == 1
+    assert diagnostics.translated_line_count == 1
+
+    export_file = project.project_dir / "exports" / "subtitle.srt"
+    export_file.parent.mkdir()
+    export_file.write_text("1", encoding="utf-8")
+    diagnostics = store.project_diagnostics(store.get_project(project.project_id))
+    assert diagnostics.status == "exported"
+    assert diagnostics.export_count == 1
+
+    store.create_task(project.project_id, "analysis", "queued", {})
+    task = store.list_tasks_for_project(project.project_id)[0]
+    store.update_task(
+        task.task_id,
+        status="failed",
+        completed=True,
+        error_code="TEST",
+        error_message="failed",
+    )
+    diagnostics = store.project_diagnostics(store.get_project(project.project_id))
+    assert diagnostics.status == "failed"
+    assert diagnostics.failed_task_count == 1
+
+    (project.project_dir / "subtitle.diplomat.json").write_text("{broken", encoding="utf-8")
+    diagnostics = store.project_diagnostics(store.get_project(project.project_id))
+    assert diagnostics.status == "corrupted"
+    assert diagnostics.warnings[0].code == "subtitle_corrupted"
+
+
+def test_project_store_diagnostics_warn_when_source_video_is_missing(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    project = store.create_project(
+        name="Demo",
+        source_video_path=tmp_path / "missing.mp4",
+        duration_ms=1000,
+        source_language="zh",
+        target_language="en",
+    )
+
+    diagnostics = store.project_diagnostics(project)
+
+    assert diagnostics.source_video_exists is False
+    assert diagnostics.warnings[0].code == "source_missing"
+
+
+def test_project_store_cleans_cache_and_exports_only(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"video")
+    project = store.create_project(
+        name="Demo",
+        source_video_path=source,
+        duration_ms=1000,
+        source_language="zh",
+        target_language="en",
+    )
+    cache_file = project.project_dir / "cache" / "waveform.bin"
+    export_file = project.project_dir / "exports" / "subtitle.srt"
+    cache_file.parent.mkdir()
+    export_file.parent.mkdir()
+    cache_file.write_bytes(b"cache")
+    export_file.write_bytes(b"export")
+
+    cache_result = store.cleanup_project_cache(project.project_id)
+
+    assert cache_result.action == "cleanup_cache"
+    assert cache_result.files_affected == 1
+    assert cache_result.bytes_affected == 5
+    assert not cache_file.exists()
+    assert export_file.exists()
+
+    export_result = store.cleanup_project_exports(project.project_id)
+
+    assert export_result.action == "cleanup_exports"
+    assert export_result.files_affected == 1
+    assert export_result.bytes_affected == 6
+    assert not export_file.exists()
+
+
+def test_project_store_delete_removes_rows_and_safe_project_directory(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"video")
+    project = store.create_project(
+        name="Demo",
+        source_video_path=source,
+        duration_ms=1000,
+        source_language="zh",
+        target_language="en",
+    )
+    (project.project_dir / "cache").mkdir()
+    (project.project_dir / "cache" / "item.bin").write_bytes(b"x")
+    store.create_task(project.project_id, "analysis", "queued", {})
+
+    result = store.delete_project(project.project_id, delete_files=True)
+
+    assert result.action == "delete"
+    assert result.files_affected >= 1
+    assert not project.project_dir.exists()
+    assert store.list_tasks_for_project(project.project_id) == []
+    with pytest.raises(KeyError):
+        store.get_project(project.project_id)
+
+
+def test_project_store_delete_refuses_unsafe_project_directory(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    project = store.create_project(
+        name="Unsafe",
+        source_video_path=tmp_path / "source.mp4",
+        duration_ms=1000,
+        source_language="zh",
+        target_language="en",
+    )
+    with store._connect() as connection:
+        connection.execute(
+            "UPDATE projects SET project_dir = ? WHERE project_id = ?",
+            (str(tmp_path.parent), project.project_id),
+        )
+        connection.commit()
+
+    with pytest.raises(ValueError, match="unsafe"):
+        store.delete_project(project.project_id, delete_files=True)
+    assert store.get_project(project.project_id).project_id == project.project_id
+
+
+def test_project_store_backup_and_import_round_trip(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"video")
+    project = store.create_project(
+        name="Demo",
+        source_video_path=source,
+        duration_ms=1000,
+        source_language="zh",
+        target_language="en",
+    )
+    store.save_subtitle_document(project.project_id, translated_document(project.project_id))
+    export_file = project.project_dir / "exports" / "subtitle.srt"
+    export_file.parent.mkdir(exist_ok=True)
+    export_file.write_text("subtitle", encoding="utf-8")
+
+    backup = store.backup_project(project.project_id)
+    imported = store.import_project_backup(backup.package_path, restore_name="Restored Demo")
+
+    assert backup.package_path.exists()
+    assert backup.bytes_written > 0
+    assert imported.name == "Restored Demo"
+    assert imported.project_id != project.project_id
+    assert imported.source_video_path == source
+    assert store.has_subtitle_document(imported.project_id) is True
+    assert (imported.project_dir / "exports" / "subtitle.srt").exists()
 
 
 def test_translation_settings_default_to_project_languages(tmp_path: Path) -> None:
