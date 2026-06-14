@@ -27,6 +27,7 @@ vi.mock("../desktop", async () => {
 
 const desktopRuntimeStatus = {
   mode: "desktop",
+  workerLauncher: "development",
   worker: {
     status: "running",
     endpoint: "http://127.0.0.1:8765",
@@ -211,6 +212,7 @@ describe("SettingsPage", () => {
       "http://127.0.0.1:8765"
     );
     expect(screen.getByLabelText("Worker status")).toHaveValue("running");
+    expect(screen.getByLabelText("Worker launcher")).toHaveValue("development");
     expect(screen.getByLabelText("FFmpeg status")).toHaveValue("available");
     expect(screen.getByLabelText("FFprobe status")).toHaveValue("missing");
     expect(screen.getByLabelText("Data directory")).toHaveValue(

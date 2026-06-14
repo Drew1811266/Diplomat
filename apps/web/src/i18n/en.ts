@@ -302,6 +302,7 @@ export const en = {
     desktopRuntimeUnavailable: "Desktop runtime controls are unavailable in browser mode.",
     workerEndpoint: "Worker endpoint",
     workerStatus: "Worker status",
+    workerLauncher: "Worker launcher",
     ffmpegStatus: "FFmpeg status",
     ffprobeStatus: "FFprobe status",
     ffmpegVersion: "FFmpeg version",

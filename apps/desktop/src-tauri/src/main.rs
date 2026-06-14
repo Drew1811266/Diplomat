@@ -22,6 +22,7 @@ const WORKER_HOST: &str = "127.0.0.1:8765";
 #[derive(Default)]
 struct WorkerProcessState {
     child: Option<Child>,
+    launcher: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -181,6 +182,7 @@ struct ToolStatus {
 #[serde(rename_all = "camelCase")]
 struct RuntimeStatus {
     mode: String,
+    worker_launcher: String,
     worker: WorkerStatus,
     directories: RuntimeDirectories,
     ffmpeg: ToolStatus,
@@ -191,6 +193,7 @@ struct RuntimeStatus {
 impl RuntimeStatus {
     fn new(
         worker: WorkerStatus,
+        worker_launcher: &str,
         directories: RuntimeDirectories,
         ffmpeg: ToolStatus,
         ffprobe: ToolStatus,
@@ -198,6 +201,7 @@ impl RuntimeStatus {
         let diagnostics = RuntimeDiagnostics::from_directories(&directories);
         Self {
             mode: "desktop".to_string(),
+            worker_launcher: worker_launcher.to_string(),
             worker,
             directories,
             ffmpeg,
@@ -418,9 +422,22 @@ fn runtime_status(state: State<'_, Mutex<WorkerProcessState>>) -> Result<Runtime
             classify_worker_probe(probe_worker_health())
         }
     };
+    let worker_launcher = {
+        let guard = state
+            .lock()
+            .map_err(|_| "Worker process state lock is poisoned".to_string())?;
+        guard.launcher.clone().unwrap_or_else(|| {
+            if worker.status == "running" && worker.owner == "diplomat" {
+                "external".to_string()
+            } else {
+                "none".to_string()
+            }
+        })
+    };
 
     Ok(RuntimeStatus::new(
         worker,
+        &worker_launcher,
         directories,
         ffmpeg_status(),
         ffprobe_status(),
@@ -499,6 +516,7 @@ fn start_worker(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerSta
         .map_err(|error| format!("Unable to start Diplomat Worker: {error}"))?;
 
     guard.child = Some(child);
+    guard.launcher = Some(launch_config.mode.clone());
     drop(guard);
 
     for _ in 0..10 {
@@ -527,6 +545,7 @@ fn stop_worker(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerStat
             .map_err(|error| format!("Unable to stop Worker process: {error}"))?;
         let _ = child.wait();
     }
+    guard.launcher = None;
 
     Ok(WorkerStatus::new(
         "stopped",
@@ -592,6 +611,7 @@ fn clear_exited_child(state: &mut WorkerProcessState) {
     };
     if matches!(child.try_wait(), Ok(Some(_))) {
         state.child = None;
+        state.launcher = None;
     }
 }
 
@@ -1001,9 +1021,10 @@ mod tests {
             message: "ffprobe was not found.".to_string(),
         };
 
-        let status = RuntimeStatus::new(worker, directories, ffmpeg, ffprobe);
+        let status = RuntimeStatus::new(worker, "development", directories, ffmpeg, ffprobe);
 
         assert_eq!(status.mode, "desktop");
+        assert_eq!(status.worker_launcher, "development");
         assert_eq!(status.worker.status, "stopped");
         assert_eq!(status.directories.data, r"C:\Diplomat\data");
         assert_eq!(status.ffmpeg.status, "available");
