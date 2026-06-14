@@ -44,6 +44,211 @@ impl WorkerStatus {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeDirectories {
+    data: String,
+    projects: String,
+    models: String,
+    downloads: String,
+    exports: String,
+    cache: String,
+    logs: String,
+    diagnostics: String,
+}
+
+impl RuntimeDirectories {
+    fn from_base(base: &Path) -> Self {
+        let data = base.join("data");
+        Self {
+            data: path_to_string(&data),
+            projects: path_to_string(&data.join("projects")),
+            models: path_to_string(&base.join("models")),
+            downloads: path_to_string(&base.join("downloads")),
+            exports: path_to_string(&base.join("exports")),
+            cache: path_to_string(&base.join("cache")),
+            logs: path_to_string(&base.join("logs")),
+            diagnostics: path_to_string(&base.join("diagnostics")),
+        }
+    }
+
+    fn ensure_created(&self) -> Result<(), String> {
+        for path in [
+            &self.data,
+            &self.projects,
+            &self.models,
+            &self.downloads,
+            &self.exports,
+            &self.cache,
+            &self.logs,
+            &self.diagnostics,
+        ] {
+            fs::create_dir_all(Path::new(path))
+                .map_err(|error| format!("Unable to create runtime directory {path}: {error}"))?;
+        }
+        Ok(())
+    }
+
+    fn logs_path(&self) -> PathBuf {
+        PathBuf::from(&self.logs)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeDiagnostics {
+    worker_stdout_log: String,
+    worker_stderr_log: String,
+}
+
+impl RuntimeDiagnostics {
+    fn from_directories(directories: &RuntimeDirectories) -> Self {
+        let logs = directories.logs_path();
+        Self {
+            worker_stdout_log: path_to_string(&logs.join("worker.stdout.log")),
+            worker_stderr_log: path_to_string(&logs.join("worker.stderr.log")),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ToolStatus {
+    status: String,
+    path: String,
+    version: Option<String>,
+    message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeStatus {
+    mode: String,
+    worker: WorkerStatus,
+    directories: RuntimeDirectories,
+    ffmpeg: ToolStatus,
+    ffprobe: ToolStatus,
+    diagnostics: RuntimeDiagnostics,
+}
+
+impl RuntimeStatus {
+    fn new(
+        worker: WorkerStatus,
+        directories: RuntimeDirectories,
+        ffmpeg: ToolStatus,
+        ffprobe: ToolStatus,
+    ) -> Self {
+        let diagnostics = RuntimeDiagnostics::from_directories(&directories);
+        Self {
+            mode: "desktop".to_string(),
+            worker,
+            directories,
+            ffmpeg,
+            ffprobe,
+            diagnostics,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ToolProbeError {
+    Missing(String),
+    CommandFailed(String),
+}
+
+fn path_to_string(path: &Path) -> String {
+    path.to_string_lossy().to_string()
+}
+
+fn app_base_dir() -> PathBuf {
+    env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(env::temp_dir)
+        .join("Diplomat")
+}
+
+fn runtime_directories() -> Result<RuntimeDirectories, String> {
+    let directories = RuntimeDirectories::from_base(&app_base_dir());
+    directories.ensure_created()?;
+    Ok(directories)
+}
+
+fn worker_environment(directories: &RuntimeDirectories) -> Vec<(String, String)> {
+    vec![("DIPLOMAT_DATA_DIR".to_string(), directories.data.clone())]
+}
+
+fn configured_tool_path(configured: Option<&str>, fallback: &str) -> String {
+    configured
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(fallback)
+        .to_string()
+}
+
+fn probe_cli_tool(path: &str) -> Result<String, ToolProbeError> {
+    let output = Command::new(path)
+        .arg("-version")
+        .output()
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                ToolProbeError::Missing(format!(
+                    "{path} was not found. Install FFmpeg or configure the bundled runtime path."
+                ))
+            } else {
+                ToolProbeError::CommandFailed(format!("Unable to run {path}: {error}"))
+            }
+        })?;
+
+    if !output.status.success() {
+        return Err(ToolProbeError::CommandFailed(format!(
+            "{path} -version exited with status {}",
+            output.status
+        )));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn tool_status_from_probe(path: &str, result: Result<String, ToolProbeError>) -> ToolStatus {
+    match result {
+        Ok(output) => {
+            let version = output.lines().next().unwrap_or("").trim().to_string();
+            ToolStatus {
+                status: "available".to_string(),
+                path: path.to_string(),
+                version: if version.is_empty() {
+                    None
+                } else {
+                    Some(version)
+                },
+                message: format!("{path} is available."),
+            }
+        }
+        Err(ToolProbeError::Missing(message)) => ToolStatus {
+            status: "missing".to_string(),
+            path: path.to_string(),
+            version: None,
+            message,
+        },
+        Err(ToolProbeError::CommandFailed(message)) => ToolStatus {
+            status: "error".to_string(),
+            path: path.to_string(),
+            version: None,
+            message,
+        },
+    }
+}
+
+fn ffmpeg_status() -> ToolStatus {
+    let path = configured_tool_path(env::var("DIPLOMAT_FFMPEG_PATH").ok().as_deref(), "ffmpeg");
+    tool_status_from_probe(&path, probe_cli_tool(&path))
+}
+
+fn ffprobe_status() -> ToolStatus {
+    let path = configured_tool_path(env::var("DIPLOMAT_FFPROBE_PATH").ok().as_deref(), "ffprobe");
+    tool_status_from_probe(&path, probe_cli_tool(&path))
+}
+
 #[tauri::command]
 fn worker_endpoint() -> &'static str {
     WORKER_ENDPOINT
@@ -81,6 +286,30 @@ fn worker_status(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerSt
 }
 
 #[tauri::command]
+fn runtime_status(state: State<'_, Mutex<WorkerProcessState>>) -> Result<RuntimeStatus, String> {
+    let directories = runtime_directories()?;
+    let worker = {
+        let mut guard = state
+            .lock()
+            .map_err(|_| "Worker process state lock is poisoned".to_string())?;
+        clear_exited_child(&mut guard);
+        if guard.child.is_some() {
+            worker_status_from_state(&guard)
+        } else {
+            drop(guard);
+            classify_worker_probe(probe_worker_health())
+        }
+    };
+
+    Ok(RuntimeStatus::new(
+        worker,
+        directories,
+        ffmpeg_status(),
+        ffprobe_status(),
+    ))
+}
+
+#[tauri::command]
 fn start_worker(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerStatus, String> {
     let external_status = classify_worker_probe(probe_worker_health());
     if external_status.status == "running" && external_status.owner == "diplomat" {
@@ -106,19 +335,21 @@ fn start_worker(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerSta
     }
 
     let repo_root = find_repo_root()?;
-    let log_dir = diagnostics_log_dir()?;
+    let directories = runtime_directories()?;
+    let diagnostics = RuntimeDiagnostics::from_directories(&directories);
     let stdout = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(log_dir.join("worker.stdout.log"))
+        .open(Path::new(&diagnostics.worker_stdout_log))
         .map_err(|error| format!("Unable to open Worker stdout log: {error}"))?;
     let stderr = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(log_dir.join("worker.stderr.log"))
+        .open(Path::new(&diagnostics.worker_stderr_log))
         .map_err(|error| format!("Unable to open Worker stderr log: {error}"))?;
 
-    let child = Command::new("python")
+    let mut command = Command::new("python");
+    command
         .args([
             "-m",
             "uvicorn",
@@ -133,7 +364,11 @@ fn start_worker(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerSta
         .current_dir(repo_root)
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr))
+        .stderr(Stdio::from(stderr));
+    for (key, value) in worker_environment(&directories) {
+        command.env(key, value);
+    }
+    let child = command
         .spawn()
         .map_err(|error| format!("Unable to start Diplomat Worker: {error}"))?;
 
@@ -234,16 +469,6 @@ fn clear_exited_child(state: &mut WorkerProcessState) {
     }
 }
 
-fn diagnostics_log_dir() -> Result<PathBuf, String> {
-    let base = env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(env::temp_dir);
-    let log_dir = base.join("Diplomat").join("logs");
-    fs::create_dir_all(&log_dir)
-        .map_err(|error| format!("Unable to create diagnostics log directory: {error}"))?;
-    Ok(log_dir)
-}
-
 fn find_repo_root() -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
     if let Ok(current) = env::current_dir() {
@@ -309,6 +534,7 @@ fn main() {
             start_worker,
             stop_worker,
             worker_status,
+            runtime_status,
             open_path_in_file_manager
         ])
         .run(tauri::generate_context!())
@@ -357,5 +583,159 @@ mod tests {
 
         assert_eq!(status.status, "stopped");
         assert_eq!(status.owner, "none");
+    }
+
+    #[test]
+    fn runtime_directories_are_derived_from_base_path() {
+        let base = PathBuf::from(r"C:\Users\Drew\AppData\Local\Diplomat");
+        let directories = RuntimeDirectories::from_base(&base);
+
+        assert_eq!(
+            directories.data,
+            r"C:\Users\Drew\AppData\Local\Diplomat\data"
+        );
+        assert_eq!(
+            directories.projects,
+            r"C:\Users\Drew\AppData\Local\Diplomat\data\projects"
+        );
+        assert_eq!(
+            directories.models,
+            r"C:\Users\Drew\AppData\Local\Diplomat\models"
+        );
+        assert_eq!(
+            directories.downloads,
+            r"C:\Users\Drew\AppData\Local\Diplomat\downloads"
+        );
+        assert_eq!(
+            directories.exports,
+            r"C:\Users\Drew\AppData\Local\Diplomat\exports"
+        );
+        assert_eq!(
+            directories.cache,
+            r"C:\Users\Drew\AppData\Local\Diplomat\cache"
+        );
+        assert_eq!(
+            directories.logs,
+            r"C:\Users\Drew\AppData\Local\Diplomat\logs"
+        );
+        assert_eq!(
+            directories.diagnostics,
+            r"C:\Users\Drew\AppData\Local\Diplomat\diagnostics"
+        );
+    }
+
+    #[test]
+    fn runtime_diagnostics_paths_use_log_directory() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let diagnostics = RuntimeDiagnostics::from_directories(&directories);
+
+        assert_eq!(
+            diagnostics.worker_stdout_log,
+            r"C:\Diplomat\logs\worker.stdout.log"
+        );
+        assert_eq!(
+            diagnostics.worker_stderr_log,
+            r"C:\Diplomat\logs\worker.stderr.log"
+        );
+    }
+
+    #[test]
+    fn worker_environment_sets_data_directory() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let environment = worker_environment(&directories);
+
+        assert_eq!(
+            environment,
+            vec![(
+                "DIPLOMAT_DATA_DIR".to_string(),
+                r"C:\Diplomat\data".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn tool_status_available_uses_first_version_line() {
+        let status = tool_status_from_probe(
+            "ffmpeg",
+            Ok("ffmpeg version 7.1-full_build\nconfiguration: --enable-gpl".to_string()),
+        );
+
+        assert_eq!(status.status, "available");
+        assert_eq!(status.path, "ffmpeg");
+        assert_eq!(
+            status.version,
+            Some("ffmpeg version 7.1-full_build".to_string())
+        );
+        assert_eq!(status.message, "ffmpeg is available.");
+    }
+
+    #[test]
+    fn tool_status_missing_reports_missing() {
+        let status = tool_status_from_probe(
+            "ffmpeg",
+            Err(ToolProbeError::Missing("program not found".to_string())),
+        );
+
+        assert_eq!(status.status, "missing");
+        assert_eq!(status.path, "ffmpeg");
+        assert_eq!(status.version, None);
+        assert_eq!(status.message, "program not found");
+    }
+
+    #[test]
+    fn tool_status_error_reports_command_failure() {
+        let status = tool_status_from_probe(
+            "ffprobe",
+            Err(ToolProbeError::CommandFailed("exit code 1".to_string())),
+        );
+
+        assert_eq!(status.status, "error");
+        assert_eq!(status.path, "ffprobe");
+        assert_eq!(status.version, None);
+        assert_eq!(status.message, "exit code 1");
+    }
+
+    #[test]
+    fn configured_tool_path_uses_environment_before_default() {
+        let path = configured_tool_path(Some("C:/Tools/ffmpeg.exe"), "ffmpeg");
+
+        assert_eq!(path, "C:/Tools/ffmpeg.exe");
+    }
+
+    #[test]
+    fn configured_tool_path_uses_default_when_environment_is_empty() {
+        let path = configured_tool_path(Some("  "), "ffmpeg");
+
+        assert_eq!(path, "ffmpeg");
+    }
+
+    #[test]
+    fn runtime_status_contains_worker_directories_tools_and_diagnostics() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let worker = WorkerStatus::new("stopped", "none", "Worker process is not running.");
+        let ffmpeg = ToolStatus {
+            status: "available".to_string(),
+            path: "ffmpeg".to_string(),
+            version: Some("ffmpeg version test".to_string()),
+            message: "ffmpeg is available.".to_string(),
+        };
+        let ffprobe = ToolStatus {
+            status: "missing".to_string(),
+            path: "ffprobe".to_string(),
+            version: None,
+            message: "ffprobe was not found.".to_string(),
+        };
+
+        let status = RuntimeStatus::new(worker, directories, ffmpeg, ffprobe);
+
+        assert_eq!(status.mode, "desktop");
+        assert_eq!(status.worker.status, "stopped");
+        assert_eq!(status.directories.data, r"C:\Diplomat\data");
+        assert_eq!(status.ffmpeg.status, "available");
+        assert_eq!(status.ffprobe.status, "missing");
+        assert_eq!(
+            status.diagnostics.worker_stdout_log,
+            r"C:\Diplomat\logs\worker.stdout.log"
+        );
     }
 }

@@ -18,6 +18,38 @@ export type DesktopWorkerStatus = {
   message: string;
 };
 
+export type DesktopRuntimeDirectories = {
+  data: string;
+  projects: string;
+  models: string;
+  downloads: string;
+  exports: string;
+  cache: string;
+  logs: string;
+  diagnostics: string;
+};
+
+export type DesktopToolStatus = {
+  status: "available" | "missing" | "error" | string;
+  path: string;
+  version: string | null;
+  message: string;
+};
+
+export type DesktopRuntimeDiagnostics = {
+  workerStdoutLog: string;
+  workerStderrLog: string;
+};
+
+export type DesktopRuntimeStatus = {
+  mode: string;
+  worker: DesktopWorkerStatus;
+  directories: DesktopRuntimeDirectories;
+  ffmpeg: DesktopToolStatus;
+  ffprobe: DesktopToolStatus;
+  diagnostics: DesktopRuntimeDiagnostics;
+};
+
 function desktopGlobal(): DesktopGlobal {
   return globalThis as DesktopGlobal;
 }
@@ -53,6 +85,14 @@ export async function workerStatus(): Promise<DesktopWorkerStatus | null> {
   }
 
   return invokeDesktop<DesktopWorkerStatus>("worker_status");
+}
+
+export async function runtimeStatus(): Promise<DesktopRuntimeStatus | null> {
+  if (!isDesktopRuntime()) {
+    return null;
+  }
+
+  return invokeDesktop<DesktopRuntimeStatus>("runtime_status");
 }
 
 export async function startWorker(): Promise<DesktopWorkerStatus | null> {
