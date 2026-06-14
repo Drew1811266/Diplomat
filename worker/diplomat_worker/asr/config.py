@@ -10,6 +10,7 @@ AsrProvider = Literal["fake", "faster-whisper"]
 @dataclass(frozen=True)
 class AsrModelConfig:
     provider: AsrProvider = "fake"
+    model_id: str | None = None
     model_name_or_path: str | None = None
     device: str = "cpu"
     compute_type: str = "int8"
@@ -18,6 +19,8 @@ class AsrModelConfig:
 
     def to_request_payload(self) -> dict[str, str]:
         payload: dict[str, str] = {"provider": self.provider}
+        if self.model_id:
+            payload["modelId"] = self.model_id
         if self.model_name_or_path:
             payload["modelNameOrPath"] = self.model_name_or_path
         if self.provider != "fake" or self.device != "cpu":
@@ -34,6 +37,7 @@ class AsrModelConfig:
     def from_request_payload(cls, payload: dict) -> "AsrModelConfig":
         return cls(
             provider=payload.get("provider", "fake"),
+            model_id=payload.get("modelId") or payload.get("model_id"),
             model_name_or_path=payload.get("modelNameOrPath") or payload.get("model_name_or_path"),
             device=payload.get("device", "cpu"),
             compute_type=payload.get("computeType") or payload.get("compute_type", "int8"),
@@ -49,6 +53,7 @@ def create_transcriber(config: AsrModelConfig, fallback_language: str):
     if config.provider == "faster-whisper":
         return FasterWhisperTranscriber(
             model_name=config.model_name_or_path or "base",
+            model_label=config.model_id,
             device=config.device,
             compute_type=config.compute_type,
             language=language,

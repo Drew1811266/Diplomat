@@ -17,6 +17,7 @@ from diplomat_worker.api.schemas import (
     SrtExportRequest,
     TranslationSettingsRequest,
 )
+from diplomat_worker.asr.config import AsrModelConfig
 from diplomat_worker.asr.fake import FakeTranscriber
 from diplomat_worker.media.ffmpeg import FfmpegCheck, VideoProbe
 from diplomat_worker.models.manager import ModelDownloadManager
@@ -1007,19 +1008,39 @@ def test_analysis_job_request_defaults_to_fake_provider() -> None:
     request = AnalysisJobRequest()
 
     assert request.provider == "fake"
+    assert request.model_id is None
     assert request.model_name_or_path is None
     assert request.device == "cpu"
     assert request.compute_type == "int8"
 
     configured = AnalysisJobRequest(
         provider="faster-whisper",
-        modelNameOrPath="small",
+        modelId="asr.faster-whisper.small",
         sourceLanguage="zh",
         initialPrompt="Domain words",
     )
 
-    assert configured.model_name_or_path == "small"
+    assert configured.model_id == "asr.faster-whisper.small"
+    assert configured.model_name_or_path is None
     assert configured.source_language == "zh"
+
+
+def test_asr_model_config_serializes_model_id() -> None:
+    config = AsrModelConfig(
+        provider="faster-whisper",
+        model_id="asr.faster-whisper.small",
+        device="cuda",
+        compute_type="float16",
+        source_language="zh",
+    )
+
+    assert config.to_request_payload() == {
+        "provider": "faster-whisper",
+        "modelId": "asr.faster-whisper.small",
+        "device": "cuda",
+        "computeType": "float16",
+        "sourceLanguage": "zh",
+    }
 
 
 def test_translation_settings_request_defaults_to_fake_missing_only() -> None:

@@ -202,6 +202,7 @@ def model_delete_response(result: ModelDeleteResult) -> ModelDeleteResponse:
 def analysis_config_from_request(request: AnalysisJobRequest) -> AsrModelConfig:
     return AsrModelConfig(
         provider=request.provider,
+        model_id=request.model_id,
         model_name_or_path=request.model_name_or_path,
         device=request.device,
         compute_type=request.compute_type,

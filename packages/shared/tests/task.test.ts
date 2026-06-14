@@ -51,6 +51,7 @@ describe("AnalysisJobRequestSchema", () => {
   it("accepts faster-whisper model settings", () => {
     const request = AnalysisJobRequestSchema.parse({
       provider: "faster-whisper",
+      modelId: "asr.faster-whisper.small",
       modelNameOrPath: "small",
       device: "cpu",
       computeType: "int8",
@@ -59,6 +60,7 @@ describe("AnalysisJobRequestSchema", () => {
     });
 
     expect(request.provider).toBe("faster-whisper");
+    expect(request.modelId).toBe("asr.faster-whisper.small");
     expect(request.modelNameOrPath).toBe("small");
   });
 
@@ -70,6 +72,7 @@ describe("AnalysisJobRequestSchema", () => {
 
     expect(request).toEqual({
       provider: "fake",
+      modelId: null,
       modelNameOrPath: null,
       device: "cpu",
       computeType: "int8",
