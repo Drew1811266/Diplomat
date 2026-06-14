@@ -91,7 +91,7 @@ def test_health_endpoint_returns_worker_status(app_module) -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"name": "diplomat-worker", "status": "ok", "version": "0.1.0"}
+    assert response.json() == {"name": "diplomat-worker", "status": "ok", "version": "0.2.0"}
 
 
 def test_cors_allows_configured_local_web_origin(app_module, monkeypatch) -> None:

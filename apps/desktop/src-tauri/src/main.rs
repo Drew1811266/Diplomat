@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn classifies_diplomat_worker_health_payload() {
         let status = classify_worker_probe(Ok(
-            "{\"name\":\"diplomat-worker\",\"status\":\"ok\",\"version\":\"0.1.0\"}".to_string(),
+            "{\"name\":\"diplomat-worker\",\"status\":\"ok\",\"version\":\"0.2.0\"}".to_string(),
         ));
 
         assert_eq!(status.status, "running");

@@ -187,12 +187,12 @@ describe("worker API helpers", () => {
 
   it("uses configured worker base URL when no base URL argument is provided", async () => {
     vi.stubEnv("VITE_DIPLOMAT_WORKER_BASE_URL", "http://env-worker.test");
-    const fetchMock = stubJsonResponse({ name: "diplomat-worker", status: "ok", version: "0.1.0" });
+    const fetchMock = stubJsonResponse({ name: "diplomat-worker", status: "ok", version: "0.2.0" });
 
     await expect(fetchWorkerHealth()).resolves.toEqual({
       name: "diplomat-worker",
       status: "ok",
-      version: "0.1.0"
+      version: "0.2.0"
     });
 
     expect(fetchMock).toHaveBeenCalledWith("http://env-worker.test/health", undefined);
