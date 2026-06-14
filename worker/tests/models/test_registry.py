@@ -1,0 +1,23 @@
+from diplomat_worker.models.registry import built_in_model_registry, get_model_entry
+
+
+def test_built_in_registry_contains_curated_asr_and_translation_models() -> None:
+    registry = built_in_model_registry()
+
+    assert len(registry) >= 4
+    assert {entry.task for entry in registry} >= {"asr", "translation"}
+    assert len({entry.model_id for entry in registry}) == len(registry)
+    assert all(entry.checksum_algorithm == "sha256" for entry in registry)
+    assert all(entry.source_url for entry in registry)
+    assert all(entry.license_name for entry in registry)
+
+
+def test_get_model_entry_rejects_unknown_ids() -> None:
+    registry = built_in_model_registry()
+
+    try:
+        get_model_entry("unknown-model", registry)
+    except KeyError as exc:
+        assert "unknown-model" in str(exc)
+    else:
+        raise AssertionError("Expected unknown model id to raise KeyError")
