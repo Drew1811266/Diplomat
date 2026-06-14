@@ -5,6 +5,7 @@ description = "Local AI and media worker for Diplomat"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115.0",
+  "huggingface-hub>=0.24.0",
   "pydantic>=2.10.0",
   "uvicorn>=0.34.0"
 ]

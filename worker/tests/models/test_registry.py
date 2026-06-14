@@ -12,6 +12,16 @@ def test_built_in_registry_contains_curated_asr_and_translation_models() -> None
     assert all(entry.license_name for entry in registry)
 
 
+def test_built_in_registry_uses_audited_pinned_snapshot_sources() -> None:
+    registry = built_in_model_registry()
+
+    assert all(entry.source_url.startswith("hf://") for entry in registry)
+    assert all("@" in entry.source_url for entry in registry)
+    assert all(entry.checksum != "0" * 64 for entry in registry)
+    assert all(len(entry.checksum) == 64 for entry in registry)
+    assert all(entry.terms_summary for entry in registry)
+
+
 def test_get_model_entry_rejects_unknown_ids() -> None:
     registry = built_in_model_registry()
 

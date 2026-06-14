@@ -186,10 +186,16 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
     assert calls == []
 
 
-def test_release_readiness_route_returns_blockers_for_placeholder_registry(
+def test_release_readiness_route_reports_tool_blockers_without_model_audit_blockers(
     app_module,
+    monkeypatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.setattr(
+        app_module,
+        "tool_availability",
+        lambda path, label: {"status": "missing", "message": f"{label} missing: {path}"},
+    )
     client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
 
     response = client.get("/release/readiness")
@@ -199,7 +205,10 @@ def test_release_readiness_route_returns_blockers_for_placeholder_registry(
     assert payload["version"] == "0.3.0"
     assert payload["ready"] is False
     assert payload["summary"]["blocker"] >= 1
-    assert any(check["id"] == "model_registry_checksums" for check in payload["checks"])
+    blockers = {check["id"] for check in payload["checks"] if check["severity"] == "blocker"}
+    assert {"ffmpeg_available", "ffprobe_available"} <= blockers
+    assert "model_registry_checksums" not in blockers
+    assert "model_registry_sources" not in blockers
 
 
 def make_model_entry(tmp_path: Path, content: bytes = b"api model") -> ModelRegistryEntry:

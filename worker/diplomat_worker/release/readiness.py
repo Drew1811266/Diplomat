@@ -153,7 +153,7 @@ def _source_check(registry: list[ModelRegistryEntry]) -> ReleaseReadinessCheck:
             id="model_registry_sources",
             label="Model registry sources",
             severity="pass",
-            message="All built-in model sources point at downloadable package artifacts.",
+            message="All built-in model sources point at downloadable package artifacts or pinned snapshots.",
         )
     return ReleaseReadinessCheck(
         id="model_registry_sources",

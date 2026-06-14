@@ -1,4 +1,5 @@
 import hashlib
+import json
 import shutil
 import urllib.parse
 import urllib.request
@@ -43,6 +44,52 @@ class ModelDeleteResponse:
     files_deleted: int
     bytes_deleted: int
     message: str
+
+
+@dataclass(frozen=True)
+class HfSnapshotSource:
+    repo_id: str
+    revision: str
+
+
+def parse_hf_snapshot_source_url(source_url: str) -> HfSnapshotSource | None:
+    parsed = urllib.parse.urlparse(source_url)
+    if parsed.scheme != "hf":
+        return None
+
+    source = f"{parsed.netloc}{parsed.path}".strip("/")
+    if "@" not in source:
+        return None
+
+    repo_id, revision = source.rsplit("@", 1)
+    if not repo_id or not revision:
+        return None
+    return HfSnapshotSource(repo_id=repo_id, revision=revision)
+
+
+def hf_manifest_checksum(
+    *,
+    repo_id: str,
+    revision: str,
+    files: list[dict[str, str | int]],
+) -> str:
+    manifest = {
+        "repo": repo_id,
+        "revision": revision,
+        "files": sorted(
+            (
+                {
+                    "path": str(item["path"]),
+                    "size": int(item["size"]),
+                    "sha": str(item["sha"]),
+                }
+                for item in files
+            ),
+            key=lambda item: item["path"],
+        ),
+    }
+    encoded = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 class ModelCancelToken:
@@ -239,6 +286,10 @@ class ModelDownloadManager:
         staging_dir: Path,
         token: ModelCancelToken,
     ) -> int:
+        hf_source = parse_hf_snapshot_source_url(entry.source_url)
+        if hf_source is not None:
+            return self._download_hf_snapshot(entry, hf_source, staging_dir, token)
+
         source_path = self._source_path(entry.source_url)
         if source_path is not None:
             target = staging_dir / source_path.name
@@ -269,6 +320,64 @@ class ModelDownloadManager:
                         error_message=None,
                     )
         return downloaded
+
+    def _download_hf_snapshot(
+        self,
+        entry: ModelRegistryEntry,
+        source: HfSnapshotSource,
+        staging_dir: Path,
+        token: ModelCancelToken,
+    ) -> int:
+        if token.is_cancel_requested():
+            return 0
+
+        expected_checksum = self._hf_remote_manifest_checksum(source)
+        if expected_checksum != entry.checksum:
+            raise ValueError(
+                f"Model manifest checksum mismatch: expected {entry.checksum}, got {expected_checksum}"
+            )
+
+        try:
+            from huggingface_hub import snapshot_download
+        except ImportError as exc:
+            raise RuntimeError(
+                "huggingface-hub is required for curated model downloads. "
+                "Install the Worker dependencies before downloading models."
+            ) from exc
+
+        snapshot_download(
+            repo_id=source.repo_id,
+            revision=source.revision,
+            local_dir=str(staging_dir),
+            local_dir_use_symlinks=False,
+        )
+        if token.is_cancel_requested():
+            return sum(item.stat().st_size for item in staging_dir.rglob("*") if item.is_file())
+        return sum(item.stat().st_size for item in staging_dir.rglob("*") if item.is_file())
+
+    def _hf_remote_manifest_checksum(self, source: HfSnapshotSource) -> str:
+        url = (
+            "https://huggingface.co/api/models/"
+            f"{source.repo_id}/revision/{source.revision}?blobs=true"
+        )
+        with urllib.request.urlopen(url, timeout=30) as response:
+            payload = json.load(response)
+
+        files = []
+        for sibling in payload.get("siblings") or []:
+            lfs = sibling.get("lfs") or {}
+            files.append(
+                {
+                    "path": sibling["rfilename"],
+                    "size": sibling.get("size") or lfs.get("size") or 0,
+                    "sha": lfs.get("sha256") or sibling.get("blobId") or "",
+                }
+            )
+        return hf_manifest_checksum(
+            repo_id=source.repo_id,
+            revision=source.revision,
+            files=files,
+        )
 
     def _source_path(self, source_url: str) -> Path | None:
         parsed = urllib.parse.urlparse(source_url)
