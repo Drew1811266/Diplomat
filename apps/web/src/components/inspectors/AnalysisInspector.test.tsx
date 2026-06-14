@@ -8,6 +8,7 @@ import { AnalysisInspector } from "./AnalysisInspector";
 
 const analysisConfig: AnalysisJobRequest = {
   provider: "fake",
+  modelId: null,
   modelNameOrPath: null,
   device: "cpu",
   computeType: "int8",
@@ -40,6 +41,7 @@ describe("AnalysisInspector", () => {
       <AnalysisInspector
         config={analysisConfig}
         busy={false}
+        allowDevelopmentControls
         onConfigChange={onConfigChange}
         onStart={() => undefined}
         onCancel={() => undefined}
@@ -98,6 +100,7 @@ describe("AnalysisInspector", () => {
       <AnalysisInspector
         config={analysisConfig}
         busy={false}
+        allowDevelopmentControls
         onConfigChange={() => undefined}
         onStart={onStart}
         onCancel={onCancel}
@@ -119,6 +122,7 @@ describe("AnalysisInspector", () => {
       <AnalysisInspector
         config={analysisConfig}
         busy
+        allowDevelopmentControls
         onConfigChange={() => undefined}
         onStart={() => undefined}
         onCancel={() => undefined}
@@ -142,6 +146,7 @@ describe("AnalysisInspector", () => {
       <AnalysisInspector
         config={analysisConfig}
         busy={false}
+        allowDevelopmentControls
         onConfigChange={() => undefined}
         onStart={() => undefined}
         onCancel={() => undefined}
@@ -172,15 +177,37 @@ describe("AnalysisInspector", () => {
     expect(screen.getByRole("combobox", { name: "Installed ASR model" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Faster Whisper Medium" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Faster Whisper Small" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Model")).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("combobox", { name: "Installed ASR model" }), {
-      target: { value: "D:/Diplomat/models/asr-medium" }
+      target: { value: "asr.faster-whisper.medium" }
     });
 
     expect(onConfigChange).toHaveBeenCalledWith({
       ...analysisConfig,
       provider: "faster-whisper",
-      modelNameOrPath: "D:/Diplomat/models/asr-medium"
+      modelId: "asr.faster-whisper.medium",
+      modelNameOrPath: null
     });
+  });
+
+  it("blocks formal ASR start until a curated model is installed", () => {
+    const onStart = vi.fn();
+
+    renderWithProviders(
+      <AnalysisInspector
+        config={{ ...analysisConfig, provider: "faster-whisper" }}
+        busy={false}
+        onConfigChange={() => undefined}
+        onStart={onStart}
+        onCancel={() => undefined}
+        onRetry={() => undefined}
+      />
+    );
+
+    expect(screen.queryByRole("combobox", { name: "Provider" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Model")).not.toBeInTheDocument();
+    expect(screen.getByText("Install an ASR model from Models before starting local transcription.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
   });
 });

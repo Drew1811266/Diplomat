@@ -39,10 +39,11 @@ import {
 import { useUiStore } from "../state/uiStore";
 
 const defaultAnalysisConfig: AnalysisJobRequest = {
-  provider: "fake",
+  provider: "faster-whisper",
+  modelId: null,
   modelNameOrPath: null,
-  device: "cpu",
-  computeType: "int8",
+  device: "cuda",
+  computeType: "float16",
   sourceLanguage: null,
   initialPrompt: null
 };

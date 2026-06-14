@@ -322,7 +322,7 @@ describe("WorkbenchPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Analyze" }));
     expect(screen.getByRole("heading", { name: "Analysis" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Provider" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Installed ASR model" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Translate" }));
     expect(screen.getByRole("heading", { name: "Translation" })).toBeInTheDocument();
@@ -408,7 +408,8 @@ describe("WorkbenchPage", () => {
     const fetchMock = stubActiveProjectFetch({
       analysisTask: runningAnalysisTaskFixture,
       taskResponses: [completedAnalysisTaskFixture],
-      subtitleDocuments: [liveSubtitleDocument, refreshedSubtitleDocument]
+      subtitleDocuments: [liveSubtitleDocument, refreshedSubtitleDocument],
+      modelCatalog: modelCatalogFixture
     });
 
     renderWithProviders(<WorkbenchPage />);
@@ -419,6 +420,12 @@ describe("WorkbenchPage", () => {
     await user.type(screen.getByLabelText("Source text"), "Local draft survives refetch");
 
     await user.click(screen.getByRole("button", { name: "Analyze" }));
+    await user.selectOptions(
+      within(screen.getByLabelText("Inspector")).getByRole("combobox", {
+        name: "Installed ASR model"
+      }),
+      "asr.faster-whisper.medium"
+    );
     await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Start" }));
 
     await waitFor(() =>
@@ -457,13 +464,19 @@ describe("WorkbenchPage", () => {
 
   it("starts analysis and translation jobs and exports through worker mutations", async () => {
     const user = userEvent.setup();
-    const fetchMock = stubActiveProjectFetch();
+    const fetchMock = stubActiveProjectFetch({ modelCatalog: modelCatalogFixture });
 
     renderWithProviders(<WorkbenchPage />);
 
     expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Analyze" }));
+    await user.selectOptions(
+      within(screen.getByLabelText("Inspector")).getByRole("combobox", {
+        name: "Installed ASR model"
+      }),
+      "asr.faster-whisper.medium"
+    );
     await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Start" }));
 
     await waitFor(() =>
@@ -471,7 +484,7 @@ describe("WorkbenchPage", () => {
         expect.stringMatching(/\/projects\/project-demo\/analysis-jobs$/),
         expect.objectContaining({
           method: "POST",
-          body: expect.stringContaining('"provider":"fake"')
+          body: expect.stringContaining('"modelId":"asr.faster-whisper.medium"')
         })
       )
     );
@@ -519,7 +532,7 @@ describe("WorkbenchPage", () => {
       within(screen.getByLabelText("Inspector")).getByRole("combobox", {
         name: "Installed ASR model"
       }),
-      "D:/Diplomat/models/asr-medium"
+      "asr.faster-whisper.medium"
     );
     await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Start" }));
 
@@ -528,7 +541,7 @@ describe("WorkbenchPage", () => {
         expect.stringMatching(/\/projects\/project-demo\/analysis-jobs$/),
         expect.objectContaining({
           method: "POST",
-          body: expect.stringContaining('"modelNameOrPath":"D:/Diplomat/models/asr-medium"')
+          body: expect.stringContaining('"modelId":"asr.faster-whisper.medium"')
         })
       )
     );
@@ -540,13 +553,15 @@ describe("WorkbenchPage", () => {
     );
     expect(JSON.parse(String(analysisCall?.[1]?.body))).toMatchObject({
       provider: "faster-whisper",
-      modelNameOrPath: "D:/Diplomat/models/asr-medium"
+      modelId: "asr.faster-whisper.medium",
+      modelNameOrPath: null
     });
   });
 
   it("shows visible errors for analysis, translation, and export mutation failures", async () => {
     const user = userEvent.setup();
     stubActiveProjectFetch({
+      modelCatalog: modelCatalogFixture,
       analysisError: { status: 500, detail: "Analysis failed" },
       translationError: { status: 500, detail: "Translation failed" },
       exportError: { status: 500, detail: "Export failed" }
@@ -557,6 +572,12 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Analyze" }));
+    await user.selectOptions(
+      within(screen.getByLabelText("Inspector")).getByRole("combobox", {
+        name: "Installed ASR model"
+      }),
+      "asr.faster-whisper.medium"
+    );
     await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Start" }));
     expect(await screen.findByText("Worker request failed: 500: Analysis failed")).toBeInTheDocument();
 
@@ -572,6 +593,7 @@ describe("WorkbenchPage", () => {
   it("blocks export while the latest local task is active", async () => {
     const user = userEvent.setup();
     stubActiveProjectFetch({
+      modelCatalog: modelCatalogFixture,
       analysisTask: runningAnalysisTaskFixture,
       taskResponses: [runningAnalysisTaskFixture]
     });
@@ -581,6 +603,12 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Analyze" }));
+    await user.selectOptions(
+      within(screen.getByLabelText("Inspector")).getByRole("combobox", {
+        name: "Installed ASR model"
+      }),
+      "asr.faster-whisper.medium"
+    );
     await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Start" }));
     await user.click(screen.getByRole("button", { name: "Export" }));
 
@@ -592,6 +620,7 @@ describe("WorkbenchPage", () => {
   it("shows task progress and wires cancel and retry actions", async () => {
     const user = userEvent.setup();
     const fetchMock = stubActiveProjectFetch({
+      modelCatalog: modelCatalogFixture,
       analysisTask: runningAnalysisTaskFixture,
       taskResponses: [runningAnalysisTaskFixture]
     });
@@ -602,6 +631,12 @@ describe("WorkbenchPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Analyze" }));
     const inspector = screen.getByLabelText("Inspector");
+    await user.selectOptions(
+      within(inspector).getByRole("combobox", {
+        name: "Installed ASR model"
+      }),
+      "asr.faster-whisper.medium"
+    );
     await user.click(within(inspector).getByRole("button", { name: "Start" }));
 
     expect(await screen.findByText("Running · Transcribing audio · 35%")).toBeInTheDocument();
@@ -626,7 +661,7 @@ describe("WorkbenchPage", () => {
         expect.stringMatching(/\/tasks\/task-1\/retry$/),
         expect.objectContaining({
           method: "POST",
-          body: expect.stringContaining('"provider":"fake"')
+          body: expect.stringContaining('"modelId":"asr.faster-whisper.medium"')
         })
       )
     );
@@ -637,6 +672,7 @@ describe("WorkbenchPage", () => {
     const user = userEvent.setup();
     await appI18n.changeLanguage("zh");
     stubActiveProjectFetch({
+      modelCatalog: modelCatalogFixture,
       analysisTask: runningAnalysisTaskFixture,
       taskResponses: [runningAnalysisTaskFixture]
     });
@@ -646,6 +682,12 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "分析" }));
+    await user.selectOptions(
+      within(screen.getByLabelText("检查器")).getByRole("combobox", {
+        name: "已安装 ASR 模型"
+      }),
+      "asr.faster-whisper.medium"
+    );
     await user.click(within(screen.getByLabelText("检查器")).getByRole("button", { name: "开始" }));
     await user.click(screen.getByRole("button", { name: "导出" }));
 

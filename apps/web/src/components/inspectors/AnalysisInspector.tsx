@@ -1,4 +1,4 @@
-import { Button, Group, NativeSelect, Stack, TextInput } from "@mantine/core";
+import { Button, Group, NativeSelect, Stack, Text, TextInput } from "@mantine/core";
 import type { AnalysisJobRequest, ModelCatalogEntry } from "@diplomat/shared";
 import { useTranslation } from "react-i18next";
 
@@ -6,6 +6,7 @@ type AnalysisInspectorProps = {
   config: AnalysisJobRequest;
   busy: boolean;
   modelCatalog?: ModelCatalogEntry[];
+  allowDevelopmentControls?: boolean;
   canCancel?: boolean;
   canRetry?: boolean;
   onConfigChange: (config: AnalysisJobRequest) => void;
@@ -22,6 +23,7 @@ export function AnalysisInspector({
   config,
   busy,
   modelCatalog = [],
+  allowDevelopmentControls = false,
   canCancel = true,
   canRetry = true,
   onConfigChange,
@@ -37,11 +39,12 @@ export function AnalysisInspector({
       model.availability.usable &&
       Boolean(model.installation.installedPath)
   );
-  const installedAsrModelPath = installedAsrModels.some(
-    (model) => model.installation.installedPath === config.modelNameOrPath
+  const installedAsrModelId = installedAsrModels.some(
+    (model) => model.modelId === config.modelId
   )
-    ? config.modelNameOrPath ?? ""
+    ? config.modelId ?? ""
     : "";
+  const canStart = allowDevelopmentControls ? !busy : !busy && Boolean(installedAsrModelId);
 
   function updateConfig<Key extends keyof AnalysisJobRequest>(
     key: Key,
@@ -50,43 +53,52 @@ export function AnalysisInspector({
     onConfigChange({ ...config, [key]: value });
   }
 
-  function selectInstalledModel(installedPath: string) {
-    if (!installedPath) {
-      onConfigChange({ ...config, modelNameOrPath: null });
+  function selectInstalledModel(modelId: string) {
+    if (!modelId) {
+      onConfigChange({ ...config, modelId: null, modelNameOrPath: null });
       return;
     }
 
     onConfigChange({
       ...config,
       provider: "faster-whisper",
-      modelNameOrPath: installedPath
+      modelId,
+      modelNameOrPath: null
     });
   }
 
   return (
     <Stack gap="sm">
-      <NativeSelect
-        label={t("fields.provider")}
-        value={config.provider}
-        data={analysisProviders}
-        disabled={busy}
-        onChange={(event) =>
-          updateConfig("provider", event.currentTarget.value as AnalysisJobRequest["provider"])
-        }
-      />
+      {allowDevelopmentControls ? (
+        <NativeSelect
+          label={t("fields.provider")}
+          value={config.provider}
+          data={analysisProviders}
+          disabled={busy}
+          onChange={(event) =>
+            updateConfig("provider", event.currentTarget.value as AnalysisJobRequest["provider"])
+          }
+        />
+      ) : null}
 
-      {installedAsrModels.length > 0 ? (
+      {installedAsrModels.length > 0 || !allowDevelopmentControls ? (
         <NativeSelect
           label={t("fields.installedAsrModel")}
-          value={installedAsrModelPath}
+          value={installedAsrModelId}
           data={[
-            { value: "", label: t("inspector.selectModel") },
+            {
+              value: "",
+              label:
+                installedAsrModels.length > 0
+                  ? t("inspector.selectModel")
+                  : t("inspector.noAsrModelAvailable")
+            },
             ...installedAsrModels.map((model) => ({
-              value: model.installation.installedPath ?? "",
+              value: model.modelId,
               label: model.name
             }))
           ]}
-          disabled={busy}
+          disabled={busy || installedAsrModels.length === 0}
           onChange={(event) => selectInstalledModel(event.currentTarget.value)}
         />
       ) : (
@@ -97,6 +109,12 @@ export function AnalysisInspector({
           onChange={(event) => updateConfig("modelNameOrPath", event.currentTarget.value || null)}
         />
       )}
+
+      {!allowDevelopmentControls && installedAsrModels.length === 0 ? (
+        <Text size="sm" c="dimmed">
+          {t("inspector.installAsrModelFirst")}
+        </Text>
+      ) : null}
 
       <TextInput
         label={t("fields.sourceLanguage")}
@@ -130,7 +148,7 @@ export function AnalysisInspector({
       />
 
       <Group justify="flex-end" gap="xs">
-        <Button type="button" size="xs" color="teal" onClick={onStart} disabled={busy}>
+        <Button type="button" size="xs" color="teal" onClick={onStart} disabled={!canStart}>
           {t("actions.start")}
         </Button>
         <Button

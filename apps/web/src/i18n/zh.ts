@@ -143,6 +143,8 @@ export const zh = {
     exportDisabledDataError: "请先解决项目或字幕错误再导出。",
     exportResult: "SRT 已导出：{{exportPath}}",
     selectModel: "选择模型",
+    noAsrModelAvailable: "没有已安装的 ASR 模型",
+    installAsrModelFirst: "请先在“模型”中安装 ASR 模型，再开始本地转写。",
     translationModelUnavailable: "请先安装这个翻译模型再开始翻译。",
     localTranslationPending: "本地翻译模型执行将在 0.25 实现。"
   },
