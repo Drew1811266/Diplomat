@@ -322,14 +322,19 @@ describe("worker API helpers", () => {
     const fetchMock = stubJsonResponse(taskResponse);
 
     await expect(
-      createAnalysisJob("project-1", { provider: "fake", sourceLanguage: "zh" }, baseUrl)
+      createAnalysisJob(
+        "project-1",
+        { provider: "faster-whisper", modelId: "asr.faster-whisper.small", sourceLanguage: "zh" },
+        baseUrl
+      )
     ).resolves.toEqual(taskResponse);
 
     expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/analysis-jobs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        provider: "fake",
+        provider: "faster-whisper",
+        modelId: "asr.faster-whisper.small",
         modelNameOrPath: null,
         device: "cpu",
         computeType: "int8",
@@ -450,7 +455,11 @@ describe("worker API helpers", () => {
     await expect(
       retryTask(
         "task-1",
-        { provider: "faster-whisper", modelNameOrPath: "tiny", sourceLanguage: "en" },
+        {
+          provider: "faster-whisper",
+          modelId: "asr.faster-whisper.medium",
+          sourceLanguage: "en"
+        },
         baseUrl
       )
     ).resolves.toEqual(response);
@@ -460,7 +469,8 @@ describe("worker API helpers", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         provider: "faster-whisper",
-        modelNameOrPath: "tiny",
+        modelId: "asr.faster-whisper.medium",
+        modelNameOrPath: null,
         device: "cpu",
         computeType: "int8",
         sourceLanguage: "en",

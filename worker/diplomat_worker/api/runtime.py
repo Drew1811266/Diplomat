@@ -50,6 +50,7 @@ class WorkerRuntime:
     transcriber_factory: TranscriberFactory = create_transcriber
     translation_provider_factory: TranslationProviderFactory = create_translation_provider
     model_registry: list[ModelRegistryEntry] | None = field(default_factory=built_in_model_registry)
+    allow_unmanaged_asr_models: bool = False
 
 
 def create_default_runtime() -> WorkerRuntime:

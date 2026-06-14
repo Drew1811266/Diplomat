@@ -145,6 +145,8 @@ export const en = {
     exportDisabledDataError: "Resolve project or subtitle errors before exporting.",
     exportResult: "SRT exported: {{exportPath}}",
     selectModel: "Select model",
+    noAsrModelAvailable: "No installed ASR model",
+    installAsrModelFirst: "Install an ASR model from Models before starting local transcription.",
     translationModelUnavailable: "Install this translation model before starting translation.",
     localTranslationPending: "Local translation model execution lands in 0.25."
   },

@@ -13,6 +13,7 @@ export const TaskTypeSchema = z.enum(["analysis", "translation", "export"]);
 
 export const AnalysisJobRequestSchema = z.object({
   provider: z.enum(["fake", "faster-whisper"]).default("fake"),
+  modelId: z.string().nullable().default(null),
   modelNameOrPath: z.string().nullable().default(null),
   device: z.string().min(1).default("cpu"),
   computeType: z.string().min(1).default("int8"),

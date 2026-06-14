@@ -166,6 +166,7 @@ class ModelDeleteResponse(CamelModel):
 
 class AnalysisJobRequest(CamelModel):
     provider: Literal["fake", "faster-whisper"] = "fake"
+    model_id: str | None = Field(default=None, alias="modelId")
     model_name_or_path: str | None = Field(default=None, alias="modelNameOrPath")
     device: str = "cpu"
     compute_type: str = Field(default="int8", alias="computeType")

@@ -8,12 +8,14 @@ class FasterWhisperTranscriber:
     def __init__(
         self,
         model_name: str,
+        model_label: str | None = None,
         device: str = "cpu",
         compute_type: str = "int8",
         language: str = "zh",
         initial_prompt: str | None = None,
     ) -> None:
         self.model_name = model_name
+        self.model_label = model_label
         self.device = device
         self.compute_type = compute_type
         self.language = language
@@ -26,7 +28,12 @@ class FasterWhisperTranscriber:
         progress_callback: ProgressCallback | None = None,
         cancel_token: CancelToken | None = None,
     ) -> AsrResult:
-        from faster_whisper import WhisperModel
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError as exc:
+            raise RuntimeError(
+                "faster-whisper is not installed. Install the Worker ASR extras before running local ASR."
+            ) from exc
 
         if cancel_token is not None and cancel_token.is_cancel_requested():
             raise AsrCanceled("Analysis canceled")
@@ -74,7 +81,7 @@ class FasterWhisperTranscriber:
             progress_callback(1.0, "Faster-whisper transcription completed")
         return AsrResult(
             engine="faster-whisper",
-            model=self.model_name,
+            model=self.model_label or self.model_name,
             language=self.language,
             segments=segments,
         )
