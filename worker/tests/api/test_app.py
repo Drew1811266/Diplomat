@@ -104,7 +104,7 @@ def test_health_endpoint_returns_worker_status(app_module) -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"name": "diplomat-worker", "status": "ok", "version": "0.2.0"}
+    assert response.json() == {"name": "diplomat-worker", "status": "ok", "version": "0.3.0"}
 
 
 def test_cors_allows_configured_local_web_origin(app_module, monkeypatch) -> None:
@@ -140,6 +140,7 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
 
     assert routes == {
         ("GET", "/health"),
+        ("GET", "/release/readiness"),
         ("GET", "/models"),
         ("GET", "/models/{model_id}"),
         ("POST", "/models/{model_id}/download"),
@@ -183,6 +184,31 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("POST", "/tasks/{task_id}/retry"),
     }
     assert calls == []
+
+
+def test_release_readiness_route_reports_tool_blockers_without_model_audit_blockers(
+    app_module,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        app_module,
+        "tool_availability",
+        lambda path, label: {"status": "missing", "message": f"{label} missing: {path}"},
+    )
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
+
+    response = client.get("/release/readiness")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["version"] == "0.3.0"
+    assert payload["ready"] is False
+    assert payload["summary"]["blocker"] >= 1
+    blockers = {check["id"] for check in payload["checks"] if check["severity"] == "blocker"}
+    assert {"ffmpeg_available", "ffprobe_available"} <= blockers
+    assert "model_registry_checksums" not in blockers
+    assert "model_registry_sources" not in blockers
 
 
 def make_model_entry(tmp_path: Path, content: bytes = b"api model") -> ModelRegistryEntry:

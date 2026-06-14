@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from diplomat_worker.models.manager import ModelDownloadManager
+from diplomat_worker.models.manager import (
+    ModelDownloadManager,
+    hf_manifest_checksum,
+    parse_hf_snapshot_source_url,
+)
 from diplomat_worker.models.registry import ModelRegistryEntry
 from diplomat_worker.storage.project_store import ProjectStore
 
@@ -51,6 +55,31 @@ def make_manager(
 ) -> ModelDownloadManager:
     store = ProjectStore(tmp_path / "diplomat.db")
     return ModelDownloadManager(store, registry=registry, auto_start=False)
+
+
+def test_parse_hf_snapshot_source_url_requires_pinned_revision() -> None:
+    source = parse_hf_snapshot_source_url(
+        "hf://Systran/faster-whisper-small@536b0662742c02347bc0e980a01041f333bce120"
+    )
+
+    assert source is not None
+    assert source.repo_id == "Systran/faster-whisper-small"
+    assert source.revision == "536b0662742c02347bc0e980a01041f333bce120"
+    assert parse_hf_snapshot_source_url("https://huggingface.co/Systran/faster-whisper-small") is None
+    assert parse_hf_snapshot_source_url("hf://Systran/faster-whisper-small") is None
+
+
+def test_hf_manifest_checksum_uses_repo_revision_paths_sizes_and_hashes() -> None:
+    checksum = hf_manifest_checksum(
+        repo_id="example/model",
+        revision="abc123",
+        files=[
+            {"path": "b.bin", "size": 2, "sha": "b" * 40},
+            {"path": "a.json", "size": 1, "sha": "a" * 40},
+        ],
+    )
+
+    assert checksum == "96802f57a5c04771f47b6d629268a1194452434538c48e02911b720163256b2e"
 
 
 def test_model_download_installs_verified_local_fixture(tmp_path: Path) -> None:

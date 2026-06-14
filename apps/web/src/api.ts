@@ -12,6 +12,7 @@ import {
   ProjectListResponseSchema,
   ProjectMaintenanceResponseSchema,
   ProjectResponseSchema,
+  ReleaseReadinessResponseSchema,
   StylePresetApplyResponseSchema,
   StylePresetCreateRequestSchema,
   StylePresetListResponseSchema,
@@ -43,6 +44,7 @@ import {
   type ProjectListResponse,
   type ProjectMaintenanceResponse,
   type ProjectResponse,
+  type ReleaseReadinessResponse,
   type StylePreset,
   type StylePresetApplyResponse,
   type StylePresetCreateRequest,
@@ -134,6 +136,16 @@ async function requestJson<T>(
 
 export async function fetchWorkerHealth(baseUrl = defaultWorkerBaseUrl()): Promise<WorkerHealth> {
   return requestJson(`${baseUrl}/health`, undefined, (payload) => payload as WorkerHealth);
+}
+
+export async function fetchReleaseReadiness(
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<ReleaseReadinessResponse> {
+  return requestJson(
+    `${baseUrl}/release/readiness`,
+    undefined,
+    (payload) => ReleaseReadinessResponseSchema.parse(payload)
+  );
 }
 
 export async function createProject(

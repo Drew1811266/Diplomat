@@ -8,6 +8,7 @@ export const zh = {
     workbench: "工作台",
     models: "模型",
     tasks: "任务",
+    help: "帮助",
     settings: "设置"
   },
   projectCenter: {
@@ -311,10 +312,94 @@ export const zh = {
     openData: "打开数据",
     openModels: "打开模型",
     openLogs: "打开日志",
+    releaseReadiness: "发布就绪检查",
+    releaseReadinessLoading: "正在检查发布就绪状态...",
+    releaseReadinessVersion: "Diplomat {{version}} 的发布就绪报告。",
+    releaseReady: "可发布",
+    releaseBlocked: "发布被阻塞",
+    releasePassCount: "{{count}} 项通过",
+    releaseWarningCount: "{{count}} 项警告",
+    releaseBlockerCount: "{{count}} 项阻塞",
+    releaseCheckRemediation: "整改方式",
+    releaseSeverities: {
+      pass: "通过",
+      warning: "警告",
+      blocker: "阻塞"
+    },
     defaults: "默认值",
     defaultSourceLanguage: "默认源语言",
     defaultTargetLanguage: "默认目标语言",
     defaultExportMode: "默认导出模式"
+  },
+  help: {
+    title: "帮助中心",
+    subtitle: "本地字幕生产、诊断和发布检查的操作指南。",
+    sections: {
+      firstRun: {
+        title: "首次使用",
+        items: [
+          "启动桌面应用，并在“设置”中确认 Worker 可连接。",
+          "先从“项目中心”导入本地视频，再进入工作台。",
+          "在分析和翻译流程中保持源语言、目标语言代码一致。"
+        ]
+      },
+      models: {
+        title: "模型管理",
+        items: [
+          "只安装“模型”页列出的内置开源模型。",
+          "等待下载、校验和安装状态完成后再开始任务。",
+          "下载中断时使用重试操作，不手动添加模型路径。"
+        ]
+      },
+      localWorkflow: {
+        title: "本地工作流",
+        items: [
+          "每个源视频创建或导入一个独立项目。",
+          "先运行分析，需要目标字幕时再运行翻译。",
+          "使用“任务”页跟踪排队、运行、完成、失败和取消的后台任务。"
+        ]
+      },
+      editing: {
+        title: "编辑",
+        items: [
+          "导出前检查时间警告。",
+          "大批量修改时间或文本前使用自动草稿和快照。",
+          "让说话人、样式和双语布局与最终导出目标保持一致。"
+        ]
+      },
+      export: {
+        title: "导出",
+        items: [
+          "导出 SRT、VTT、ASS 或内嵌字幕视频前先保存字幕修改。",
+          "开始视频渲染前先解决阻塞级校验问题。",
+          "渲染完成后可从项目操作打开导出文件夹。"
+        ]
+      },
+      diagnostics: {
+        title: "诊断",
+        items: [
+          "在“设置”中检查 Worker、FFmpeg、FFprobe、数据、模型和日志路径。",
+          "后台任务失败时从“设置”打开日志。",
+          "先解决报错原因，再重试失败任务。"
+        ]
+      },
+      privacy: {
+        title: "隐私",
+        items: [
+          "默认 ASR、翻译、编辑和导出流程都在本地运行。",
+          "内置模型下载来自已审计的开源来源。",
+          "远程服务不属于 v0.3 的正式工作流。"
+        ]
+      },
+      releaseChecklist: {
+        title: "发布前检查",
+        items: [
+          "在“设置”中查看发布就绪面板。",
+          "阻塞级检查必须视为停止发布的问题。",
+          "打标签前确认打包、文档、FFmpeg、模型许可证、来源和校验和。"
+        ]
+      }
+    }
   },
   models: {
     title: "模型",

@@ -35,6 +35,22 @@ class ProjectListResponse(CamelModel):
     projects: list[ProjectResponse]
 
 
+class ReleaseReadinessCheckResponse(CamelModel):
+    id: str
+    label: str
+    severity: Literal["pass", "warning", "blocker"]
+    message: str
+    remediation: str | None = None
+
+
+class ReleaseReadinessResponse(CamelModel):
+    version: str
+    generated_at: str = Field(alias="generatedAt")
+    ready: bool
+    summary: dict[str, int]
+    checks: list[ReleaseReadinessCheckResponse]
+
+
 class ProjectWarningResponse(CamelModel):
     code: Literal[
         "source_missing",

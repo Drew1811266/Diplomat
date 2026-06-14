@@ -1,5 +1,7 @@
 import json
 import os
+import shutil
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +26,8 @@ from diplomat_worker.api.schemas import (
     ProjectImportRequest,
     ProjectMaintenanceResponse,
     ProjectResponse,
+    ReleaseReadinessCheckResponse,
+    ReleaseReadinessResponse,
     ProjectWarningResponse,
     ExportValidationIssueResponse,
     SrtExportRequest,
@@ -63,6 +67,8 @@ from diplomat_worker.models.manager import (
     ModelDownloadResponse as ModelDownloadResult,
 )
 from diplomat_worker.pipeline.core import CorePipelineInput, run_core_pipeline
+from diplomat_worker.release.readiness import build_release_readiness_report
+from diplomat_worker.release.readiness import ReleaseReadinessReport
 from diplomat_worker.schemas.subtitle import SubtitleDocument
 from diplomat_worker.schemas.task import TaskResponse
 from diplomat_worker.storage.project_store import ModelInstallationRecord
@@ -362,6 +368,59 @@ def waveform_response(data: WaveformData) -> WaveformResponse:
     )
 
 
+def release_readiness_response(report: ReleaseReadinessReport) -> ReleaseReadinessResponse:
+    return ReleaseReadinessResponse(
+        version=report.version,
+        generated_at=report.generated_at,
+        ready=report.ready,
+        summary=report.summary,
+        checks=[
+            ReleaseReadinessCheckResponse(
+                id=check.id,
+                label=check.label,
+                severity=check.severity,
+                message=check.message,
+                remediation=check.remediation,
+            )
+            for check in report.checks
+        ],
+    )
+
+
+def repository_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def desktop_bundle_active(root: Path) -> bool:
+    config_path = root / "apps" / "desktop" / "src-tauri" / "tauri.conf.json"
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return bool(payload.get("bundle", {}).get("active"))
+
+
+def help_center_available(root: Path) -> bool:
+    return (root / "apps" / "web" / "src" / "pages" / "HelpPage.tsx").is_file()
+
+
+def release_docs_available(root: Path) -> bool:
+    docs = [
+        "0.3-acceptance-script.md",
+        "0.3-packaging-checklist.md",
+        "0.3-privacy-review.md",
+        "0.3-model-audit.md",
+        "0.3-ffmpeg-audit.md",
+    ]
+    return all((root / "docs" / "release" / doc).is_file() for doc in docs)
+
+
+def tool_availability(path: str, label: str) -> dict[str, str]:
+    if shutil.which(path) is not None or Path(path).exists():
+        return {"status": "available", "message": f"{label} is available: {path}"}
+    return {"status": "missing", "message": f"{label} was not found: {path}"}
+
+
 def create_app(
     runtime: WorkerRuntime | None = None,
     analysis_jobs: AnalysisJobManager | None = None,
@@ -446,6 +505,21 @@ def create_app(
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"name": "diplomat-worker", "status": "ok", "version": __version__}
+
+    @app.get("/release/readiness", response_model=ReleaseReadinessResponse)
+    def release_readiness() -> ReleaseReadinessResponse:
+        active_runtime = get_runtime()
+        root = repository_root()
+        report = build_release_readiness_report(
+            version=__version__,
+            registry=active_runtime.model_registry or [],
+            ffmpeg_status=tool_availability(active_runtime.ffmpeg_path, "FFmpeg"),
+            ffprobe_status=tool_availability(active_runtime.ffprobe_path, "FFprobe"),
+            desktop_bundle_active=desktop_bundle_active(root),
+            help_center_available=help_center_available(root),
+            release_docs_available=release_docs_available(root),
+        )
+        return release_readiness_response(report)
 
     @app.get("/models", response_model=ModelCatalogResponse)
     def list_models() -> ModelCatalogResponse:

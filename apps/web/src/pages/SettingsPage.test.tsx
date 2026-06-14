@@ -61,6 +61,50 @@ const desktopRuntimeStatus = {
   }
 };
 
+const releaseReadinessResponse = {
+  version: "0.3.0",
+  generatedAt: "2026-06-14T00:00:00+00:00",
+  ready: false,
+  summary: {
+    pass: 2,
+    warning: 1,
+    blocker: 1
+  },
+  checks: [
+    {
+      id: "model_registry_checksums",
+      label: "Model registry checksums",
+      severity: "blocker",
+      message: "Model registry contains placeholder checksums.",
+      remediation: "Replace placeholders with audited SHA256 checksums."
+    },
+    {
+      id: "help_center",
+      label: "Help Center",
+      severity: "pass",
+      message: "Help Center is available.",
+      remediation: null
+    }
+  ]
+};
+
+function stubFetch() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/release/readiness")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => releaseReadinessResponse
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    })
+  );
+}
+
 function stubMatchMedia() {
   vi.stubGlobal("matchMedia", () => ({
     matches: false,
@@ -83,6 +127,7 @@ function stubResizeObserver() {
 beforeEach(async () => {
   stubMatchMedia();
   stubResizeObserver();
+  stubFetch();
   localStorage.clear();
   useUiStore.getState().resetUiState();
   await appI18n.changeLanguage("en");
@@ -142,6 +187,18 @@ describe("SettingsPage", () => {
       screen.getByText("Desktop runtime controls are unavailable in browser mode.")
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Worker URL")).toHaveValue("http://127.0.0.1:8765");
+  });
+
+  it("renders release readiness blockers and remediation", async () => {
+    vi.mocked(isDesktopRuntime).mockReturnValue(false);
+
+    renderWithProviders(<SettingsPage />);
+
+    expect(await screen.findByRole("heading", { name: "Release readiness" })).toBeInTheDocument();
+    expect(await screen.findByText("Release blocked")).toBeInTheDocument();
+    expect(await screen.findByText("1 blocker")).toBeInTheDocument();
+    expect(screen.getByText("Model registry checksums")).toBeInTheDocument();
+    expect(screen.getByText(/Replace placeholders with audited SHA256 checksums/)).toBeInTheDocument();
   });
 
   it("renders desktop runtime diagnostics and controls", async () => {
