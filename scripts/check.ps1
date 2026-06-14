@@ -6,6 +6,9 @@ corepack pnpm install --frozen-lockfile
 Write-Host "Verifying release version metadata"
 node .\scripts\verify-version.mjs
 
+Write-Host "Verifying release packaging assets"
+node .\scripts\verify-release-assets.mjs
+
 Write-Host "Running TypeScript package checks"
 corepack pnpm -r test
 corepack pnpm -r typecheck
