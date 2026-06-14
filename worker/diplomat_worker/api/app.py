@@ -48,6 +48,7 @@ from diplomat_worker.storage.project_store import StorageMigrationError
 from diplomat_worker.tasks.analysis import AnalysisJobManager
 from diplomat_worker.tasks.translation import TranslationJobManager
 from diplomat_worker.translation.config import TranslationProviderConfig
+from diplomat_worker.translation.resolver import TranslationConfigurationError
 
 DEFAULT_CORS_ORIGINS = ("http://localhost:1420", "http://127.0.0.1:1420")
 
@@ -561,6 +562,8 @@ def create_app(
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
+        except TranslationConfigurationError as exc:
+            raise HTTPException(status_code=409, detail=exc.message) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return task_response(task)

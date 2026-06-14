@@ -786,6 +786,53 @@ def test_create_translation_job_returns_accepted_task(app_module, tmp_path: Path
     assert payload["progress"] == 0
 
 
+def test_create_translation_job_rejects_uninstalled_curated_translation_model(
+    app_module,
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "translation-model.bin"
+    source_path.write_bytes(b"translation")
+    entry = ModelRegistryEntry(
+        model_id="translation.fixture.en-zh",
+        name="Fixture Translation",
+        task="translation",
+        tier="light",
+        runtime="ct2-marian",
+        provider="ct2-marian",
+        version="test",
+        languages=["en", "zh"],
+        language_pairs=[("en", "zh")],
+        model_size_bytes=source_path.stat().st_size,
+        download_size_bytes=source_path.stat().st_size,
+        disk_requirement_bytes=source_path.stat().st_size,
+        recommended_hardware="test hardware",
+        license_name="MIT",
+        license_url="https://example.invalid/license",
+        source_url=str(source_path),
+        checksum_algorithm="sha256",
+        checksum="d" * 64,
+        terms_summary="Test fixture translation model.",
+    )
+    runtime = make_test_runtime(tmp_path, model_registry=[entry])
+    manager = TranslationJobManager(runtime, auto_start=False)
+    client = TestClient(app_module.create_app(runtime, translation_jobs=manager))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+
+    response = client.post(
+        f"/projects/{project_id}/translation-jobs",
+        json={
+            "provider": "ct2-marian",
+            "modelId": entry.model_id,
+            "sourceLanguage": "en",
+            "targetLanguage": "zh",
+            "mode": "missing_only",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Install Fixture Translation from Models before starting translation."
+
+
 def test_cancel_translation_job_routes_to_translation_manager(app_module, tmp_path: Path) -> None:
     runtime = make_test_runtime(tmp_path)
     manager = TranslationJobManager(runtime, auto_start=False)
