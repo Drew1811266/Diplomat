@@ -6,6 +6,7 @@ export const en = {
   nav: {
     projects: "Projects",
     workbench: "Workbench",
+    models: "Models",
     tasks: "Tasks",
     settings: "Settings"
   },
@@ -211,6 +212,56 @@ export const en = {
     defaultSourceLanguage: "Default source language",
     defaultTargetLanguage: "Default target language",
     defaultExportMode: "Default export mode"
+  },
+  models: {
+    title: "Models",
+    subtitle: "Curated open-source ASR and translation models.",
+    taskFilter: "Model task filter",
+    loading: "Loading models...",
+    updating: "Updating model state...",
+    catalogCount: "{{count}} curated models",
+    catalog: "Model Catalog",
+    noModels: "No models match the current filter.",
+    license: "License",
+    filters: {
+      all: "All",
+      asr: "ASR",
+      translation: "Translation"
+    },
+    tasks: {
+      asr: "ASR",
+      translation: "Translation"
+    },
+    tiers: {
+      light: "Light",
+      high_quality: "High quality"
+    },
+    statuses: {
+      not_installed: "Not installed",
+      queued: "Queued",
+      downloading: "Downloading",
+      verifying: "Verifying",
+      installed: "Installed",
+      failed: "Failed",
+      canceled: "Canceled"
+    },
+    actions: {
+      installModel: "Install {{name}}",
+      cancelModel: "Cancel {{name}}",
+      retryModel: "Retry {{name}}",
+      deleteModel: "Delete {{name}}"
+    },
+    table: {
+      model: "Model",
+      task: "Task",
+      runtime: "Runtime",
+      languages: "Languages",
+      size: "Size",
+      license: "License",
+      status: "Status",
+      hardware: "Hardware",
+      actions: "Model actions"
+    }
   },
   tasks: {
     title: "Tasks",

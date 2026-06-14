@@ -21,11 +21,12 @@ describe("AppRail", () => {
 
     expect(screen.getByRole("button", { name: "Projects" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Workbench" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Models" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tasks" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Models" }));
 
-    expect(onNavigate).toHaveBeenCalledWith("settings");
+    expect(onNavigate).toHaveBeenCalledWith("models");
   });
 });

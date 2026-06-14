@@ -1,4 +1,10 @@
-import type { ProjectDiagnostics, ProjectResponse, SubtitleDocument, TaskResponse } from "@diplomat/shared";
+import type {
+  ModelCatalogResponse,
+  ProjectDiagnostics,
+  ProjectResponse,
+  SubtitleDocument,
+  TaskResponse
+} from "@diplomat/shared";
 
 export const projectDiagnosticsFixture: ProjectDiagnostics = {
   status: "not_transcribed",
@@ -154,4 +160,160 @@ export const completedTranslationTaskFixture: TaskResponse = {
   taskId: "translation-task-1",
   type: "translation",
   message: "Translation completed"
+};
+
+export const modelCatalogFixture: ModelCatalogResponse = {
+  models: [
+    {
+      modelId: "asr.faster-whisper.small",
+      name: "Faster Whisper Small",
+      task: "asr",
+      tier: "light",
+      runtime: "faster-whisper",
+      provider: "faster-whisper",
+      version: "2026-06-14",
+      languages: ["zh", "en"],
+      languagePairs: [],
+      modelSizeBytes: 488_000_000,
+      downloadSizeBytes: 244_000_000,
+      diskRequirementBytes: 600_000_000,
+      recommendedHardware: "CPU fallback; NVIDIA GPU recommended.",
+      licenseName: "MIT",
+      licenseUrl: "https://huggingface.co/Systran/faster-whisper-small",
+      sourceUrl: "https://example.invalid/asr-small.bin",
+      checksumAlgorithm: "sha256",
+      checksum: "0".repeat(64),
+      termsSummary: "Open model weights; verify upstream license before release.",
+      installation: {
+        modelId: "asr.faster-whisper.small",
+        status: "not_installed",
+        installedPath: null,
+        downloadedBytes: 0,
+        totalBytes: 244_000_000,
+        checksum: "0".repeat(64),
+        errorMessage: null,
+        createdAt: "2026-06-14T00:00:00+00:00",
+        updatedAt: "2026-06-14T00:00:00+00:00",
+        installedAt: null
+      },
+      availability: {
+        usable: false,
+        reason: "Model is not installed."
+      }
+    },
+    {
+      modelId: "asr.faster-whisper.medium",
+      name: "Faster Whisper Medium",
+      task: "asr",
+      tier: "high_quality",
+      runtime: "faster-whisper",
+      provider: "faster-whisper",
+      version: "2026-06-14",
+      languages: ["zh", "en"],
+      languagePairs: [],
+      modelSizeBytes: 1_530_000_000,
+      downloadSizeBytes: 770_000_000,
+      diskRequirementBytes: 1_800_000_000,
+      recommendedHardware: "NVIDIA GPU recommended.",
+      licenseName: "MIT",
+      licenseUrl: "https://huggingface.co/Systran/faster-whisper-medium",
+      sourceUrl: "https://example.invalid/asr-medium.bin",
+      checksumAlgorithm: "sha256",
+      checksum: "1".repeat(64),
+      termsSummary: "Open model weights; verify upstream license before release.",
+      installation: {
+        modelId: "asr.faster-whisper.medium",
+        status: "installed",
+        installedPath: "D:/Diplomat/models/asr-small",
+        downloadedBytes: 770_000_000,
+        totalBytes: 770_000_000,
+        checksum: "1".repeat(64),
+        errorMessage: null,
+        createdAt: "2026-06-14T00:00:00+00:00",
+        updatedAt: "2026-06-14T00:02:00+00:00",
+        installedAt: "2026-06-14T00:02:00+00:00"
+      },
+      availability: {
+        usable: true,
+        reason: null
+      }
+    },
+    {
+      modelId: "translation.opus-mt.zh-en",
+      name: "OPUS-MT Chinese to English",
+      task: "translation",
+      tier: "light",
+      runtime: "ct2-marian",
+      provider: "ct2-marian",
+      version: "2026-06-14",
+      languages: ["zh", "en"],
+      languagePairs: [["zh", "en"]],
+      modelSizeBytes: 310_000_000,
+      downloadSizeBytes: 160_000_000,
+      diskRequirementBytes: 400_000_000,
+      recommendedHardware: "CPU fallback; GPU optional for batch work.",
+      licenseName: "CC-BY-4.0",
+      licenseUrl: "https://huggingface.co/Helsinki-NLP/opus-mt-zh-en",
+      sourceUrl: "https://example.invalid/opus-zh-en.bin",
+      checksumAlgorithm: "sha256",
+      checksum: "2".repeat(64),
+      termsSummary: "Open translation model with attribution requirements.",
+      installation: {
+        modelId: "translation.opus-mt.zh-en",
+        status: "downloading",
+        installedPath: null,
+        downloadedBytes: 32_000_000,
+        totalBytes: 160_000_000,
+        checksum: "2".repeat(64),
+        errorMessage: null,
+        createdAt: "2026-06-14T00:00:00+00:00",
+        updatedAt: "2026-06-14T00:03:00+00:00",
+        installedAt: null
+      },
+      availability: {
+        usable: false,
+        reason: "Model download is in progress."
+      }
+    },
+    {
+      modelId: "translation.qwen3.4b",
+      name: "Qwen3 4B Translation",
+      task: "translation",
+      tier: "high_quality",
+      runtime: "local-llm",
+      provider: "local-llm",
+      version: "2026-06-14",
+      languages: ["zh", "en"],
+      languagePairs: [
+        ["zh", "en"],
+        ["en", "zh"]
+      ],
+      modelSizeBytes: 4_000_000_000,
+      downloadSizeBytes: 2_500_000_000,
+      diskRequirementBytes: 5_000_000_000,
+      recommendedHardware: "NVIDIA GPU recommended.",
+      licenseName: "Apache-2.0",
+      licenseUrl: "https://huggingface.co/Qwen/Qwen3-4B",
+      sourceUrl: "https://example.invalid/qwen3-4b.bin",
+      checksumAlgorithm: "sha256",
+      checksum: "3".repeat(64),
+      termsSummary: "Open-weight local LLM candidate.",
+      installation: {
+        modelId: "translation.qwen3.4b",
+        status: "failed",
+        installedPath: null,
+        downloadedBytes: 0,
+        totalBytes: 2_500_000_000,
+        checksum: "3".repeat(64),
+        errorMessage: "checksum mismatch",
+        createdAt: "2026-06-14T00:00:00+00:00",
+        updatedAt: "2026-06-14T00:04:00+00:00",
+        installedAt: null
+      },
+      availability: {
+        usable: false,
+        reason: "checksum mismatch"
+      }
+    }
+  ]
 };

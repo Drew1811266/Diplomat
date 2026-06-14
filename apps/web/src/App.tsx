@@ -1,4 +1,5 @@
 import { AppShellLayout } from "./app/AppShellLayout";
+import { ModelsPage } from "./pages/ModelsPage";
 import { ProjectCenterPage } from "./pages/ProjectCenterPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TasksPage } from "./pages/TasksPage";
@@ -22,6 +23,7 @@ export function App() {
         <ProjectCenterPage onOpenProject={openProject} />
       ) : null}
       {currentPage === "workbench" ? <WorkbenchPage /> : null}
+      {currentPage === "models" ? <ModelsPage /> : null}
       {currentPage === "tasks" ? <TasksPage /> : null}
       {currentPage === "settings" ? <SettingsPage /> : null}
     </AppShellLayout>

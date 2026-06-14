@@ -6,6 +6,7 @@ export const zh = {
   nav: {
     projects: "项目",
     workbench: "工作台",
+    models: "模型",
     tasks: "任务",
     settings: "设置"
   },
@@ -209,6 +210,56 @@ export const zh = {
     defaultSourceLanguage: "默认源语言",
     defaultTargetLanguage: "默认目标语言",
     defaultExportMode: "默认导出模式"
+  },
+  models: {
+    title: "模型",
+    subtitle: "内置开源 ASR 与翻译模型。",
+    taskFilter: "模型任务筛选",
+    loading: "正在加载模型...",
+    updating: "正在更新模型状态...",
+    catalogCount: "{{count}} 个内置模型",
+    catalog: "模型目录",
+    noModels: "当前筛选下没有模型。",
+    license: "许可证",
+    filters: {
+      all: "全部",
+      asr: "ASR",
+      translation: "翻译"
+    },
+    tasks: {
+      asr: "ASR",
+      translation: "翻译"
+    },
+    tiers: {
+      light: "轻量",
+      high_quality: "高质量"
+    },
+    statuses: {
+      not_installed: "未安装",
+      queued: "排队中",
+      downloading: "下载中",
+      verifying: "校验中",
+      installed: "已安装",
+      failed: "失败",
+      canceled: "已取消"
+    },
+    actions: {
+      installModel: "安装 {{name}}",
+      cancelModel: "取消 {{name}}",
+      retryModel: "重试 {{name}}",
+      deleteModel: "删除 {{name}}"
+    },
+    table: {
+      model: "模型",
+      task: "任务",
+      runtime: "运行时",
+      languages: "语言",
+      size: "大小",
+      license: "许可证",
+      status: "状态",
+      hardware: "硬件",
+      actions: "模型操作"
+    }
   },
   tasks: {
     title: "任务",

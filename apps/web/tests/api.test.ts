@@ -2,22 +2,29 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type CreateProjectInput,
   cancelTask,
+  cancelModelDownload,
   createAnalysisJob,
   createProject,
   createTranslationJob,
+  deleteModel,
+  downloadModel,
   exportSrt,
+  fetchModel,
   fetchProject,
   fetchSubtitleDocument,
   fetchTask,
   fetchWorkerHealth,
   fetchTranslationSettings,
   listProjects,
+  listModels,
   retryTask,
+  retryModelDownload,
   runProjectAnalysis,
   saveTranslationSettings,
   saveSubtitleDocument
 } from "../src/api";
 import type { SubtitleDocument } from "@diplomat/shared";
+import { modelCatalogFixture } from "../src/test/fixtures";
 
 const baseUrl = "http://worker.test";
 
@@ -202,6 +209,76 @@ describe("worker API helpers", () => {
 
     await expect(listProjects(baseUrl)).resolves.toEqual(response);
     expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects`, undefined);
+  });
+
+  it("listModels gets and parses curated model catalog entries", async () => {
+    const fetchMock = stubJsonResponse(modelCatalogFixture);
+
+    await expect(listModels(baseUrl)).resolves.toEqual(modelCatalogFixture);
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/models`, undefined);
+  });
+
+  it("fetchModel gets one model catalog entry", async () => {
+    const response = modelCatalogFixture.models[0]!;
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(fetchModel("asr.faster-whisper.small", baseUrl)).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${baseUrl}/models/asr.faster-whisper.small`,
+      undefined
+    );
+  });
+
+  it("model actions call download, cancel, retry, and delete endpoints", async () => {
+    const response = {
+      modelId: "asr.faster-whisper.small",
+      status: "queued",
+      downloadedBytes: 0,
+      totalBytes: 244_000_000,
+      message: "Model download queued."
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(downloadModel("asr.faster-whisper.small", baseUrl)).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${baseUrl}/models/asr.faster-whisper.small/download`,
+      { method: "POST" }
+    );
+
+    await expect(cancelModelDownload("asr.faster-whisper.small", baseUrl)).resolves.toEqual(
+      response
+    );
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${baseUrl}/models/asr.faster-whisper.small/cancel`,
+      { method: "POST" }
+    );
+
+    await expect(retryModelDownload("asr.faster-whisper.small", baseUrl)).resolves.toEqual(
+      response
+    );
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${baseUrl}/models/asr.faster-whisper.small/retry`,
+      { method: "POST" }
+    );
+
+    const deleteResponse = {
+      modelId: "asr.faster-whisper.small",
+      filesDeleted: 2,
+      bytesDeleted: 244_000_000,
+      message: "Model deleted."
+    };
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => deleteResponse
+    } as Response);
+    await expect(deleteModel("asr.faster-whisper.small", baseUrl)).resolves.toEqual(
+      deleteResponse
+    );
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${baseUrl}/models/asr.faster-whisper.small`,
+      { method: "DELETE" }
+    );
   });
 
   it("uses configured worker base URL when no base URL argument is provided", async () => {
