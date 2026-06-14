@@ -123,6 +123,8 @@ The Worker remains responsible for:
 
 0.21 may pass runtime environment variables into the Worker process, especially `DIPLOMAT_DATA_DIR`, but it should not rewrite Worker storage architecture.
 
+The Worker default runtime must also consume `DIPLOMAT_FFMPEG_PATH` and `DIPLOMAT_FFPROBE_PATH` so desktop-discovered or future bundled tool paths are used consistently by project video probing and later analysis jobs.
+
 ### Web Layer
 
 The Web app renders runtime diagnostics and controls:
@@ -237,6 +239,8 @@ Discovery order:
 
 0.21 must report missing FFmpeg and FFprobe clearly without preventing the app shell from opening.
 
+The Worker default runtime should use the same environment variables. When `DIPLOMAT_FFPROBE_PATH` is set, project creation should probe videos with that executable instead of hard-coding `ffprobe` from `PATH`.
+
 The release legal check remains in 0.30. 0.21 should record the need to avoid incompatible FFmpeg binary choices and to preserve version/license metadata.
 
 Reference context:
@@ -316,6 +320,7 @@ Manual verification for 0.21:
 corepack pnpm --dir apps/desktop test
 corepack pnpm --dir apps/web exec vitest run src/pages/SettingsPage.test.tsx src/i18n/i18n.test.ts
 corepack pnpm --dir apps/web typecheck
+python -m pytest worker/tests/api/test_runtime.py -q
 ```
 
 ### Stage Gate Evidence To Capture
@@ -327,6 +332,7 @@ The 0.21 stage gate review must record:
 - FFmpeg and FFprobe status shown in Settings.
 - Whether FFmpeg and FFprobe were found through `PATH` or environment variables.
 - Project creation storage path after Worker starts from the desktop shell.
+- Worker default runtime honors `DIPLOMAT_FFMPEG_PATH` and `DIPLOMAT_FFPROBE_PATH`.
 
 ## Acceptance Criteria
 
