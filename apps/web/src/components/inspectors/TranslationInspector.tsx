@@ -1,12 +1,15 @@
-import { Button, Group, NativeSelect, Stack, TextInput } from "@mantine/core";
-import type { TranslationJobRequest } from "@diplomat/shared";
+import { Button, Group, NativeSelect, Stack, Text, TextInput } from "@mantine/core";
+import type { ModelCatalogEntry, TranslationJobRequest } from "@diplomat/shared";
 import { useTranslation } from "react-i18next";
 
 type TranslationInspectorProps = {
   config: TranslationJobRequest;
   busy: boolean;
+  modelCatalog?: ModelCatalogEntry[];
+  selectedModelId?: string | null;
   canCancel?: boolean;
   canRetry?: boolean;
+  onSelectedModelChange?: (modelId: string | null) => void;
   onConfigChange: (config: TranslationJobRequest) => void;
   onStart: () => void;
   onCancel: () => void;
@@ -31,8 +34,11 @@ function getLanguageError(value: string, requiredMessage: string, lengthMessage:
 export function TranslationInspector({
   config,
   busy,
+  modelCatalog = [],
+  selectedModelId = null,
   canCancel = true,
   canRetry = true,
+  onSelectedModelChange,
   onConfigChange,
   onStart,
   onCancel,
@@ -51,6 +57,15 @@ export function TranslationInspector({
     languageLengthError
   );
   const hasLanguageErrors = Boolean(sourceLanguageError || targetLanguageError);
+  const translationModels = modelCatalog.filter((model) => model.task === "translation");
+  const selectedModel =
+    translationModels.find((model) => model.modelId === selectedModelId) ?? null;
+  const selectedModelBlockMessage = selectedModel
+    ? selectedModel.availability.usable
+      ? t("inspector.localTranslationPending")
+      : t("inspector.translationModelUnavailable")
+    : null;
+  const hasModelBlock = Boolean(selectedModelBlockMessage);
 
   function updateConfig<Key extends keyof TranslationJobRequest>(
     key: Key,
@@ -60,13 +75,13 @@ export function TranslationInspector({
   }
 
   function handleStart() {
-    if (!hasLanguageErrors) {
+    if (!hasLanguageErrors && !hasModelBlock) {
       onStart();
     }
   }
 
   function handleRetry() {
-    if (!hasLanguageErrors) {
+    if (!hasLanguageErrors && !hasModelBlock) {
       onRetry();
     }
   }
@@ -82,6 +97,36 @@ export function TranslationInspector({
           updateConfig("provider", event.currentTarget.value as TranslationJobRequest["provider"])
         }
       />
+
+      {translationModels.length > 0 ? (
+        <Stack gap={4}>
+          <NativeSelect
+            label={t("fields.translationModel")}
+            value={selectedModelId ?? ""}
+            data={[
+              { value: "", label: t("inspector.selectModel") },
+              ...translationModels.map((model) => ({
+                value: model.modelId,
+                label: model.name
+              }))
+            ]}
+            disabled={busy}
+            onChange={(event) =>
+              onSelectedModelChange?.(event.currentTarget.value || null)
+            }
+          />
+          {selectedModelBlockMessage ? (
+            <Text size="xs" c={selectedModel?.availability.usable ? "dimmed" : "orange"}>
+              {selectedModelBlockMessage}
+            </Text>
+          ) : null}
+          {selectedModel?.availability.reason ? (
+            <Text size="xs" c="dimmed">
+              {selectedModel.availability.reason}
+            </Text>
+          ) : null}
+        </Stack>
+      ) : null}
 
       <Group grow gap="xs" align="flex-start">
         <TextInput
@@ -133,7 +178,7 @@ export function TranslationInspector({
           size="xs"
           color="teal"
           onClick={handleStart}
-          disabled={busy || hasLanguageErrors}
+          disabled={busy || hasLanguageErrors || hasModelBlock}
         >
           {t("actions.start")}
         </Button>
@@ -153,7 +198,7 @@ export function TranslationInspector({
           variant="light"
           color="gray"
           onClick={handleRetry}
-          disabled={!canRetry || hasLanguageErrors}
+          disabled={!canRetry || hasLanguageErrors || hasModelBlock}
         >
           {t("actions.retry")}
         </Button>

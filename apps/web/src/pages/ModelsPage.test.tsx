@@ -62,7 +62,7 @@ describe("ModelsPage", () => {
     expect(screen.getAllByText("faster-whisper").length).toBeGreaterThan(0);
     expect(screen.getAllByText("ct2-marian").length).toBeGreaterThan(0);
     expect(screen.getByText("zh -> en")).toBeVisible();
-    expect(screen.getByText("D:/Diplomat/models/asr-small")).toBeVisible();
+    expect(screen.getByText("D:/Diplomat/models/asr-medium")).toBeVisible();
 
     await user.click(screen.getByLabelText("Translation"));
 

@@ -1,6 +1,6 @@
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { SubtitleDocument, TaskResponse } from "@diplomat/shared";
+import type { ModelCatalogResponse, SubtitleDocument, TaskResponse } from "@diplomat/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appI18n } from "../app/i18n";
 import { useUiStore } from "../state/uiStore";
@@ -8,6 +8,7 @@ import {
   analyzedDocumentFixture,
   completedAnalysisTaskFixture,
   completedTranslationTaskFixture,
+  modelCatalogFixture,
   projectFixture,
   runningAnalysisTaskFixture
 } from "../test/fixtures";
@@ -58,6 +59,7 @@ type ActiveProjectFetchOptions = {
   retryTask?: TaskResponse;
   taskResponses?: TaskResponse[];
   subtitleDocuments?: SubtitleDocument[];
+  modelCatalog?: ModelCatalogResponse;
 };
 
 function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
@@ -75,6 +77,14 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
 
   const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
+
+    if (url.endsWith("/models") && init?.method === undefined) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => options.modelCatalog ?? { models: [] }
+      } as Response;
+    }
 
     if (url.endsWith("/projects/project-demo") && init?.method === undefined) {
       if (options.projectError) {
@@ -494,6 +504,44 @@ describe("WorkbenchPage", () => {
     expect(
       await screen.findByText("SRT exported: D:/Diplomat/projects/project-demo/demo.srt")
     ).toBeInTheDocument();
+  });
+
+  it("starts analysis with an installed curated ASR model when one is selected", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubActiveProjectFetch({ modelCatalog: modelCatalogFixture });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Analyze" }));
+    await user.selectOptions(
+      within(screen.getByLabelText("Inspector")).getByRole("combobox", {
+        name: "Installed ASR model"
+      }),
+      "D:/Diplomat/models/asr-medium"
+    );
+    await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Start" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/analysis-jobs$/),
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"modelNameOrPath":"D:/Diplomat/models/asr-medium"')
+        })
+      )
+    );
+
+    const analysisCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith("/projects/project-demo/analysis-jobs") &&
+        init?.method === "POST"
+    );
+    expect(JSON.parse(String(analysisCall?.[1]?.body))).toMatchObject({
+      provider: "faster-whisper",
+      modelNameOrPath: "D:/Diplomat/models/asr-medium"
+    });
   });
 
   it("shows visible errors for analysis, translation, and export mutation failures", async () => {

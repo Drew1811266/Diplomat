@@ -141,7 +141,10 @@ export const zh = {
     exportDisabledUnsaved: "请先保存字幕修改再导出。",
     exportDisabledTaskActive: "请等待分析或翻译任务完成。",
     exportDisabledDataError: "请先解决项目或字幕错误再导出。",
-    exportResult: "SRT 已导出：{{exportPath}}"
+    exportResult: "SRT 已导出：{{exportPath}}",
+    selectModel: "选择模型",
+    translationModelUnavailable: "请先安装这个翻译模型再开始翻译。",
+    localTranslationPending: "本地翻译模型执行将在 0.25 实现。"
   },
   fields: {
     projectName: "项目名称",
@@ -154,6 +157,8 @@ export const zh = {
     translatedText: "译文",
     provider: "提供方",
     model: "模型",
+    installedAsrModel: "已安装 ASR 模型",
+    translationModel: "翻译模型",
     device: "设备",
     computeType: "计算类型",
     initialPrompt: "初始提示词",

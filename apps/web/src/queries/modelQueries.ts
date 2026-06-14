@@ -9,10 +9,11 @@ import {
 } from "../api";
 import { queryKeys } from "./queryKeys";
 
-export function useModelsQuery() {
+export function useModelsQuery(enabled = true) {
   return useQuery({
     queryKey: queryKeys.models,
     queryFn: () => listModels(),
+    enabled,
     refetchInterval: (query) =>
       query.state.data?.models.some((model) =>
         ["queued", "downloading", "verifying"].includes(model.installation.status)

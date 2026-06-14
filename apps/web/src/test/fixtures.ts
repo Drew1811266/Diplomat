@@ -224,7 +224,7 @@ export const modelCatalogFixture: ModelCatalogResponse = {
       installation: {
         modelId: "asr.faster-whisper.medium",
         status: "installed",
-        installedPath: "D:/Diplomat/models/asr-small",
+        installedPath: "D:/Diplomat/models/asr-medium",
         downloadedBytes: 770_000_000,
         totalBytes: 770_000_000,
         checksum: "1".repeat(64),

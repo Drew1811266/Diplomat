@@ -143,7 +143,10 @@ export const en = {
     exportDisabledUnsaved: "Save subtitle edits before exporting.",
     exportDisabledTaskActive: "Wait for analysis or translation to finish.",
     exportDisabledDataError: "Resolve project or subtitle errors before exporting.",
-    exportResult: "SRT exported: {{exportPath}}"
+    exportResult: "SRT exported: {{exportPath}}",
+    selectModel: "Select model",
+    translationModelUnavailable: "Install this translation model before starting translation.",
+    localTranslationPending: "Local translation model execution lands in 0.25."
   },
   fields: {
     projectName: "Project name",
@@ -156,6 +159,8 @@ export const en = {
     translatedText: "Translated text",
     provider: "Provider",
     model: "Model",
+    installedAsrModel: "Installed ASR model",
+    translationModel: "Translation model",
     device: "Device",
     computeType: "Compute type",
     initialPrompt: "Initial prompt",

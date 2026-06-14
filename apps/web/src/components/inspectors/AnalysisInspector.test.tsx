@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { AnalysisJobRequest } from "@diplomat/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "../../test/render";
+import { modelCatalogFixture } from "../../test/fixtures";
 import { AnalysisInspector } from "./AnalysisInspector";
 
 const analysisConfig: AnalysisJobRequest = {
@@ -151,5 +152,35 @@ describe("AnalysisInspector", () => {
     expect(screen.getByRole("combobox", { name: "Device" })).toHaveValue("cpu");
     expect(screen.getByRole("combobox", { name: "Compute type" })).toHaveValue("int8");
     expect(screen.queryAllByRole("option", { name: "" })).toHaveLength(0);
+  });
+
+  it("selects installed curated ASR models as the formal faster-whisper path", () => {
+    const onConfigChange = vi.fn();
+
+    renderWithProviders(
+      <AnalysisInspector
+        config={analysisConfig}
+        busy={false}
+        modelCatalog={modelCatalogFixture.models}
+        onConfigChange={onConfigChange}
+        onStart={() => undefined}
+        onCancel={() => undefined}
+        onRetry={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("combobox", { name: "Installed ASR model" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Faster Whisper Medium" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Faster Whisper Small" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Installed ASR model" }), {
+      target: { value: "D:/Diplomat/models/asr-medium" }
+    });
+
+    expect(onConfigChange).toHaveBeenCalledWith({
+      ...analysisConfig,
+      provider: "faster-whisper",
+      modelNameOrPath: "D:/Diplomat/models/asr-medium"
+    });
   });
 });
