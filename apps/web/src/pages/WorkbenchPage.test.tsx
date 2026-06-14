@@ -36,6 +36,27 @@ const refreshedSubtitleDocument = {
   ]
 };
 
+const modelCatalogWithInstalledTranslation: ModelCatalogResponse = {
+  models: modelCatalogFixture.models.map((model) =>
+    model.modelId === "translation.opus-mt.zh-en"
+      ? {
+          ...model,
+          installation: {
+            ...model.installation,
+            status: "installed",
+            installedPath: "D:/Diplomat/models/opus-zh-en",
+            downloadedBytes: model.downloadSizeBytes,
+            installedAt: "2026-06-14T00:05:00+00:00"
+          },
+          availability: {
+            usable: true,
+            reason: null
+          }
+        }
+      : model
+  )
+};
+
 function stubMatchMedia(matches: boolean) {
   vi.stubGlobal("matchMedia", () => ({
     matches,
@@ -464,7 +485,7 @@ describe("WorkbenchPage", () => {
 
   it("starts analysis and translation jobs and exports through worker mutations", async () => {
     const user = userEvent.setup();
-    const fetchMock = stubActiveProjectFetch({ modelCatalog: modelCatalogFixture });
+    const fetchMock = stubActiveProjectFetch({ modelCatalog: modelCatalogWithInstalledTranslation });
 
     renderWithProviders(<WorkbenchPage />);
 
@@ -490,6 +511,12 @@ describe("WorkbenchPage", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Translate" }));
+    await user.selectOptions(
+      within(screen.getByLabelText("Inspector")).getByRole("combobox", {
+        name: "Translation model"
+      }),
+      "translation.opus-mt.zh-en"
+    );
     await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Start" }));
 
     await waitFor(() =>
@@ -497,7 +524,7 @@ describe("WorkbenchPage", () => {
         expect.stringMatching(/\/projects\/project-demo\/translation-jobs$/),
         expect.objectContaining({
           method: "POST",
-          body: expect.stringContaining('"targetLanguage":"en"')
+          body: expect.stringContaining('"modelId":"translation.opus-mt.zh-en"')
         })
       )
     );
@@ -561,7 +588,7 @@ describe("WorkbenchPage", () => {
   it("shows visible errors for analysis, translation, and export mutation failures", async () => {
     const user = userEvent.setup();
     stubActiveProjectFetch({
-      modelCatalog: modelCatalogFixture,
+      modelCatalog: modelCatalogWithInstalledTranslation,
       analysisError: { status: 500, detail: "Analysis failed" },
       translationError: { status: 500, detail: "Translation failed" },
       exportError: { status: 500, detail: "Export failed" }
@@ -582,6 +609,12 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByText("Worker request failed: 500: Analysis failed")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Translate" }));
+    await user.selectOptions(
+      within(screen.getByLabelText("Inspector")).getByRole("combobox", {
+        name: "Translation model"
+      }),
+      "translation.opus-mt.zh-en"
+    );
     await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Start" }));
     expect(await screen.findByText("Worker request failed: 500: Translation failed")).toBeInTheDocument();
 

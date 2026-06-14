@@ -7,28 +7,37 @@ import { modelCatalogFixture } from "../../test/fixtures";
 import { TranslationInspector } from "./TranslationInspector";
 
 const translationConfig: TranslationJobRequest = {
-  provider: "fake",
+  provider: "ct2-marian",
+  modelId: null,
+  modelNameOrPath: null,
   sourceLanguage: "zh",
   targetLanguage: "en",
   mode: "missing_only",
+  device: "cuda",
+  computeType: "float16",
   endpoint: null,
   apiKeyEnv: null
 };
 
 const installedTranslationModel: ModelCatalogEntry = {
-  ...modelCatalogFixture.models.find((model) => model.modelId === "translation.qwen3.4b")!,
+  ...modelCatalogFixture.models.find((model) => model.modelId === "translation.opus-mt.zh-en")!,
   installation: {
-    ...modelCatalogFixture.models.find((model) => model.modelId === "translation.qwen3.4b")!
+    ...modelCatalogFixture.models.find((model) => model.modelId === "translation.opus-mt.zh-en")!
       .installation,
     status: "installed",
-    installedPath: "D:/Diplomat/models/qwen3-4b",
-    downloadedBytes: 2_500_000_000,
+    installedPath: "D:/Diplomat/models/opus-zh-en",
+    downloadedBytes: 160_000_000,
     installedAt: "2026-06-14T00:05:00+00:00"
   },
   availability: {
     usable: true,
     reason: null
   }
+};
+
+const configuredTranslationConfig: TranslationJobRequest = {
+  ...translationConfig,
+  modelId: installedTranslationModel.modelId
 };
 
 function stubMatchMedia(matches: boolean) {
@@ -49,13 +58,14 @@ afterEach(() => {
 });
 
 describe("TranslationInspector", () => {
-  it("edits provider, languages, mode, endpoint, and API key env", () => {
+  it("selects installed curated translation models as the formal local path", () => {
     const onConfigChange = vi.fn();
 
     renderWithProviders(
       <TranslationInspector
         config={translationConfig}
         busy={false}
+        modelCatalog={[installedTranslationModel]}
         onConfigChange={onConfigChange}
         onStart={() => undefined}
         onCancel={() => undefined}
@@ -63,48 +73,30 @@ describe("TranslationInspector", () => {
       />
     );
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Provider" }), {
-      target: { value: "libretranslate" }
-    });
-    fireEvent.change(screen.getByLabelText("Source language"), { target: { value: "ja" } });
-    fireEvent.change(screen.getByLabelText("Target language"), { target: { value: "fr" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Translation mode" }), {
-      target: { value: "overwrite_all" }
-    });
-    fireEvent.change(screen.getByLabelText("Endpoint"), {
-      target: { value: "http://127.0.0.1:5000" }
-    });
-    fireEvent.change(screen.getByLabelText("API key env"), {
-      target: { value: "LIBRETRANSLATE_API_KEY" }
+    expect(screen.getByRole("combobox", { name: "Translation model" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "OPUS-MT Chinese to English" })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Provider" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Endpoint")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("API key env")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Translation model" }), {
+      target: { value: installedTranslationModel.modelId }
     });
 
     expect(onConfigChange).toHaveBeenCalledWith({
       ...translationConfig,
-      provider: "libretranslate"
-    });
-    expect(onConfigChange).toHaveBeenCalledWith({
-      ...translationConfig,
-      sourceLanguage: "ja"
-    });
-    expect(onConfigChange).toHaveBeenCalledWith({
-      ...translationConfig,
-      targetLanguage: "fr"
-    });
-    expect(onConfigChange).toHaveBeenCalledWith({
-      ...translationConfig,
-      mode: "overwrite_all"
-    });
-    expect(onConfigChange).toHaveBeenCalledWith({
-      ...translationConfig,
-      endpoint: "http://127.0.0.1:5000"
-    });
-    expect(onConfigChange).toHaveBeenCalledWith({
-      ...translationConfig,
-      apiKeyEnv: "LIBRETRANSLATE_API_KEY"
+      provider: "ct2-marian",
+      modelId: installedTranslationModel.modelId,
+      modelNameOrPath: null,
+      sourceLanguage: "zh",
+      targetLanguage: "en"
     });
   });
 
-  it("runs task action callbacks", async () => {
+  it("runs task action callbacks when a compatible installed model is selected", async () => {
     const user = userEvent.setup();
     const onStart = vi.fn();
     const onCancel = vi.fn();
@@ -112,8 +104,9 @@ describe("TranslationInspector", () => {
 
     renderWithProviders(
       <TranslationInspector
-        config={translationConfig}
+        config={configuredTranslationConfig}
         busy={false}
+        modelCatalog={[installedTranslationModel]}
         onConfigChange={() => undefined}
         onStart={onStart}
         onCancel={onCancel}
@@ -133,8 +126,9 @@ describe("TranslationInspector", () => {
   it("disables form fields and start while busy", () => {
     renderWithProviders(
       <TranslationInspector
-        config={translationConfig}
+        config={configuredTranslationConfig}
         busy
+        modelCatalog={[installedTranslationModel]}
         onConfigChange={() => undefined}
         onStart={() => undefined}
         onCancel={() => undefined}
@@ -142,12 +136,12 @@ describe("TranslationInspector", () => {
       />
     );
 
-    expect(screen.getByRole("combobox", { name: "Provider" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Translation model" })).toBeDisabled();
     expect(screen.getByLabelText("Source language")).toBeDisabled();
     expect(screen.getByLabelText("Target language")).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "Translation mode" })).toBeDisabled();
-    expect(screen.getByLabelText("Endpoint")).toBeDisabled();
-    expect(screen.getByLabelText("API key env")).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Device" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Compute type" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
@@ -156,17 +150,17 @@ describe("TranslationInspector", () => {
   it.each([
     {
       field: "Source language",
-      config: { ...translationConfig, sourceLanguage: "" },
+      config: { ...configuredTranslationConfig, sourceLanguage: "" },
       error: "Source language is required."
     },
     {
       field: "Source language",
-      config: { ...translationConfig, sourceLanguage: "z" },
+      config: { ...configuredTranslationConfig, sourceLanguage: "z" },
       error: "Use 2 to 12 characters."
     },
     {
       field: "Target language",
-      config: { ...translationConfig, targetLanguage: "english-long-code" },
+      config: { ...configuredTranslationConfig, targetLanguage: "english-long-code" },
       error: "Use 2 to 12 characters."
     }
   ])("disables draft actions when $field is invalid", ({ config, error }) => {
@@ -177,6 +171,7 @@ describe("TranslationInspector", () => {
       <TranslationInspector
         config={config}
         busy={false}
+        modelCatalog={[installedTranslationModel]}
         onConfigChange={() => undefined}
         onStart={onStart}
         onCancel={() => undefined}
@@ -195,16 +190,12 @@ describe("TranslationInspector", () => {
     expect(onRetry).not.toHaveBeenCalled();
   });
 
-  it("shows curated translation models and blocks unavailable selections", () => {
-    const onSelectedModelChange = vi.fn();
-
+  it("blocks translation when no installed usable model exists", () => {
     renderWithProviders(
       <TranslationInspector
         config={translationConfig}
         busy={false}
         modelCatalog={modelCatalogFixture.models}
-        selectedModelId="translation.opus-mt.zh-en"
-        onSelectedModelChange={onSelectedModelChange}
         onConfigChange={() => undefined}
         onStart={() => undefined}
         onCancel={() => undefined}
@@ -212,28 +203,16 @@ describe("TranslationInspector", () => {
       />
     );
 
-    expect(screen.getByRole("combobox", { name: "Translation model" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("option", { name: "OPUS-MT Chinese to English" })
-    ).toBeInTheDocument();
-    expect(screen.getByText("Install this translation model before starting translation.")).toBeInTheDocument();
+    expect(screen.getByText("Install a translation model from Models before starting local translation.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
-
-    fireEvent.change(screen.getByRole("combobox", { name: "Translation model" }), {
-      target: { value: "translation.qwen3.4b" }
-    });
-
-    expect(onSelectedModelChange).toHaveBeenCalledWith("translation.qwen3.4b");
   });
 
-  it("blocks installed local translation models until the 0.25 runtime stage", () => {
+  it("blocks translation when the selected model does not support the language pair", () => {
     renderWithProviders(
       <TranslationInspector
-        config={translationConfig}
+        config={{ ...configuredTranslationConfig, sourceLanguage: "en", targetLanguage: "zh" }}
         busy={false}
         modelCatalog={[installedTranslationModel]}
-        selectedModelId="translation.qwen3.4b"
-        onSelectedModelChange={() => undefined}
         onConfigChange={() => undefined}
         onStart={() => undefined}
         onCancel={() => undefined}
@@ -241,7 +220,48 @@ describe("TranslationInspector", () => {
       />
     );
 
-    expect(screen.getByText("Local translation model execution lands in 0.25.")).toBeInTheDocument();
+    expect(screen.getByText("Selected translation model does not support this language pair.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+  });
+
+  it("keeps remote provider controls available only for explicit development mode", () => {
+    const onConfigChange = vi.fn();
+
+    renderWithProviders(
+      <TranslationInspector
+        config={{ ...translationConfig, provider: "fake" }}
+        busy={false}
+        allowDevelopmentControls
+        onConfigChange={onConfigChange}
+        onStart={() => undefined}
+        onCancel={() => undefined}
+        onRetry={() => undefined}
+      />
+    );
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Provider" }), {
+      target: { value: "libretranslate" }
+    });
+    fireEvent.change(screen.getByLabelText("Endpoint"), {
+      target: { value: "http://127.0.0.1:5000" }
+    });
+    fireEvent.change(screen.getByLabelText("API key env"), {
+      target: { value: "LIBRETRANSLATE_API_KEY" }
+    });
+
+    expect(onConfigChange).toHaveBeenCalledWith({
+      ...translationConfig,
+      provider: "libretranslate"
+    });
+    expect(onConfigChange).toHaveBeenCalledWith({
+      ...translationConfig,
+      provider: "fake",
+      endpoint: "http://127.0.0.1:5000"
+    });
+    expect(onConfigChange).toHaveBeenCalledWith({
+      ...translationConfig,
+      provider: "fake",
+      apiKeyEnv: "LIBRETRANSLATE_API_KEY"
+    });
   });
 });

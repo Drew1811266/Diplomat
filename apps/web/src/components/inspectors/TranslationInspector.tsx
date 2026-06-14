@@ -7,6 +7,7 @@ type TranslationInspectorProps = {
   busy: boolean;
   modelCatalog?: ModelCatalogEntry[];
   selectedModelId?: string | null;
+  allowDevelopmentControls?: boolean;
   canCancel?: boolean;
   canRetry?: boolean;
   onSelectedModelChange?: (modelId: string | null) => void;
@@ -16,8 +17,15 @@ type TranslationInspectorProps = {
   onRetry: () => void;
 };
 
-const translationProviders: TranslationJobRequest["provider"][] = ["fake", "libretranslate"];
+const translationProviders: TranslationJobRequest["provider"][] = [
+  "fake",
+  "libretranslate",
+  "ct2-marian",
+  "local-llm"
+];
 const translationModes: TranslationJobRequest["mode"][] = ["missing_only", "overwrite_all"];
+const devices: TranslationJobRequest["device"][] = ["cpu", "cuda"];
+const computeTypes: TranslationJobRequest["computeType"][] = ["int8", "float16", "float32"];
 
 function getLanguageError(value: string, requiredMessage: string, lengthMessage: string) {
   if (value.length === 0) {
@@ -36,6 +44,7 @@ export function TranslationInspector({
   busy,
   modelCatalog = [],
   selectedModelId = null,
+  allowDevelopmentControls = false,
   canCancel = true,
   canRetry = true,
   onSelectedModelChange,
@@ -57,15 +66,27 @@ export function TranslationInspector({
     languageLengthError
   );
   const hasLanguageErrors = Boolean(sourceLanguageError || targetLanguageError);
-  const translationModels = modelCatalog.filter((model) => model.task === "translation");
+  const installedTranslationModels = modelCatalog.filter(
+    (model) =>
+      model.task === "translation" &&
+      model.installation.status === "installed" &&
+      model.availability.usable &&
+      Boolean(model.installation.installedPath)
+  );
+  const activeModelId = config.modelId ?? selectedModelId ?? null;
   const selectedModel =
-    translationModels.find((model) => model.modelId === selectedModelId) ?? null;
-  const selectedModelBlockMessage = selectedModel
-    ? selectedModel.availability.usable
-      ? t("inspector.localTranslationPending")
-      : t("inspector.translationModelUnavailable")
-    : null;
-  const hasModelBlock = Boolean(selectedModelBlockMessage);
+    installedTranslationModels.find((model) => model.modelId === activeModelId) ?? null;
+  const selectedModelSupportsPair = Boolean(
+    selectedModel?.languagePairs.some(
+      ([sourceLanguage, targetLanguage]) =>
+        sourceLanguage === config.sourceLanguage && targetLanguage === config.targetLanguage
+    )
+  );
+  const hasModelBlock = allowDevelopmentControls
+    ? false
+    : !selectedModel || !selectedModelSupportsPair;
+  const canUseConfig = !hasLanguageErrors && !hasModelBlock;
+  const canStart = !busy && canUseConfig;
 
   function updateConfig<Key extends keyof TranslationJobRequest>(
     key: Key,
@@ -75,54 +96,85 @@ export function TranslationInspector({
   }
 
   function handleStart() {
-    if (!hasLanguageErrors && !hasModelBlock) {
+    if (canStart) {
       onStart();
     }
   }
 
   function handleRetry() {
-    if (!hasLanguageErrors && !hasModelBlock) {
+    if (canUseConfig) {
       onRetry();
     }
   }
 
+  function selectInstalledModel(modelId: string) {
+    onSelectedModelChange?.(modelId || null);
+    if (!modelId) {
+      onConfigChange({ ...config, modelId: null, modelNameOrPath: null });
+      return;
+    }
+
+    const model = installedTranslationModels.find((item) => item.modelId === modelId);
+    if (!model) {
+      return;
+    }
+    const [sourceLanguage, targetLanguage] = model.languagePairs[0] ?? [
+      config.sourceLanguage,
+      config.targetLanguage
+    ];
+    onConfigChange({
+      ...config,
+      provider: model.provider as TranslationJobRequest["provider"],
+      modelId,
+      modelNameOrPath: null,
+      sourceLanguage,
+      targetLanguage
+    });
+  }
+
   return (
     <Stack gap="sm">
-      <NativeSelect
-        label={t("fields.provider")}
-        value={config.provider}
-        data={translationProviders}
-        disabled={busy}
-        onChange={(event) =>
-          updateConfig("provider", event.currentTarget.value as TranslationJobRequest["provider"])
-        }
-      />
+      {allowDevelopmentControls ? (
+        <NativeSelect
+          label={t("fields.provider")}
+          value={config.provider}
+          data={translationProviders}
+          disabled={busy}
+          onChange={(event) =>
+            updateConfig("provider", event.currentTarget.value as TranslationJobRequest["provider"])
+          }
+        />
+      ) : null}
 
-      {translationModels.length > 0 ? (
+      {installedTranslationModels.length > 0 || !allowDevelopmentControls ? (
         <Stack gap={4}>
           <NativeSelect
             label={t("fields.translationModel")}
-            value={selectedModelId ?? ""}
+            value={selectedModel?.modelId ?? ""}
             data={[
-              { value: "", label: t("inspector.selectModel") },
-              ...translationModels.map((model) => ({
+              {
+                value: "",
+                label:
+                  installedTranslationModels.length > 0
+                    ? t("inspector.selectModel")
+                    : t("inspector.noTranslationModelAvailable")
+              },
+              ...installedTranslationModels.map((model) => ({
                 value: model.modelId,
                 label: model.name
               }))
             ]}
-            disabled={busy}
-            onChange={(event) =>
-              onSelectedModelChange?.(event.currentTarget.value || null)
-            }
+            disabled={busy || installedTranslationModels.length === 0}
+            onChange={(event) => selectInstalledModel(event.currentTarget.value)}
           />
-          {selectedModelBlockMessage ? (
-            <Text size="xs" c={selectedModel?.availability.usable ? "dimmed" : "orange"}>
-              {selectedModelBlockMessage}
+          {!allowDevelopmentControls && installedTranslationModels.length === 0 ? (
+            <Text size="xs" c="dimmed">
+              {t("inspector.installTranslationModelFirst")}
             </Text>
           ) : null}
-          {selectedModel?.availability.reason ? (
-            <Text size="xs" c="dimmed">
-              {selectedModel.availability.reason}
+          {!allowDevelopmentControls && selectedModel && !selectedModelSupportsPair ? (
+            <Text size="xs" c="orange">
+              {t("inspector.translationPairUnsupported")}
             </Text>
           ) : null}
         </Stack>
@@ -158,19 +210,40 @@ export function TranslationInspector({
         }
       />
 
-      <TextInput
-        label={t("fields.endpoint")}
-        value={config.endpoint ?? ""}
-        disabled={busy}
-        onChange={(event) => updateConfig("endpoint", event.currentTarget.value || null)}
-      />
+      <Group grow gap="xs" align="flex-start">
+        <NativeSelect
+          label={t("fields.device")}
+          value={config.device}
+          data={devices}
+          disabled={busy}
+          onChange={(event) => updateConfig("device", event.currentTarget.value)}
+        />
+        <NativeSelect
+          label={t("fields.computeType")}
+          value={config.computeType}
+          data={computeTypes}
+          disabled={busy}
+          onChange={(event) => updateConfig("computeType", event.currentTarget.value)}
+        />
+      </Group>
 
-      <TextInput
-        label={t("fields.apiKeyEnv")}
-        value={config.apiKeyEnv ?? ""}
-        disabled={busy}
-        onChange={(event) => updateConfig("apiKeyEnv", event.currentTarget.value || null)}
-      />
+      {allowDevelopmentControls ? (
+        <>
+          <TextInput
+            label={t("fields.endpoint")}
+            value={config.endpoint ?? ""}
+            disabled={busy}
+            onChange={(event) => updateConfig("endpoint", event.currentTarget.value || null)}
+          />
+
+          <TextInput
+            label={t("fields.apiKeyEnv")}
+            value={config.apiKeyEnv ?? ""}
+            disabled={busy}
+            onChange={(event) => updateConfig("apiKeyEnv", event.currentTarget.value || null)}
+          />
+        </>
+      ) : null}
 
       <Group justify="flex-end" gap="xs">
         <Button
@@ -178,7 +251,7 @@ export function TranslationInspector({
           size="xs"
           color="teal"
           onClick={handleStart}
-          disabled={busy || hasLanguageErrors || hasModelBlock}
+          disabled={!canStart}
         >
           {t("actions.start")}
         </Button>
@@ -198,7 +271,7 @@ export function TranslationInspector({
           variant="light"
           color="gray"
           onClick={handleRetry}
-          disabled={!canRetry || hasLanguageErrors || hasModelBlock}
+          disabled={!canRetry || !canUseConfig}
         >
           {t("actions.retry")}
         </Button>
