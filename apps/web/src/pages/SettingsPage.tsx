@@ -92,8 +92,8 @@ function ReleaseCheckRow({ check }: { check: ReleaseReadinessCheck }) {
         borderRadius: 6
       }}
     >
-      <Group justify="space-between" align="flex-start" gap="sm" wrap="nowrap">
-        <Box>
+      <Group justify="space-between" align="flex-start" gap="sm" wrap="wrap">
+        <Box style={{ flex: "1 1 240px", minWidth: 0 }}>
           <Text fw={600}>{check.label}</Text>
           <Text size="sm" c="dimmed">
             {check.message}
