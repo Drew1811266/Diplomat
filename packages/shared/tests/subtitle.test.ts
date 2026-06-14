@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SubtitleDocumentSchema, SubtitleLineSchema } from "../src/subtitle";
+import { SubtitleDocumentSchema, SubtitleLineSchema, SubtitleStyleSchema } from "../src/subtitle";
 
 const validDocument = {
   schemaVersion: "diplomat.subtitle.v1",
@@ -67,6 +67,37 @@ describe("SubtitleDocumentSchema", () => {
     const invalid = structuredClone(validDocument);
     invalid.lines[0]!.styleOverrides = { unexpectedKey: "value" };
     expect(() => SubtitleDocumentSchema.parse(invalid)).toThrow();
+  });
+
+  it("parses subtitle styles with 0.28 visual fields", () => {
+    const style = SubtitleStyleSchema.parse({
+      id: "default",
+      name: "Default",
+      fontFamily: "Arial",
+      fontSize: 42,
+      primaryColor: "#ffffff",
+      secondaryColor: "#14b8a6",
+      strokeWidth: 2,
+      shadow: 1,
+      position: "bottom",
+      marginV: 48,
+      alignment: "center",
+      bilingualLayout: "source_top",
+      lineSpacing: 1.1,
+      backgroundBar: true,
+      backgroundColor: "#000000cc",
+      safeAreaMargin: 32
+    });
+
+    expect(style.safeAreaMargin).toBe(32);
+  });
+
+  it("defaults 0.28 visual fields for existing subtitle styles", () => {
+    const style = SubtitleStyleSchema.parse(validDocument.styles[0]);
+
+    expect(style.backgroundBar).toBe(false);
+    expect(style.backgroundColor).toBe("#000000cc");
+    expect(style.safeAreaMargin).toBe(32);
   });
 });
 
