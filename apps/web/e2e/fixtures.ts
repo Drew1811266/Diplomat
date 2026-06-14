@@ -1,5 +1,6 @@
 import { test as base, expect, type Page, type Route } from "@playwright/test";
 import type {
+  ProjectDiagnostics,
   ProjectResponse,
   StylePreset,
   SubtitleDocument,
@@ -17,6 +18,26 @@ const corsHeaders = {
   "access-control-allow-origin": "*"
 };
 
+const demoDiagnostics: ProjectDiagnostics = {
+  status: "translated",
+  warnings: [],
+  sourceVideoExists: true,
+  projectDirExists: true,
+  diskUsageBytes: 4096,
+  cacheUsageBytes: 0,
+  exportUsageBytes: 0,
+  exportCount: 0,
+  subtitleLineCount: 2,
+  translatedLineCount: 1,
+  activeTaskCount: 0,
+  failedTaskCount: 0,
+  latestTaskStatus: null,
+  exportsDir: "D:/Diplomat/projects/project-demo/exports",
+  cacheDir: "D:/Diplomat/projects/project-demo/cache",
+  logsDir: "D:/Diplomat/projects/project-demo/logs",
+  backupsDir: "D:/Diplomat/projects/project-demo/backups"
+};
+
 export const demoProject: ProjectResponse = {
   projectId: "project-demo",
   name: "Demo",
@@ -27,7 +48,8 @@ export const demoProject: ProjectResponse = {
   targetLanguage: "en",
   createdAt: timestamp,
   updatedAt: "2026-06-07T00:01:00+00:00",
-  hasSubtitleDocument: true
+  hasSubtitleDocument: true,
+  diagnostics: demoDiagnostics
 };
 
 export const demoSubtitleDocument: SubtitleDocument = {
