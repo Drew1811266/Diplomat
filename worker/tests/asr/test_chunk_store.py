@@ -1,6 +1,13 @@
 from pathlib import Path
 
+from diplomat_worker.asr.base import AsrResult, AsrSegment, AsrWord
 from diplomat_worker.asr.chunk_store import build_chunk_manifest, read_manifest, write_manifest
+from diplomat_worker.asr.chunk_store import (
+    chunk_result_path,
+    read_chunk_result,
+    valid_chunk_result_exists,
+    write_chunk_result,
+)
 from diplomat_worker.media.audio import build_fixed_chunks
 
 
@@ -50,3 +57,39 @@ def test_manifest_round_trips_as_json(tmp_path: Path) -> None:
 
     assert read_manifest(manifest_path) == manifest
     assert manifest_path.read_text(encoding="utf-8").startswith("{\n")
+
+
+def make_result() -> AsrResult:
+    return AsrResult(
+        engine="fake-asr",
+        model="fake-v1",
+        language="zh",
+        segments=[
+            AsrSegment(
+                id="segment-1",
+                start_ms=0,
+                end_ms=1000,
+                text="你好",
+                words=[AsrWord(text="你好", start_ms=0, end_ms=1000, confidence=0.9)],
+            )
+        ],
+    )
+
+
+def test_chunk_result_round_trips_as_json(tmp_path: Path) -> None:
+    path = chunk_result_path(tmp_path / "cache" / "asr" / "task-1", "chunk-000001")
+
+    write_chunk_result(path, chunk_id="chunk-000001", result=make_result())
+
+    restored = read_chunk_result(path)
+    assert restored.chunk_id == "chunk-000001"
+    assert restored.result.engine == "fake-asr"
+    assert restored.result.segments[0].text == "你好"
+    assert valid_chunk_result_exists(path, chunk_id="chunk-000001") is True
+
+
+def test_valid_chunk_result_rejects_mismatched_chunk_id(tmp_path: Path) -> None:
+    path = chunk_result_path(tmp_path / "cache" / "asr" / "task-1", "chunk-000001")
+    write_chunk_result(path, chunk_id="chunk-000001", result=make_result())
+
+    assert valid_chunk_result_exists(path, chunk_id="chunk-000002") is False

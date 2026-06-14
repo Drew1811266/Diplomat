@@ -5,9 +5,11 @@ import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from diplomat_worker.asr.base import AsrResult, AsrSegment, AsrWord
 from diplomat_worker.media.audio import AudioChunk
 
 MANIFEST_SCHEMA_VERSION = "diplomat.asr_manifest.v1"
+CHUNK_RESULT_SCHEMA_VERSION = "diplomat.asr_chunk_result.v1"
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,13 @@ class AsrChunkManifest:
     chunk_ms: int
     overlap_ms: int
     chunks: list[AsrChunkRecord]
+
+
+@dataclass(frozen=True)
+class AsrChunkResultDocument:
+    schema_version: str
+    chunk_id: str
+    result: AsrResult
 
 
 def chunk_id(index: int) -> str:
@@ -93,3 +102,91 @@ def read_manifest(path: Path) -> AsrChunkManifest:
         overlap_ms=int(payload["overlap_ms"]),
         chunks=[AsrChunkRecord(**chunk) for chunk in payload["chunks"]],
     )
+
+
+def chunk_result_path(task_cache_dir: Path, chunk_id_value: str) -> Path:
+    return task_cache_dir / "chunks" / f"{chunk_id_value}.json"
+
+
+def _word_to_dict(word: AsrWord) -> dict:
+    return {
+        "text": word.text,
+        "start_ms": word.start_ms,
+        "end_ms": word.end_ms,
+        "confidence": word.confidence,
+    }
+
+
+def _segment_to_dict(segment: AsrSegment) -> dict:
+    return {
+        "id": segment.id,
+        "start_ms": segment.start_ms,
+        "end_ms": segment.end_ms,
+        "text": segment.text,
+        "words": [_word_to_dict(word) for word in segment.words],
+    }
+
+
+def _result_to_dict(result: AsrResult) -> dict:
+    return {
+        "engine": result.engine,
+        "model": result.model,
+        "language": result.language,
+        "segments": [_segment_to_dict(segment) for segment in result.segments],
+    }
+
+
+def _result_from_dict(payload: dict) -> AsrResult:
+    return AsrResult(
+        engine=payload["engine"],
+        model=payload["model"],
+        language=payload["language"],
+        segments=[
+            AsrSegment(
+                id=segment["id"],
+                start_ms=int(segment["start_ms"]),
+                end_ms=int(segment["end_ms"]),
+                text=segment["text"],
+                words=[
+                    AsrWord(
+                        text=word["text"],
+                        start_ms=int(word["start_ms"]),
+                        end_ms=int(word["end_ms"]),
+                        confidence=word["confidence"],
+                    )
+                    for word in segment["words"]
+                ],
+            )
+            for segment in payload["segments"]
+        ],
+    )
+
+
+def write_chunk_result(path: Path, *, chunk_id: str, result: AsrResult) -> Path:
+    return write_json_atomic(
+        path,
+        {
+            "schema_version": CHUNK_RESULT_SCHEMA_VERSION,
+            "chunk_id": chunk_id,
+            "result": _result_to_dict(result),
+        },
+    )
+
+
+def read_chunk_result(path: Path) -> AsrChunkResultDocument:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return AsrChunkResultDocument(
+        schema_version=payload["schema_version"],
+        chunk_id=payload["chunk_id"],
+        result=_result_from_dict(payload["result"]),
+    )
+
+
+def valid_chunk_result_exists(path: Path, *, chunk_id: str) -> bool:
+    if not path.exists():
+        return False
+    try:
+        document = read_chunk_result(path)
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        return False
+    return document.schema_version == CHUNK_RESULT_SCHEMA_VERSION and document.chunk_id == chunk_id
