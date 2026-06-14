@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   AnalysisJobRequestInput,
+  BurnInExportRequestInput,
   TaskResponse,
   TranslationJobRequestInput
 } from "@diplomat/shared";
 import {
   cancelTask,
   createAnalysisJob,
+  createBurnInExportJob,
   createTranslationJob,
   fetchTask,
   retryTask
@@ -48,6 +50,17 @@ export function useCreateTranslationJobMutation(projectId: string | null) {
   });
 }
 
+export function useCreateBurnInExportJobMutation(projectId: string | null) {
+  return useMutation({
+    mutationFn: (input: BurnInExportRequestInput) => {
+      if (!projectId) {
+        throw new Error("Project id is required to create a burn-in export job.");
+      }
+      return createBurnInExportJob(projectId, input);
+    }
+  });
+}
+
 export function useCancelTaskMutation() {
   const queryClient = useQueryClient();
 
@@ -68,7 +81,7 @@ export function useRetryTaskMutation() {
       config
     }: {
       taskId: string;
-      config?: AnalysisJobRequestInput | TranslationJobRequestInput;
+      config?: AnalysisJobRequestInput | TranslationJobRequestInput | BurnInExportRequestInput;
     }) => retryTask(taskId, config),
     onSuccess: (task) => {
       queryClient.setQueryData(queryKeys.task(task.taskId), task);
