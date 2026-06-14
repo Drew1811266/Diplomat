@@ -242,6 +242,28 @@ fn configured_tool_path(configured: Option<&str>, fallback: &str) -> String {
         .to_string()
 }
 
+fn packaged_resource_candidate(name: &str) -> Option<PathBuf> {
+    env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .map(|dir| dir.join("resources").join(name))
+        .filter(|path| path.exists())
+}
+
+fn packaged_or_configured_tool_path(
+    configured: Option<&str>,
+    packaged: Option<PathBuf>,
+    fallback: &str,
+) -> String {
+    if let Some(value) = configured.map(str::trim).filter(|value| !value.is_empty()) {
+        return value.to_string();
+    }
+    if let Some(path) = packaged {
+        return path_to_string(&path);
+    }
+    fallback.to_string()
+}
+
 fn probe_cli_tool(path: &str) -> Result<String, ToolProbeError> {
     let output = Command::new(path)
         .arg("-version")
@@ -297,12 +319,20 @@ fn tool_status_from_probe(path: &str, result: Result<String, ToolProbeError>) ->
 }
 
 fn ffmpeg_status() -> ToolStatus {
-    let path = configured_tool_path(env::var("DIPLOMAT_FFMPEG_PATH").ok().as_deref(), "ffmpeg");
+    let path = packaged_or_configured_tool_path(
+        env::var("DIPLOMAT_FFMPEG_PATH").ok().as_deref(),
+        packaged_resource_candidate("ffmpeg.exe"),
+        "ffmpeg",
+    );
     tool_status_from_probe(&path, probe_cli_tool(&path))
 }
 
 fn ffprobe_status() -> ToolStatus {
-    let path = configured_tool_path(env::var("DIPLOMAT_FFPROBE_PATH").ok().as_deref(), "ffprobe");
+    let path = packaged_or_configured_tool_path(
+        env::var("DIPLOMAT_FFPROBE_PATH").ok().as_deref(),
+        packaged_resource_candidate("ffprobe.exe"),
+        "ffprobe",
+    );
     tool_status_from_probe(&path, probe_cli_tool(&path))
 }
 
@@ -822,6 +852,42 @@ mod tests {
     #[test]
     fn configured_tool_path_uses_default_when_environment_is_empty() {
         let path = configured_tool_path(Some("  "), "ffmpeg");
+
+        assert_eq!(path, "ffmpeg");
+    }
+
+    #[test]
+    fn packaged_resource_path_prefers_env_override() {
+        let path = packaged_or_configured_tool_path(
+            Some("C:/Tools/ffmpeg.exe"),
+            Some(PathBuf::from(
+                r"C:\Program Files\Diplomat\resources\ffmpeg.exe",
+            )),
+            "ffmpeg",
+        );
+
+        assert_eq!(path, "C:/Tools/ffmpeg.exe");
+    }
+
+    #[test]
+    fn packaged_resource_path_uses_resource_when_env_missing() {
+        let path = packaged_or_configured_tool_path(
+            None,
+            Some(PathBuf::from(
+                r"C:\Program Files\Diplomat\resources\ffprobe.exe",
+            )),
+            "ffprobe",
+        );
+
+        assert_eq!(
+            path,
+            r"C:\Program Files\Diplomat\resources\ffprobe.exe"
+        );
+    }
+
+    #[test]
+    fn packaged_resource_path_falls_back_to_path_name() {
+        let path = packaged_or_configured_tool_path(None, None, "ffmpeg");
 
         assert_eq!(path, "ffmpeg");
     }
