@@ -10,6 +10,15 @@ from pathlib import Path
 from diplomat_worker.schemas.subtitle import SubtitleDocument
 
 SCHEMA_VERSION = 6
+SUBTITLE_SNAPSHOT_SCHEMA_VERSION = "diplomat.subtitle-snapshot.v1"
+SUBTITLE_SNAPSHOT_REASONS = {
+    "manual",
+    "analysis_overwrite",
+    "translation_overwrite",
+    "batch_timing",
+    "burn_in_export_preparation",
+    "restore",
+}
 
 
 class StorageMigrationError(RuntimeError):
@@ -104,6 +113,25 @@ class ProjectBackupResult:
     package_path: Path
     bytes_written: int
     message: str
+
+
+@dataclass(frozen=True)
+class SubtitleDraftRecord:
+    project_id: str
+    updated_at: str
+    line_count: int
+    document: SubtitleDocument
+
+
+@dataclass(frozen=True)
+class SubtitleSnapshotRecord:
+    snapshot_id: str
+    project_id: str
+    reason: str
+    label: str | None
+    created_at: str
+    line_count: int
+    document: SubtitleDocument
 
 
 @dataclass(frozen=True)
@@ -616,6 +644,14 @@ class ProjectStore:
             subtitle_path = project.project_dir / "subtitle.diplomat.json"
             if subtitle_path.is_file():
                 archive.write(subtitle_path, "subtitle.diplomat.json")
+            draft_path = project.project_dir / "draft.diplomat.json"
+            if draft_path.is_file():
+                archive.write(draft_path, "draft.diplomat.json")
+            snapshots_dir = project.project_dir / "snapshots"
+            if snapshots_dir.is_dir():
+                for item in snapshots_dir.rglob("*.diplomat-snapshot.json"):
+                    if item.is_file():
+                        archive.write(item, Path("snapshots") / item.relative_to(snapshots_dir))
             settings = self.get_translation_settings(project.project_id)
             archive.writestr(
                 "translation-settings.json",
@@ -675,6 +711,28 @@ class ProjectStore:
                 subtitle_payload["projectId"] = project.project_id
                 document = SubtitleDocument.model_validate(subtitle_payload)
                 self.save_subtitle_document(project.project_id, document)
+
+            if "draft.diplomat.json" in archive.namelist():
+                draft_payload = json.loads(archive.read("draft.diplomat.json").decode("utf-8"))
+                draft_payload["projectId"] = project.project_id
+                document = SubtitleDocument.model_validate(draft_payload)
+                self.save_subtitle_draft(project.project_id, document)
+
+            snapshots_dir = project.project_dir / "snapshots"
+            for name in archive.namelist():
+                if not name.startswith("snapshots/") or name.endswith("/"):
+                    continue
+                target = snapshots_dir / Path(name).relative_to("snapshots")
+                self._assert_safe_child_path(snapshots_dir, target)
+                payload = json.loads(archive.read(name).decode("utf-8"))
+                payload["projectId"] = project.project_id
+                payload["document"]["projectId"] = project.project_id
+                record = self._subtitle_snapshot_record_from_payload(payload)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(
+                    json.dumps(self._subtitle_snapshot_payload(record), ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
 
             if "translation-settings.json" in archive.namelist():
                 settings = json.loads(archive.read("translation-settings.json").decode("utf-8"))
@@ -855,6 +913,50 @@ class ProjectStore:
             path.unlink()
         return files_affected, bytes_affected
 
+    def _subtitle_snapshot_path(self, project: ProjectRecord, snapshot_id: str) -> Path:
+        if not snapshot_id.startswith("snapshot-"):
+            raise ValueError("snapshot_id must start with snapshot-")
+        if self._safe_filename(snapshot_id) != snapshot_id:
+            raise ValueError(f"Unsupported subtitle snapshot id: {snapshot_id}")
+        return project.project_dir / "snapshots" / f"{snapshot_id}.diplomat-snapshot.json"
+
+    def _subtitle_snapshot_payload(self, record: SubtitleSnapshotRecord) -> dict:
+        return {
+            "schemaVersion": SUBTITLE_SNAPSHOT_SCHEMA_VERSION,
+            "snapshotId": record.snapshot_id,
+            "projectId": record.project_id,
+            "reason": record.reason,
+            "label": record.label,
+            "createdAt": record.created_at,
+            "lineCount": record.line_count,
+            "document": record.document.model_dump(by_alias=True),
+        }
+
+    def _subtitle_snapshot_record_from_path(self, path: Path) -> SubtitleSnapshotRecord:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return self._subtitle_snapshot_record_from_payload(payload)
+
+    def _subtitle_snapshot_record_from_payload(self, payload: dict) -> SubtitleSnapshotRecord:
+        if payload.get("schemaVersion") != SUBTITLE_SNAPSHOT_SCHEMA_VERSION:
+            raise ValueError("Unsupported subtitle snapshot schema version")
+        reason = str(payload["reason"])
+        if reason not in SUBTITLE_SNAPSHOT_REASONS:
+            raise ValueError(f"Unsupported subtitle snapshot reason: {reason}")
+        document = SubtitleDocument.model_validate(payload["document"])
+        snapshot_id = str(payload["snapshotId"])
+        project_id = str(payload["projectId"])
+        if document.project_id != project_id:
+            raise ValueError("snapshot document project_id must match snapshot project_id")
+        return SubtitleSnapshotRecord(
+            snapshot_id=snapshot_id,
+            project_id=project_id,
+            reason=reason,
+            label=payload.get("label"),
+            created_at=str(payload["createdAt"]),
+            line_count=int(payload.get("lineCount", len(document.lines))),
+            document=document,
+        )
+
     def _record_from_row(self, row: sqlite3.Row) -> ProjectRecord:
         return ProjectRecord(
             project_id=row["project_id"],
@@ -875,6 +977,9 @@ class ProjectStore:
         path = project.project_dir / "subtitle.diplomat.json"
         payload = document.model_dump(by_alias=True)
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        draft_path = project.project_dir / "draft.diplomat.json"
+        if draft_path.exists():
+            draft_path.unlink()
         self.touch_project(project_id)
         return path
 
@@ -887,6 +992,122 @@ class ProjectStore:
     def has_subtitle_document(self, project_id: str) -> bool:
         project = self.get_project(project_id)
         return (project.project_dir / "subtitle.diplomat.json").is_file()
+
+    def save_subtitle_draft(
+        self,
+        project_id: str,
+        document: SubtitleDocument,
+    ) -> SubtitleDraftRecord:
+        if document.project_id != project_id:
+            raise ValueError("document.project_id must match project_id")
+        project = self.get_project(project_id)
+        path = project.project_dir / "draft.diplomat.json"
+        path.write_text(
+            json.dumps(document.model_dump(by_alias=True), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        self.touch_project(project_id)
+        updated_at = self.get_project(project_id).updated_at
+        return SubtitleDraftRecord(
+            project_id=project_id,
+            updated_at=updated_at,
+            line_count=len(document.lines),
+            document=document,
+        )
+
+    def load_subtitle_draft(self, project_id: str) -> SubtitleDocument:
+        project = self.get_project(project_id)
+        path = project.project_dir / "draft.diplomat.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return SubtitleDocument.model_validate(payload)
+
+    def get_subtitle_draft_record(self, project_id: str) -> SubtitleDraftRecord:
+        document = self.load_subtitle_draft(project_id)
+        project = self.get_project(project_id)
+        path = project.project_dir / "draft.diplomat.json"
+        updated_at = datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat()
+        return SubtitleDraftRecord(
+            project_id=project_id,
+            updated_at=updated_at,
+            line_count=len(document.lines),
+            document=document,
+        )
+
+    def delete_subtitle_draft(self, project_id: str) -> None:
+        project = self.get_project(project_id)
+        path = project.project_dir / "draft.diplomat.json"
+        if not path.exists():
+            raise FileNotFoundError(path)
+        path.unlink()
+        self.touch_project(project_id)
+
+    def create_subtitle_snapshot(
+        self,
+        project_id: str,
+        reason: str = "manual",
+        label: str | None = None,
+        document: SubtitleDocument | None = None,
+    ) -> SubtitleSnapshotRecord:
+        if reason not in SUBTITLE_SNAPSHOT_REASONS:
+            raise ValueError(f"Unsupported subtitle snapshot reason: {reason}")
+        project = self.get_project(project_id)
+        snapshot_document = document if document is not None else self.load_subtitle_document(project_id)
+        if snapshot_document.project_id != project_id:
+            raise ValueError("document.project_id must match project_id")
+        created_at = self._utc_now()
+        snapshot_id = f"snapshot-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}-{uuid.uuid4().hex[:8]}"
+        record = SubtitleSnapshotRecord(
+            snapshot_id=snapshot_id,
+            project_id=project_id,
+            reason=reason,
+            label=label.strip() if label and label.strip() else None,
+            created_at=created_at,
+            line_count=len(snapshot_document.lines),
+            document=snapshot_document,
+        )
+        path = self._subtitle_snapshot_path(project, snapshot_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(self._subtitle_snapshot_payload(record), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        self.touch_project(project_id)
+        return record
+
+    def list_subtitle_snapshots(self, project_id: str) -> list[SubtitleSnapshotRecord]:
+        project = self.get_project(project_id)
+        snapshots_dir = project.project_dir / "snapshots"
+        if not snapshots_dir.is_dir():
+            return []
+        records = [
+            self._subtitle_snapshot_record_from_path(path)
+            for path in snapshots_dir.glob("*.diplomat-snapshot.json")
+            if path.is_file()
+        ]
+        return sorted(records, key=lambda record: record.created_at, reverse=True)
+
+    def load_subtitle_snapshot(
+        self,
+        project_id: str,
+        snapshot_id: str,
+    ) -> SubtitleSnapshotRecord:
+        project = self.get_project(project_id)
+        path = self._subtitle_snapshot_path(project, snapshot_id)
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        record = self._subtitle_snapshot_record_from_path(path)
+        if record.project_id != project_id:
+            raise ValueError("snapshot project_id must match project_id")
+        return record
+
+    def restore_subtitle_snapshot(
+        self,
+        project_id: str,
+        snapshot_id: str,
+    ) -> SubtitleDocument:
+        record = self.load_subtitle_snapshot(project_id, snapshot_id)
+        self.save_subtitle_document(project_id, record.document)
+        return record.document
 
     def get_translation_settings(self, project_id: str) -> TranslationSettingsRecord:
         project = self.get_project(project_id)
