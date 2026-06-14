@@ -111,6 +111,46 @@ export const SubtitleDocumentRequestSchema = z.object({
   document: SubtitleDocumentSchema
 });
 
+export const SubtitleDraftResponseSchema = z.object({
+  projectId: z.string().min(1),
+  updatedAt: z.string().min(1),
+  lineCount: z.number().int().nonnegative(),
+  document: SubtitleDocumentSchema
+});
+
+export const SubtitleSnapshotReasonSchema = z.enum([
+  "manual",
+  "analysis_overwrite",
+  "translation_overwrite",
+  "batch_timing",
+  "burn_in_export_preparation",
+  "restore"
+]);
+
+export const SubtitleSnapshotSummarySchema = z.object({
+  snapshotId: z.string().min(1),
+  projectId: z.string().min(1),
+  reason: SubtitleSnapshotReasonSchema,
+  label: z.string().min(1).nullable(),
+  createdAt: z.string().min(1),
+  lineCount: z.number().int().nonnegative()
+});
+
+export const SubtitleSnapshotResponseSchema = SubtitleSnapshotSummarySchema.extend({
+  document: SubtitleDocumentSchema
+});
+
+export const SubtitleSnapshotListResponseSchema = z.object({
+  projectId: z.string().min(1),
+  snapshots: z.array(SubtitleSnapshotSummarySchema)
+});
+
+export const SubtitleSnapshotCreateRequestSchema = z.object({
+  reason: SubtitleSnapshotReasonSchema.default("manual"),
+  label: z.string().min(1).nullable().default(null),
+  document: SubtitleDocumentSchema.nullable().default(null)
+});
+
 export const WaveformPeakSchema = z
   .object({
     index: z.number().int().nonnegative(),
@@ -148,5 +188,11 @@ export type ProjectBackupResponse = z.infer<typeof ProjectBackupResponseSchema>;
 export type ProjectImportRequest = z.infer<typeof ProjectImportRequestSchema>;
 export type AnalyzeProjectResponse = z.infer<typeof AnalyzeProjectResponseSchema>;
 export type SubtitleDocumentRequest = z.infer<typeof SubtitleDocumentRequestSchema>;
+export type SubtitleDraftResponse = z.infer<typeof SubtitleDraftResponseSchema>;
+export type SubtitleSnapshotReason = z.infer<typeof SubtitleSnapshotReasonSchema>;
+export type SubtitleSnapshotSummary = z.infer<typeof SubtitleSnapshotSummarySchema>;
+export type SubtitleSnapshotResponse = z.infer<typeof SubtitleSnapshotResponseSchema>;
+export type SubtitleSnapshotListResponse = z.infer<typeof SubtitleSnapshotListResponseSchema>;
+export type SubtitleSnapshotCreateRequest = z.infer<typeof SubtitleSnapshotCreateRequestSchema>;
 export type WaveformPeak = z.infer<typeof WaveformPeakSchema>;
 export type WaveformResponse = z.infer<typeof WaveformResponseSchema>;
