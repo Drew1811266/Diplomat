@@ -1,7 +1,7 @@
 import json
 import os
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from diplomat_worker import __version__
@@ -11,7 +11,12 @@ from diplomat_worker.api.schemas import (
     AnalysisJobRequest,
     CreateProjectRequest,
     ProjectListResponse,
+    ProjectBackupResponse,
+    ProjectDiagnosticsResponse,
+    ProjectImportRequest,
+    ProjectMaintenanceResponse,
     ProjectResponse,
+    ProjectWarningResponse,
     SrtExportRequest,
     SrtExportResponse,
     SubtitleDocumentRequest,
@@ -25,6 +30,7 @@ from diplomat_worker.pipeline.core import CorePipelineInput, run_core_pipeline
 from diplomat_worker.schemas.subtitle import SubtitleDocument
 from diplomat_worker.schemas.task import TaskResponse
 from diplomat_worker.storage.project_store import TaskRecord
+from diplomat_worker.storage.project_store import StorageMigrationError
 from diplomat_worker.tasks.analysis import AnalysisJobManager
 from diplomat_worker.tasks.translation import TranslationJobManager
 from diplomat_worker.translation.config import TranslationProviderConfig
@@ -43,6 +49,7 @@ def cors_origins() -> list[str]:
 
 
 def project_response(project, runtime: WorkerRuntime) -> ProjectResponse:
+    diagnostics = runtime.store.project_diagnostics(project)
     return ProjectResponse(
         project_id=project.project_id,
         name=project.name,
@@ -54,6 +61,28 @@ def project_response(project, runtime: WorkerRuntime) -> ProjectResponse:
         created_at=project.created_at,
         updated_at=project.updated_at,
         has_subtitle_document=runtime.store.has_subtitle_document(project.project_id),
+        diagnostics=ProjectDiagnosticsResponse(
+            status=diagnostics.status,
+            warnings=[
+                ProjectWarningResponse(code=warning.code, message=warning.message)
+                for warning in diagnostics.warnings
+            ],
+            source_video_exists=diagnostics.source_video_exists,
+            project_dir_exists=diagnostics.project_dir_exists,
+            disk_usage_bytes=diagnostics.disk_usage_bytes,
+            cache_usage_bytes=diagnostics.cache_usage_bytes,
+            export_usage_bytes=diagnostics.export_usage_bytes,
+            export_count=diagnostics.export_count,
+            subtitle_line_count=diagnostics.subtitle_line_count,
+            translated_line_count=diagnostics.translated_line_count,
+            active_task_count=diagnostics.active_task_count,
+            failed_task_count=diagnostics.failed_task_count,
+            latest_task_status=diagnostics.latest_task_status,
+            exports_dir=str(diagnostics.exports_dir),
+            cache_dir=str(diagnostics.cache_dir),
+            logs_dir=str(diagnostics.logs_dir),
+            backups_dir=str(diagnostics.backups_dir),
+        ),
     )
 
 
@@ -71,6 +100,25 @@ def task_response(task: TaskRecord) -> TaskResponse:
         error_code=task.error_code,
         error_message=task.error_message,
         diagnostic_log_path=task.diagnostic_log_path,
+    )
+
+
+def maintenance_response(result) -> ProjectMaintenanceResponse:
+    return ProjectMaintenanceResponse(
+        project_id=result.project_id,
+        action=result.action,
+        files_affected=result.files_affected,
+        bytes_affected=result.bytes_affected,
+        message=result.message,
+    )
+
+
+def backup_response(result) -> ProjectBackupResponse:
+    return ProjectBackupResponse(
+        project_id=result.project_id,
+        package_path=str(result.package_path),
+        bytes_written=result.bytes_written,
+        message=result.message,
     )
 
 
@@ -132,7 +180,13 @@ def create_app(
     def get_runtime() -> WorkerRuntime:
         active_runtime = app.state.runtime
         if active_runtime is None:
-            active_runtime = create_default_runtime()
+            try:
+                active_runtime = create_default_runtime()
+            except StorageMigrationError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Project database migration failed: {exc}",
+                ) from exc
             app.state.runtime = active_runtime
         return active_runtime
 
@@ -183,6 +237,18 @@ def create_app(
         )
         return project_response(project, active_runtime)
 
+    @app.post("/projects/import", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+    def import_project(request: ProjectImportRequest) -> ProjectResponse:
+        active_runtime = get_runtime()
+        try:
+            project = active_runtime.store.import_project_backup(
+                request.package_path,
+                restore_name=request.restore_name,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return project_response(project, active_runtime)
+
     @app.get("/projects/{project_id}", response_model=ProjectResponse)
     def get_project(project_id: str) -> ProjectResponse:
         active_runtime = get_runtime()
@@ -191,6 +257,45 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
         return project_response(project, active_runtime)
+
+    @app.delete("/projects/{project_id}", response_model=ProjectMaintenanceResponse)
+    def delete_project(
+        project_id: str,
+        delete_files: bool = Query(default=True, alias="deleteFiles"),
+    ) -> ProjectMaintenanceResponse:
+        try:
+            return maintenance_response(get_runtime().store.delete_project(project_id, delete_files=delete_files))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/projects/{project_id}/cleanup/cache", response_model=ProjectMaintenanceResponse)
+    def cleanup_project_cache(project_id: str) -> ProjectMaintenanceResponse:
+        try:
+            return maintenance_response(get_runtime().store.cleanup_project_cache(project_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/projects/{project_id}/cleanup/exports", response_model=ProjectMaintenanceResponse)
+    def cleanup_project_exports(project_id: str) -> ProjectMaintenanceResponse:
+        try:
+            return maintenance_response(get_runtime().store.cleanup_project_exports(project_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/projects/{project_id}/backup", response_model=ProjectBackupResponse)
+    def backup_project(project_id: str) -> ProjectBackupResponse:
+        try:
+            return backup_response(get_runtime().store.backup_project(project_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/projects/{project_id}/analyze", response_model=AnalyzeProjectResponse)
     def analyze_project(project_id: str) -> AnalyzeProjectResponse:
