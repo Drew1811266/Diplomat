@@ -1,4 +1,4 @@
-import { Box, Button, Stack, Text } from "@mantine/core";
+import { Box, Button, Group, Kbd, Modal, Stack, Text } from "@mantine/core";
 import type {
   AnalysisJobRequest,
   SrtExportMode,
@@ -14,23 +14,41 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { projectMediaUrl } from "../api";
 import { InspectorPanel } from "../components/InspectorPanel";
+import { EditorCommandBar } from "../components/EditorCommandBar";
 import { AnalysisInspector } from "../components/inspectors/AnalysisInspector";
 import { ExportInspector } from "../components/inspectors/ExportInspector";
 import { LineInspector } from "../components/inspectors/LineInspector";
 import { TranslationInspector } from "../components/inspectors/TranslationInspector";
+import { RecoveryPanel } from "../components/RecoveryPanel";
 import { SubtitleGrid, type SubtitleGridFilter } from "../components/SubtitleGrid";
 import { TaskStatusSurface } from "../components/TaskStatusSurface";
 import { TimelineEditor } from "../components/TimelineEditor";
 import { TimelineStrip } from "../components/TimelineStrip";
 import { TopToolbar } from "../components/TopToolbar";
 import { VideoPreviewPanel } from "../components/VideoPreviewPanel";
+import {
+  isEditableShortcutTarget,
+  mergeSubtitleLine,
+  offsetSubtitleLines,
+  redoHistory,
+  splitSubtitleLine,
+  undoHistory,
+  updateHistory,
+  type OffsetScope
+} from "../lib/subtitleEditing";
 import { validateSubtitleTiming } from "../lib/timingValidation";
 import { useExportSrtMutation } from "../queries/exportQueries";
 import { useModelsQuery } from "../queries/modelQueries";
 import { useProjectQuery } from "../queries/projectQueries";
 import {
+  useCreateSubtitleSnapshotMutation,
+  useDeleteSubtitleDraftMutation,
+  useRestoreSubtitleSnapshotMutation,
   useSaveSubtitleDocumentMutation,
-  useSubtitleDocumentQuery
+  useSaveSubtitleDraftMutation,
+  useSubtitleDocumentQuery,
+  useSubtitleDraftQuery,
+  useSubtitleSnapshotsQuery
 } from "../queries/subtitleQueries";
 import {
   isTaskActive,
@@ -123,8 +141,14 @@ export function WorkbenchPage() {
   const setSelectedLineId = useUiStore((state) => state.setSelectedLineId);
   const project = useProjectQuery(activeProjectId);
   const subtitle = useSubtitleDocumentQuery(activeProjectId);
+  const subtitleDraft = useSubtitleDraftQuery(activeProjectId);
+  const subtitleSnapshots = useSubtitleSnapshotsQuery(activeProjectId);
   const models = useModelsQuery(Boolean(activeProjectId));
   const saveSubtitle = useSaveSubtitleDocumentMutation(activeProjectId);
+  const saveDraft = useSaveSubtitleDraftMutation(activeProjectId);
+  const deleteDraft = useDeleteSubtitleDraftMutation(activeProjectId);
+  const createSnapshot = useCreateSubtitleSnapshotMutation(activeProjectId);
+  const restoreSnapshot = useRestoreSubtitleSnapshotMutation(activeProjectId);
   const createAnalysisJob = useCreateAnalysisJobMutation(activeProjectId);
   const createTranslationJob = useCreateTranslationJobMutation(activeProjectId);
   const waveform = useWaveformQuery(activeProjectId);
@@ -133,7 +157,12 @@ export function WorkbenchPage() {
   const retryTask = useRetryTaskMutation();
   const exportSrt = useExportSrtMutation(activeProjectId);
   const [draftDocument, setDraftDocument] = useState<SubtitleDocument | null>(null);
+  const [historyPast, setHistoryPast] = useState<SubtitleDocument[]>([]);
+  const [historyFuture, setHistoryFuture] = useState<SubtitleDocument[]>([]);
   const [subtitleFilter, setSubtitleFilter] = useState<SubtitleGridFilter>("all");
+  const [offsetMs, setOffsetMs] = useState(0);
+  const [offsetScope, setOffsetScope] = useState<OffsetScope>("selected");
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [analysisConfig, setAnalysisConfig] = useState(defaultAnalysisConfig);
   const [translationConfig, setTranslationConfig] = useState(defaultTranslationConfig);
   const [exportMode, setExportMode] = useState<SrtExportMode>("bilingual");
@@ -144,11 +173,16 @@ export function WorkbenchPage() {
   const [seekRequestMs, setSeekRequestMs] = useState<number | null>(null);
   const task = useTaskQuery(latestTaskId);
   const refetchedTaskId = useRef<string | null>(null);
+  const lastAutosavedDraftRef = useRef<string | null>(null);
   const polledTask = task.data;
+  const serverDraft = subtitleDraft.data ?? null;
+  const snapshotSummaries = subtitleSnapshots.data?.snapshots ?? [];
   const subtitleDocument = draftDocument ?? subtitle.data ?? null;
   const subtitleLines = subtitleDocument?.lines ?? emptySubtitleLines;
   const modelCatalog = models.data?.models ?? [];
   const hasUnsavedChanges = Boolean(draftDocument);
+  const hasUnresolvedDraft = hasUnsavedChanges || Boolean(serverDraft);
+  const recoveryPanelVisible = Boolean(serverDraft || snapshotSummaries.length > 0);
   const layout = isNarrow ? "stacked" : "split";
   const hasSubtitleRows = subtitleLines.length > 0;
   const observedTask = polledTask ?? latestTask;
@@ -187,7 +221,7 @@ export function WorkbenchPage() {
     activeProjectId &&
       subtitleDocument &&
       hasSubtitleRows &&
-      !hasUnsavedChanges &&
+      !hasUnresolvedDraft &&
       !taskActive &&
       !dataBlocked
   );
@@ -195,7 +229,7 @@ export function WorkbenchPage() {
     ? null
     : taskActive
       ? t("inspector.exportDisabledTaskActive")
-      : hasUnsavedChanges
+      : hasUnresolvedDraft
         ? t("inspector.exportDisabledUnsaved")
         : hasProjectError || hasSubtitleError
           ? t("inspector.exportDisabledDataError")
@@ -216,9 +250,22 @@ export function WorkbenchPage() {
   );
   const mediaUrl = activeProjectId ? projectMediaUrl(activeProjectId) : null;
   const timelineDurationMs = subtitleDocument?.durationMs ?? project.data?.durationMs ?? 0;
+  const canEditSubtitle = Boolean(subtitleDocument && hasSubtitleRows && !saveSubtitle.isPending);
+  const recoveryBusy =
+    saveSubtitle.isPending ||
+    saveDraft.isPending ||
+    deleteDraft.isPending ||
+    createSnapshot.isPending ||
+    restoreSnapshot.isPending;
 
   useEffect(() => {
     setDraftDocument(null);
+    setHistoryPast([]);
+    setHistoryFuture([]);
+    setOffsetMs(0);
+    setOffsetScope("selected");
+    setShortcutsOpen(false);
+    lastAutosavedDraftRef.current = null;
   }, [activeProjectId]);
 
   useEffect(() => {
@@ -244,25 +291,104 @@ export function WorkbenchPage() {
     refetchedTaskId.current = finishedTask.taskId;
     if (finishedTask.type === "analysis" || finishedTask.type === "translation") {
       void subtitle.refetch();
+      void subtitleSnapshots.refetch();
     }
     if (finishedTask.type === "waveform") {
       void waveform.refetch();
     }
-  }, [polledTask, subtitle.refetch, waveform.refetch]);
+  }, [polledTask, subtitle.refetch, subtitleSnapshots.refetch, waveform.refetch]);
+
+  useEffect(() => {
+    if (!activeProjectId || !draftDocument) {
+      return undefined;
+    }
+
+    const serializedDraft = JSON.stringify(draftDocument);
+    if (lastAutosavedDraftRef.current === serializedDraft) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      lastAutosavedDraftRef.current = serializedDraft;
+      void saveDraft.mutateAsync(draftDocument).catch(() => {
+        lastAutosavedDraftRef.current = null;
+      });
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [activeProjectId, draftDocument, saveDraft]);
+
+  function resetEditingHistory() {
+    setHistoryPast([]);
+    setHistoryFuture([]);
+  }
+
+  function setPresentDocument(nextDocument: SubtitleDocument) {
+    if (subtitle.data && nextDocument === subtitle.data) {
+      setDraftDocument(null);
+      return;
+    }
+
+    setDraftDocument(nextDocument);
+  }
+
+  function commitDraftDocument(nextDocument: SubtitleDocument) {
+    if (!subtitleDocument || nextDocument === subtitleDocument) {
+      return;
+    }
+
+    const nextHistory = updateHistory(
+      {
+        past: historyPast,
+        present: subtitleDocument,
+        future: historyFuture
+      },
+      nextDocument
+    );
+    setHistoryPast(nextHistory.past);
+    setHistoryFuture(nextHistory.future);
+    setDraftDocument(nextHistory.present);
+  }
 
   function updateLine(nextLine: SubtitleLine) {
     if (!subtitleDocument) {
       return;
     }
 
-    setDraftDocument((currentDraft) => {
-      const sourceDocument = currentDraft ?? subtitleDocument;
-
-      return {
-        ...sourceDocument,
-        lines: sourceDocument.lines.map((line) => (line.id === nextLine.id ? nextLine : line))
-      };
+    commitDraftDocument({
+      ...subtitleDocument,
+      lines: subtitleDocument.lines.map((line) => (line.id === nextLine.id ? nextLine : line))
     });
+  }
+
+  function handleUndo() {
+    if (!subtitleDocument || historyPast.length === 0) {
+      return;
+    }
+
+    const nextHistory = undoHistory({
+      past: historyPast,
+      present: subtitleDocument,
+      future: historyFuture
+    });
+    setHistoryPast(nextHistory.past);
+    setHistoryFuture(nextHistory.future);
+    setPresentDocument(nextHistory.present);
+  }
+
+  function handleRedo() {
+    if (!subtitleDocument || historyFuture.length === 0) {
+      return;
+    }
+
+    const nextHistory = redoHistory({
+      past: historyPast,
+      present: subtitleDocument,
+      future: historyFuture
+    });
+    setHistoryPast(nextHistory.past);
+    setHistoryFuture(nextHistory.future);
+    setPresentDocument(nextHistory.present);
   }
 
   function handleSelectLine(lineId: string) {
@@ -279,6 +405,111 @@ export function WorkbenchPage() {
     setCurrentTimeMs(timeMs);
   }
 
+  function handleSplitLine() {
+    if (!subtitleDocument) {
+      return;
+    }
+
+    const targetLineId = selectedLineId ?? activeLineId;
+    if (!targetLineId) {
+      return;
+    }
+
+    commitDraftDocument(splitSubtitleLine(subtitleDocument, targetLineId, currentTimeMs));
+  }
+
+  function handleMergeLine(direction: "previous" | "next") {
+    if (!subtitleDocument || !selectedLineId) {
+      return;
+    }
+
+    commitDraftDocument(mergeSubtitleLine(subtitleDocument, selectedLineId, direction));
+  }
+
+  async function handleApplyOffset() {
+    if (!subtitleDocument || !activeProjectId || offsetMs === 0) {
+      return;
+    }
+
+    const nextDocument = offsetSubtitleLines(subtitleDocument, {
+      scope: offsetScope,
+      selectedLineId,
+      currentTimeMs,
+      offsetMs
+    });
+    if (nextDocument === subtitleDocument) {
+      return;
+    }
+
+    try {
+      await createSnapshot.mutateAsync({
+        reason: "batch_timing",
+        label: t("recovery.batchTimingSnapshotLabel"),
+        document: subtitleDocument
+      });
+      commitDraftDocument(nextDocument);
+    } catch {
+      // Keep the document unchanged if the safety snapshot cannot be created.
+    }
+  }
+
+  function handleRestoreDraft() {
+    if (!serverDraft) {
+      return;
+    }
+
+    lastAutosavedDraftRef.current = JSON.stringify(serverDraft.document);
+    setDraftDocument(serverDraft.document);
+    resetEditingHistory();
+  }
+
+  async function handleDiscardDraft() {
+    if (!activeProjectId) {
+      return;
+    }
+
+    try {
+      await deleteDraft.mutateAsync();
+      lastAutosavedDraftRef.current = null;
+      setDraftDocument(null);
+      resetEditingHistory();
+    } catch {
+      // Mutation state surfaces the failure; keep draft recovery visible.
+    }
+  }
+
+  async function handleCreateSnapshot() {
+    if (!activeProjectId || !subtitleDocument) {
+      return;
+    }
+
+    try {
+      await createSnapshot.mutateAsync({
+        reason: "manual",
+        label: t("recovery.manualSnapshotLabel"),
+        document: subtitleDocument
+      });
+    } catch {
+      // Mutation state surfaces the failure; avoid throwing from the UI event.
+    }
+  }
+
+  async function handleRestoreSnapshot(snapshotId: string) {
+    if (!activeProjectId) {
+      return;
+    }
+
+    try {
+      await restoreSnapshot.mutateAsync(snapshotId);
+      lastAutosavedDraftRef.current = null;
+      setDraftDocument(null);
+      resetEditingHistory();
+      void subtitle.refetch();
+    } catch {
+      // Mutation state surfaces the failure; keep the current document visible.
+    }
+  }
+
   async function handleSave() {
     if (!draftDocument || !activeProjectId) {
       return;
@@ -286,12 +517,51 @@ export function WorkbenchPage() {
 
     try {
       await saveSubtitle.mutateAsync(draftDocument);
+      lastAutosavedDraftRef.current = null;
       setDraftDocument(null);
+      resetEditingHistory();
       void subtitle.refetch();
     } catch {
       // Keep the draft in place so the user can retry a failed save.
     }
   }
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (isEditableShortcutTarget(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      const modifierPressed = event.ctrlKey || event.metaKey;
+
+      if (modifierPressed && key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      if (modifierPressed && (key === "y" || (key === "z" && event.shiftKey))) {
+        event.preventDefault();
+        handleRedo();
+        return;
+      }
+
+      if (!modifierPressed && !event.altKey && key === "s") {
+        event.preventDefault();
+        handleSplitLine();
+        return;
+      }
+
+      if (!modifierPressed && !event.altKey && key === "?") {
+        event.preventDefault();
+        setShortcutsOpen(true);
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [activeLineId, currentTimeMs, historyFuture, historyPast, selectedLineId, subtitleDocument]);
 
   async function handleStartAnalysis() {
     if (!activeProjectId) {
@@ -550,20 +820,23 @@ export function WorkbenchPage() {
     );
 
   return (
-    <Box
-      component="main"
-      aria-label={t("workbench.title")}
-      bg="#e9edf2"
-      style={{
-        height: "calc(100vh - 84px)",
-        minHeight: 620,
-        display: "grid",
-        gridTemplateRows: "auto auto minmax(0, 1fr)",
-        overflow: "hidden",
-        border: "1px solid #cbd5e1",
-        borderRadius: 6
-      }}
-    >
+    <>
+      <Box
+        component="main"
+        aria-label={t("workbench.title")}
+        bg="#e9edf2"
+        style={{
+          height: "calc(100vh - 84px)",
+          minHeight: 620,
+          display: "grid",
+          gridTemplateRows: recoveryPanelVisible
+            ? "auto auto auto auto minmax(0, 1fr)"
+            : "auto auto auto minmax(0, 1fr)",
+          overflow: "hidden",
+          border: "1px solid #cbd5e1",
+          borderRadius: 6
+        }}
+      >
       <TopToolbar
         canSave={hasUnsavedChanges && !saveSubtitle.isPending}
         canExport={Boolean(activeProjectId)}
@@ -586,6 +859,33 @@ export function WorkbenchPage() {
           error={taskStatusError}
         />
       </Box>
+
+      <EditorCommandBar
+        canUndo={historyPast.length > 0}
+        canRedo={historyFuture.length > 0}
+        canEdit={canEditSubtitle}
+        offsetMs={offsetMs}
+        offsetScope={offsetScope}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onSplit={handleSplitLine}
+        onMergePrevious={() => handleMergeLine("previous")}
+        onMergeNext={() => handleMergeLine("next")}
+        onOffsetMsChange={setOffsetMs}
+        onOffsetScopeChange={setOffsetScope}
+        onApplyOffset={() => void handleApplyOffset()}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
+      />
+
+      <RecoveryPanel
+        draft={serverDraft}
+        snapshots={snapshotSummaries}
+        busy={recoveryBusy}
+        onRestoreDraft={handleRestoreDraft}
+        onDiscardDraft={() => void handleDiscardDraft()}
+        onCreateSnapshot={() => void handleCreateSnapshot()}
+        onRestoreSnapshot={(snapshotId) => void handleRestoreSnapshot(snapshotId)}
+      />
 
       <Box
         data-testid="workbench-body"
@@ -642,6 +942,35 @@ export function WorkbenchPage() {
           {renderInspectorContent()}
         </InspectorPanel>
       </Box>
-    </Box>
+      </Box>
+
+      <Modal
+        opened={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
+        title={t("shortcuts.title")}
+        size="sm"
+      >
+        <Stack gap="xs">
+          <Group justify="space-between" wrap="nowrap">
+            <Text size="sm">{t("shortcuts.split")}</Text>
+            <Kbd>S</Kbd>
+          </Group>
+          <Group justify="space-between" wrap="nowrap">
+            <Text size="sm">{t("shortcuts.undo")}</Text>
+            <Group gap={4} wrap="nowrap">
+              <Kbd>Ctrl</Kbd>
+              <Kbd>Z</Kbd>
+            </Group>
+          </Group>
+          <Group justify="space-between" wrap="nowrap">
+            <Text size="sm">{t("shortcuts.redo")}</Text>
+            <Group gap={4} wrap="nowrap">
+              <Kbd>Ctrl</Kbd>
+              <Kbd>Y</Kbd>
+            </Group>
+          </Group>
+        </Stack>
+      </Modal>
+    </>
   );
 }

@@ -169,7 +169,15 @@ export const en = {
     restoreDraft: "Restore draft",
     discardDraft: "Discard draft",
     createSnapshot: "Create snapshot",
-    restoreSnapshot: "Restore snapshot {{label}}"
+    restoreSnapshot: "Restore snapshot {{label}}",
+    manualSnapshotLabel: "Manual checkpoint",
+    batchTimingSnapshotLabel: "Before batch timing"
+  },
+  shortcuts: {
+    title: "Keyboard shortcuts",
+    split: "Split selected line",
+    undo: "Undo edit",
+    redo: "Redo edit"
   },
   inspector: {
     line: "Line",

@@ -167,7 +167,15 @@ export const zh = {
     restoreDraft: "恢复草稿",
     discardDraft: "丢弃草稿",
     createSnapshot: "创建快照",
-    restoreSnapshot: "恢复快照 {{label}}"
+    restoreSnapshot: "恢复快照 {{label}}",
+    manualSnapshotLabel: "手动检查点",
+    batchTimingSnapshotLabel: "批量校时前"
+  },
+  shortcuts: {
+    title: "键盘快捷键",
+    split: "分割选中字幕",
+    undo: "撤销编辑",
+    redo: "重做编辑"
   },
   inspector: {
     line: "字幕行",
