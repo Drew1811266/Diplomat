@@ -1,6 +1,7 @@
 export const queryKeys = {
   workerHealth: ["worker", "health"] as const,
   desktopWorkerStatus: ["desktop", "worker-status"] as const,
+  desktopRuntimeStatus: ["desktop", "runtime-status"] as const,
   projects: ["projects"] as const,
   project: (projectId: string) => ["projects", projectId] as const,
   subtitle: (projectId: string) => ["projects", projectId, "subtitle"] as const,
