@@ -104,7 +104,11 @@ def test_health_endpoint_returns_worker_status(app_module) -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"name": "diplomat-worker", "status": "ok", "version": "0.3.0"}
+    assert response.json() == {
+        "name": "diplomat-worker",
+        "status": "ok",
+        "version": app_module.__version__,
+    }
 
 
 def test_cors_allows_configured_local_web_origin(app_module, monkeypatch) -> None:
@@ -202,7 +206,7 @@ def test_release_readiness_route_reports_tool_blockers_without_model_audit_block
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["version"] == "0.3.0"
+    assert payload["version"] == app_module.__version__
     assert payload["ready"] is False
     assert payload["summary"]["blocker"] >= 1
     blockers = {check["id"] for check in payload["checks"] if check["severity"] == "blocker"}
