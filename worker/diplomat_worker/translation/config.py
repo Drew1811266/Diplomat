@@ -4,6 +4,8 @@ from typing import Literal
 
 from diplomat_worker.translation.fake import FakeTranslationProvider
 from diplomat_worker.translation.libretranslate import LibreTranslateProvider
+from diplomat_worker.translation.ct2_marian import CTranslate2MarianProvider
+from diplomat_worker.translation.local_llm import LocalLlmTranslationProvider
 
 TranslationProviderName = Literal["fake", "libretranslate", "ct2-marian", "local-llm"]
 
@@ -56,4 +58,22 @@ def create_translation_provider(config: TranslationProviderConfig):
             raise ValueError("LibreTranslate endpoint is required")
         api_key = os.environ.get(config.api_key_env) if config.api_key_env else None
         return LibreTranslateProvider(endpoint=endpoint, api_key=api_key)
+    if config.provider == "ct2-marian":
+        if not config.model_name_or_path:
+            raise ValueError("CTranslate2 Marian model path is required")
+        return CTranslate2MarianProvider(
+            model_path=config.model_name_or_path,
+            model_label=config.model_id,
+            device=config.device,
+            compute_type=config.compute_type,
+        )
+    if config.provider == "local-llm":
+        if not config.model_name_or_path:
+            raise ValueError("Local LLM model path is required")
+        return LocalLlmTranslationProvider(
+            model_path=config.model_name_or_path,
+            model_label=config.model_id,
+            device=config.device,
+            compute_type=config.compute_type,
+        )
     raise ValueError(f"Unsupported translation provider: {config.provider}")
