@@ -118,6 +118,21 @@ const queuedWaveformTaskFixture: TaskResponse = {
   diagnosticLogPath: null
 };
 
+const queuedExportTaskFixture: TaskResponse = {
+  taskId: "export-task-1",
+  projectId: "project-demo",
+  type: "export",
+  status: "queued",
+  progress: 0,
+  message: "Queued burn-in export",
+  startedAt: null,
+  updatedAt: "2026-06-14T00:00:00+00:00",
+  completedAt: null,
+  errorCode: null,
+  errorMessage: null,
+  diagnosticLogPath: null
+};
+
 const modelCatalogWithInstalledTranslation: ModelCatalogResponse = {
   models: modelCatalogFixture.models.map((model) =>
     model.modelId === "translation.opus-mt.zh-en"
@@ -169,6 +184,7 @@ type ActiveProjectFetchOptions = {
   analysisTask?: TaskResponse;
   translationTask?: TaskResponse;
   waveformTask?: TaskResponse;
+  exportTask?: TaskResponse;
   cancelTask?: TaskResponse;
   retryTask?: TaskResponse;
   taskResponses?: TaskResponse[];
@@ -437,6 +453,18 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
           mode: body.mode,
           warnings: []
         })
+      } as Response;
+    }
+
+    if (url.endsWith("/projects/project-demo/exports/video") && init?.method === "POST") {
+      if (options.exportError) {
+        return errorResponse(options.exportError);
+      }
+
+      return {
+        ok: true,
+        status: 202,
+        json: async () => options.exportTask ?? queuedExportTaskFixture
       } as Response;
     }
 
@@ -1129,6 +1157,32 @@ describe("WorkbenchPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("starts burn-in video export with the active mode and style", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubActiveProjectFetch({
+      exportTask: queuedExportTaskFixture,
+      taskResponses: [queuedExportTaskFixture]
+    });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Render video" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/exports\/video$/),
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"mode":"bilingual"')
+        })
+      )
+    );
+    expect(await screen.findByText("Queued burn-in export")).toBeInTheDocument();
+  });
+
   it("blocks export when timing validation has errors", async () => {
     const user = userEvent.setup();
     const overlappingDocument: SubtitleDocument = {
@@ -1149,6 +1203,7 @@ describe("WorkbenchPage", () => {
     const inspector = screen.getByLabelText("Inspector");
     expect(within(inspector).getByText("Fix timing errors before exporting.")).toBeInTheDocument();
     expect(within(inspector).getByRole("button", { name: "Export" })).toBeDisabled();
+    expect(within(inspector).getByRole("button", { name: "Render video" })).toBeDisabled();
   });
 
   it("applies style presets and toggles safe area preview", async () => {

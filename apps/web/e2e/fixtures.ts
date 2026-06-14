@@ -378,6 +378,17 @@ async function routeWorkerRequest(route: Route, state: WorkerState) {
     return;
   }
 
+  if (method === "POST" && path === "/projects/project-demo/exports/video") {
+    const task = {
+      ...createTask("export", "export-task-demo"),
+      message: "Burn-in export completed",
+      progress: 1
+    };
+    state.tasks.set(task.taskId, task);
+    await fulfillJson(route, task, 202);
+    return;
+  }
+
   if (method === "POST" && path === "/projects/project-demo/exports/srt") {
     const body = await readRequestJson<{ mode?: "source" | "target" | "bilingual" }>(route);
     await fulfillJson(route, {
