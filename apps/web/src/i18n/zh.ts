@@ -234,6 +234,12 @@ export const zh = {
     vtt: "VTT",
     ass: "ASS"
   },
+  videoExport: {
+    render: "渲染视频",
+    cancel: "取消渲染",
+    retry: "重试渲染",
+    openExportsFolder: "打开导出文件夹"
+  },
   stylePresets: {
     select: "样式预设",
     name: "预设名称",

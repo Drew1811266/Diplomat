@@ -27,9 +27,13 @@ test("opens the demo project and exports subtitles from the workbench", async ({
   await inspector.getByLabel("Safe area").click();
   await expect(page.getByTestId("subtitle-safe-area")).toBeVisible();
 
-  await inspector.getByRole("button", { name: "Export" }).click();
+  await inspector.getByRole("button", { name: "Export", exact: true }).click();
 
   await expect(
     page.getByText("ASS exported: D:/Diplomat/exports/project-demo.bilingual.ass")
   ).toBeVisible();
+
+  await inspector.getByRole("button", { name: "Render video" }).click();
+  await expect(inspector.getByText("Burn-in export completed")).toBeVisible();
+  await expect(inspector.getByText("100%")).toBeVisible();
 });

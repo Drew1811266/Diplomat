@@ -1,6 +1,7 @@
 import { Box, Button, Group, Kbd, Modal, Stack, Text } from "@mantine/core";
 import type {
   AnalysisJobRequest,
+  BurnInExportRequest,
   SubtitleExportFormat,
   SubtitleExportMode,
   SubtitleExportResponse,
@@ -14,6 +15,7 @@ import { IconWaveSine } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { projectMediaUrl } from "../api";
+import { openPathInFileManager } from "../desktop";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { EditorCommandBar } from "../components/EditorCommandBar";
 import { AnalysisInspector } from "../components/inspectors/AnalysisInspector";
@@ -67,6 +69,7 @@ import {
   isTaskActive,
   useCancelTaskMutation,
   useCreateAnalysisJobMutation,
+  useCreateBurnInExportJobMutation,
   useTaskQuery,
   useCreateTranslationJobMutation,
   useRetryTaskMutation
@@ -169,6 +172,7 @@ export function WorkbenchPage() {
   const cancelTask = useCancelTaskMutation();
   const retryTask = useRetryTaskMutation();
   const exportSubtitles = useSubtitleExportMutation(activeProjectId);
+  const createBurnInExportJob = useCreateBurnInExportJobMutation(activeProjectId);
   const stylePresets = useStylePresetsQuery(activeProjectId);
   const createStylePreset = useCreateStylePresetMutation(activeProjectId);
   const updateStylePreset = useUpdateStylePresetMutation(activeProjectId);
@@ -220,6 +224,7 @@ export function WorkbenchPage() {
     createAnalysisJob.isPending ||
     createTranslationJob.isPending ||
     createWaveformJob.isPending ||
+    createBurnInExportJob.isPending ||
     taskOperationPending;
   const canCancelTask = Boolean(observedTask && isTaskActive(observedTask) && !cancelTask.isPending);
   const canRetryCurrentTask = Boolean(
@@ -231,6 +236,7 @@ export function WorkbenchPage() {
   const canRetryTranslationTask = Boolean(
     canRetryCurrentTask && observedTask?.type === "translation"
   );
+  const canRetryExportTask = Boolean(canRetryCurrentTask && observedTask?.type === "export");
   const taskStatusMessage = observedTask
     ? `${t(`status.${observedTask.status}`)} · ${observedTask.message} · ${Math.round(
         observedTask.progress * 100
@@ -240,6 +246,7 @@ export function WorkbenchPage() {
     observedTask?.errorMessage ??
     getErrorMessage(task.error) ??
     getErrorMessage(createWaveformJob.error) ??
+    getErrorMessage(createBurnInExportJob.error) ??
     getErrorMessage(cancelTask.error) ??
     getErrorMessage(retryTask.error);
   const hasProjectError = project.isError;
@@ -336,7 +343,10 @@ export function WorkbenchPage() {
     if (finishedTask.type === "waveform") {
       void waveform.refetch();
     }
-  }, [polledTask, subtitle.refetch, subtitleSnapshots.refetch, waveform.refetch]);
+    if (finishedTask.type === "export") {
+      void project.refetch();
+    }
+  }, [polledTask, project.refetch, subtitle.refetch, subtitleSnapshots.refetch, waveform.refetch]);
 
   useEffect(() => {
     if (!activeProjectId || !draftDocument) {
@@ -659,7 +669,7 @@ export function WorkbenchPage() {
     }
   }
 
-  async function handleRetryTask(config: AnalysisJobRequest | TranslationJobRequest) {
+  async function handleRetryTask(config?: AnalysisJobRequest | TranslationJobRequest | BurnInExportRequest) {
     if (
       !observedTask ||
       (observedTask.status !== "failed" && observedTask.status !== "canceled")
@@ -697,6 +707,37 @@ export function WorkbenchPage() {
     } catch {
       // Mutation state surfaces the failure; avoid throwing from the UI event.
     }
+  }
+
+  async function handleBurnInExport() {
+    if (!canExport) {
+      return;
+    }
+
+    try {
+      const nextTask = await createBurnInExportJob.mutateAsync({
+        mode: exportMode,
+        stylePresetId: stylePresets.data?.activePresetId ?? null,
+        style: styleDraft,
+        outputPath: null,
+        videoCodec: "libx264",
+        crf: 18,
+        preset: "medium"
+      });
+      refetchedTaskId.current = null;
+      setLatestTask(nextTask);
+      setLatestTaskId(nextTask.taskId);
+    } catch {
+      // Mutation state surfaces the failure; avoid throwing from the UI event.
+    }
+  }
+
+  async function handleOpenExportsFolder() {
+    const exportsDir = project.data?.diagnostics.exportsDir;
+    if (!exportsDir) {
+      return;
+    }
+    await openPathInFileManager(exportsDir);
   }
 
   async function handleCreateStylePreset(name: string, style: typeof styleDraft) {
@@ -796,6 +837,7 @@ export function WorkbenchPage() {
     if (inspectorMode === "export") {
       const exportError =
         exportSubtitles.error ??
+        createBurnInExportJob.error ??
         createStylePreset.error ??
         updateStylePreset.error ??
         deleteStylePreset.error ??
@@ -815,13 +857,17 @@ export function WorkbenchPage() {
             result={exportResult}
             canExport={canExport}
             disabledReason={exportDisabledReason}
-            busy={exportSubtitles.isPending}
+            busy={exportSubtitles.isPending || createBurnInExportJob.isPending}
             validationIssues={timingValidation.issues}
             style={styleDraft}
             presets={stylePresetList}
             activePresetId={stylePresets.data?.activePresetId ?? null}
             presetBusy={presetBusy}
             showSafeArea={showSafeArea}
+            latestTask={observedTask}
+            canCancelTask={canCancelTask && observedTask?.type === "export"}
+            canRetryTask={canRetryExportTask}
+            exportsDir={project.data?.diagnostics.exportsDir ?? null}
             onFormatChange={setExportFormat}
             onModeChange={setExportMode}
             onStyleChange={setStyleDraft}
@@ -831,6 +877,10 @@ export function WorkbenchPage() {
             onApplyPreset={(presetId) => void handleApplyStylePreset(presetId)}
             onShowSafeAreaChange={setShowSafeArea}
             onExport={() => void handleExport()}
+            onBurnInExport={() => void handleBurnInExport()}
+            onCancelTask={() => void handleCancelTask()}
+            onRetryTask={() => void handleRetryTask()}
+            onOpenExportsFolder={() => void handleOpenExportsFolder()}
           />
         </Stack>
       );

@@ -236,6 +236,12 @@ export const en = {
     vtt: "VTT",
     ass: "ASS"
   },
+  videoExport: {
+    render: "Render video",
+    cancel: "Cancel render",
+    retry: "Retry render",
+    openExportsFolder: "Open export folder"
+  },
   stylePresets: {
     select: "Style preset",
     name: "Preset name",

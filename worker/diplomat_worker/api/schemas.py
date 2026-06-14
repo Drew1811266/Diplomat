@@ -321,6 +321,19 @@ class SubtitleExportRequest(CamelModel):
     style: SubtitleStyle | None = None
 
 
+BurnInPreset = Literal["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow"]
+
+
+class BurnInExportRequest(CamelModel):
+    mode: ExportMode = "bilingual"
+    style_preset_id: str | None = Field(default=None, alias="stylePresetId")
+    style: SubtitleStyle | None = None
+    output_path: Path | None = Field(default=None, alias="outputPath")
+    video_codec: Literal["libx264"] = Field(default="libx264", alias="videoCodec")
+    crf: int = Field(default=18, ge=0, le=51)
+    preset: BurnInPreset = "medium"
+
+
 class SubtitleExportResponse(CamelModel):
     project_id: str = Field(alias="projectId")
     export_path: str = Field(alias="exportPath")

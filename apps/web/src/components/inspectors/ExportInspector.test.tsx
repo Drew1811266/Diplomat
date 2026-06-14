@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { SubtitleExportResponse } from "@diplomat/shared";
+import type { SubtitleExportResponse, TaskResponse } from "@diplomat/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { analyzedDocumentFixture } from "../../test/fixtures";
 import { renderWithProviders } from "../../test/render";
@@ -13,6 +13,21 @@ const exportResult: SubtitleExportResponse = {
   format: "srt",
   mode: "target",
   warnings: []
+};
+
+const exportTask: TaskResponse = {
+  taskId: "task-export",
+  projectId: "project-1",
+  type: "export",
+  status: "running",
+  progress: 0.42,
+  message: "Rendering video",
+  startedAt: "2026-06-14T00:00:00+00:00",
+  updatedAt: "2026-06-14T00:00:01+00:00",
+  completedAt: null,
+  errorCode: null,
+  errorMessage: null,
+  diagnosticLogPath: null
 };
 
 function stubMatchMedia(matches: boolean) {
@@ -183,5 +198,49 @@ describe("ExportInspector", () => {
     expect(onDeletePreset).toHaveBeenCalledWith("preset-default");
     expect(onCreatePreset).toHaveBeenCalledWith("Broadcast", expect.objectContaining({ name: "Broadcast" }));
     expect(onUpdatePreset).toHaveBeenCalledWith("preset-default", { name: "Renamed" });
+  });
+
+  it("starts burn-in export and exposes export task controls", async () => {
+    const user = userEvent.setup();
+    const onBurnInExport = vi.fn();
+    const onCancelTask = vi.fn();
+    const onRetryTask = vi.fn();
+    const onOpenExportsFolder = vi.fn();
+
+    renderWithProviders(
+      <ExportInspector
+        format="srt"
+        mode="bilingual"
+        result={null}
+        canExport
+        disabledReason={null}
+        busy={false}
+        style={style}
+        latestTask={exportTask}
+        canCancelTask
+        canRetryTask
+        exportsDir="D:/Diplomat/projects/project-1/exports"
+        onFormatChange={() => undefined}
+        onModeChange={() => undefined}
+        onStyleChange={() => undefined}
+        onExport={() => undefined}
+        onBurnInExport={onBurnInExport}
+        onCancelTask={onCancelTask}
+        onRetryTask={onRetryTask}
+        onOpenExportsFolder={onOpenExportsFolder}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "Render video" }));
+    await user.click(screen.getByRole("button", { name: "Cancel render" }));
+    await user.click(screen.getByRole("button", { name: "Retry render" }));
+    await user.click(screen.getByRole("button", { name: "Open export folder" }));
+
+    expect(screen.getByText("Rendering video")).toBeInTheDocument();
+    expect(screen.getByText("42%")).toBeInTheDocument();
+    expect(onBurnInExport).toHaveBeenCalledTimes(1);
+    expect(onCancelTask).toHaveBeenCalledTimes(1);
+    expect(onRetryTask).toHaveBeenCalledTimes(1);
+    expect(onOpenExportsFolder).toHaveBeenCalledTimes(1);
   });
 });

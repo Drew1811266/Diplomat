@@ -10,6 +10,7 @@ from diplomat_worker.api.runtime import WorkerRuntime, create_default_runtime
 from diplomat_worker.api.schemas import (
     AnalyzeProjectResponse,
     AnalysisJobRequest,
+    BurnInExportRequest,
     CreateProjectRequest,
     ModelCatalogEntryResponse,
     ModelCatalogResponse,
@@ -72,6 +73,7 @@ from diplomat_worker.storage.project_store import StylePresetRecord
 from diplomat_worker.storage.project_store import TaskRecord
 from diplomat_worker.storage.project_store import StorageMigrationError
 from diplomat_worker.tasks.analysis import AnalysisJobManager
+from diplomat_worker.tasks.export import BurnInExportJobManager
 from diplomat_worker.tasks.translation import TranslationJobManager
 from diplomat_worker.tasks.waveform import WaveformJobManager
 from diplomat_worker.translation.config import TranslationProviderConfig
@@ -365,6 +367,7 @@ def create_app(
     analysis_jobs: AnalysisJobManager | None = None,
     translation_jobs: TranslationJobManager | None = None,
     waveform_jobs: WaveformJobManager | None = None,
+    export_jobs: BurnInExportJobManager | None = None,
     model_downloads: ModelDownloadManager | None = None,
 ) -> FastAPI:
     app = FastAPI(
@@ -385,6 +388,7 @@ def create_app(
     app.state.analysis_jobs = analysis_jobs
     app.state.translation_jobs = translation_jobs
     app.state.waveform_jobs = waveform_jobs
+    app.state.export_jobs = export_jobs
     app.state.model_downloads = model_downloads
 
     def get_runtime() -> WorkerRuntime:
@@ -419,6 +423,13 @@ def create_app(
         if active_jobs is None:
             active_jobs = WaveformJobManager(get_runtime())
             app.state.waveform_jobs = active_jobs
+        return active_jobs
+
+    def get_export_jobs() -> BurnInExportJobManager:
+        active_jobs = app.state.export_jobs
+        if active_jobs is None:
+            active_jobs = BurnInExportJobManager(get_runtime())
+            app.state.export_jobs = active_jobs
         return active_jobs
 
     def get_model_downloads() -> ModelDownloadManager:
@@ -745,6 +756,8 @@ def create_app(
                 return task_response(get_translation_jobs().cancel_task(task_id))
             if task.type == "waveform":
                 return task_response(get_waveform_jobs().cancel_task(task_id))
+            if task.type == "export":
+                return task_response(get_export_jobs().cancel_task(task_id))
             raise HTTPException(status_code=409, detail=f"Task type cannot be canceled: {task.type}")
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Task not found") from exc
@@ -777,6 +790,8 @@ def create_app(
                 )
             if task.type == "waveform":
                 return task_response(get_waveform_jobs().retry_task(task_id))
+            if task.type == "export":
+                return task_response(get_export_jobs().retry_task(task_id))
             raise HTTPException(status_code=409, detail=f"Task type cannot be retried: {task.type}")
         except json.JSONDecodeError as exc:
             raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
@@ -1032,6 +1047,31 @@ def create_app(
             mode=request.mode,
             warnings=[export_validation_issue_response(issue) for issue in warnings],
         )
+
+    @app.post(
+        "/projects/{project_id}/exports/video",
+        response_model=TaskResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def create_burn_in_export_job(project_id: str, request: BurnInExportRequest) -> TaskResponse:
+        try:
+            active_runtime = get_runtime()
+            if request.style_preset_id is not None:
+                try:
+                    active_runtime.store.get_style_preset(project_id, request.style_preset_id)
+                except FileNotFoundError as exc:
+                    raise HTTPException(status_code=404, detail="Style preset not found") from exc
+            task = get_export_jobs().create_export_job(
+                project_id,
+                request.model_dump(by_alias=True, mode="json"),
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Subtitle document not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return task_response(task)
 
     @app.post("/projects/{project_id}/exports/srt", response_model=SrtExportResponse)
     def export_srt(project_id: str, request: SrtExportRequest) -> SrtExportResponse:

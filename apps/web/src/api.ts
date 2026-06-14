@@ -1,6 +1,7 @@
 import {
   AnalysisJobRequestSchema,
   AnalyzeProjectResponseSchema,
+  BurnInExportRequestSchema,
   CreateProjectRequestSchema,
   ModelCatalogEntrySchema,
   ModelCatalogResponseSchema,
@@ -31,6 +32,7 @@ import {
   type AnalysisJobRequestInput,
   type AnalysisJobRequest,
   type AnalyzeProjectResponse,
+  type BurnInExportRequestInput,
   type CreateProjectRequest,
   type ModelCatalogEntry,
   type ModelCatalogResponse,
@@ -97,10 +99,16 @@ async function formatWorkerError(response: Response): Promise<string> {
   return message;
 }
 
-function retryRequestSchema(input: AnalysisJobRequestInput | TranslationJobRequestInput) {
-  return "targetLanguage" in input
-    ? TranslationJobRequestSchema.parse(input)
-    : AnalysisJobRequestSchema.parse(input);
+function retryRequestSchema(
+  input: AnalysisJobRequestInput | TranslationJobRequestInput | BurnInExportRequestInput
+) {
+  if ("targetLanguage" in input) {
+    return TranslationJobRequestSchema.parse(input);
+  }
+  if ("videoCodec" in input || "outputPath" in input || "style" in input || "stylePresetId" in input) {
+    return BurnInExportRequestSchema.parse(input);
+  }
+  return AnalysisJobRequestSchema.parse(input);
 }
 
 async function requestJson<T>(
@@ -355,6 +363,24 @@ export async function createWaveformJob(
   );
 }
 
+export async function createBurnInExportJob(
+  projectId: string,
+  input: BurnInExportRequestInput,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<TaskResponse> {
+  const request = BurnInExportRequestSchema.parse(input);
+
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/exports/video`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    },
+    (payload) => TaskResponseSchema.parse(payload)
+  );
+}
+
 export async function fetchTranslationSettings(
   projectId: string,
   baseUrl = defaultWorkerBaseUrl()
@@ -415,7 +441,7 @@ export async function cancelTask(
 
 export async function retryTask(
   taskId: string,
-  inputOrBaseUrl?: AnalysisJobRequestInput | TranslationJobRequestInput | string,
+  inputOrBaseUrl?: AnalysisJobRequestInput | TranslationJobRequestInput | BurnInExportRequestInput | string,
   maybeBaseUrl = defaultWorkerBaseUrl()
 ): Promise<TaskResponse> {
   const hasReplacementConfig =

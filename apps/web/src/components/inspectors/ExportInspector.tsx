@@ -16,7 +16,8 @@ import type {
   SubtitleExportFormat,
   SubtitleExportMode,
   SubtitleExportResponse,
-  SubtitleStyle
+  SubtitleStyle,
+  TaskResponse
 } from "@diplomat/shared";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -38,6 +39,10 @@ type ExportInspectorProps = {
   activePresetId?: string | null;
   presetBusy?: boolean;
   showSafeArea?: boolean;
+  latestTask?: TaskResponse | null;
+  canCancelTask?: boolean;
+  canRetryTask?: boolean;
+  exportsDir?: string | null;
   onFormatChange: (format: SubtitleExportFormat) => void;
   onModeChange: (mode: SubtitleExportMode) => void;
   onStyleChange: (style: SubtitleStyle) => void;
@@ -47,6 +52,10 @@ type ExportInspectorProps = {
   onApplyPreset?: (presetId: string) => void;
   onShowSafeAreaChange?: (showSafeArea: boolean) => void;
   onExport: () => void;
+  onBurnInExport?: () => void;
+  onCancelTask?: () => void;
+  onRetryTask?: () => void;
+  onOpenExportsFolder?: () => void;
 };
 
 const exportFormats: SubtitleExportFormat[] = ["srt", "vtt", "ass"];
@@ -67,6 +76,10 @@ export function ExportInspector({
   activePresetId = null,
   presetBusy = false,
   showSafeArea = false,
+  latestTask = null,
+  canCancelTask = false,
+  canRetryTask = false,
+  exportsDir = null,
   onFormatChange,
   onModeChange,
   onStyleChange,
@@ -75,7 +88,11 @@ export function ExportInspector({
   onDeletePreset,
   onApplyPreset,
   onShowSafeAreaChange,
-  onExport
+  onExport,
+  onBurnInExport,
+  onCancelTask,
+  onRetryTask,
+  onOpenExportsFolder
 }: ExportInspectorProps) {
   const { t } = useTranslation();
   const [selectedPresetId, setSelectedPresetId] = useState(activePresetId ?? presets[0]?.id ?? "");
@@ -83,6 +100,8 @@ export function ExportInspector({
   const errors = validationIssues.filter((issue) => issue.severity === "error");
   const warnings = validationIssues.filter((issue) => issue.severity === "warning");
   const presetActionDisabled = presetBusy || !selectedPresetId;
+  const exportTask = latestTask?.type === "export" ? latestTask : null;
+  const exportTaskProgress = exportTask ? Math.round(exportTask.progress * 100) : 0;
 
   useEffect(() => {
     setSelectedPresetId(activePresetId ?? presets[0]?.id ?? "");
@@ -326,6 +345,55 @@ export function ExportInspector({
           })}
         </Text>
       ) : null}
+
+      <Stack gap="xs">
+        <Button
+          type="button"
+          size="xs"
+          variant="light"
+          color="blue"
+          onClick={onBurnInExport}
+          disabled={busy || !canExport || !onBurnInExport}
+        >
+          {t("videoExport.render")}
+        </Button>
+
+        {exportTask ? (
+          <Stack gap={4}>
+            <Group justify="space-between" gap="xs" wrap="nowrap">
+              <Text size="sm" fw={700} c="dimmed">
+                {exportTask.message}
+              </Text>
+              <Text size="sm" c="dimmed">
+                {exportTaskProgress}%
+              </Text>
+            </Group>
+            <Group gap="xs">
+              {canCancelTask ? (
+                <Button type="button" size="compact-xs" variant="light" onClick={onCancelTask}>
+                  {t("videoExport.cancel")}
+                </Button>
+              ) : null}
+              {canRetryTask ? (
+                <Button type="button" size="compact-xs" variant="light" onClick={onRetryTask}>
+                  {t("videoExport.retry")}
+                </Button>
+              ) : null}
+            </Group>
+            {exportTask.errorMessage ? (
+              <Text size="sm" c="red">
+                {exportTask.errorMessage}
+              </Text>
+            ) : null}
+          </Stack>
+        ) : null}
+
+        {exportsDir && onOpenExportsFolder ? (
+          <Button type="button" size="compact-xs" variant="subtle" onClick={onOpenExportsFolder}>
+            {t("videoExport.openExportsFolder")}
+          </Button>
+        ) : null}
+      </Stack>
     </Stack>
   );
 }

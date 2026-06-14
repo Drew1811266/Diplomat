@@ -5,6 +5,7 @@ import {
   cancelModelDownload,
   applyStylePreset,
   createAnalysisJob,
+  createBurnInExportJob,
   createProject,
   createStylePreset,
   createSubtitleSnapshot,
@@ -399,6 +400,36 @@ describe("worker API helpers", () => {
     await expect(createWaveformJob("project-1", baseUrl)).resolves.toEqual(response);
     expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/waveform-jobs`, {
       method: "POST"
+    });
+  });
+
+  it("createBurnInExportJob posts video export request and parses task response", async () => {
+    const response = {
+      ...taskResponse,
+      type: "export",
+      status: "queued",
+      progress: 0,
+      message: "Queued burn-in export"
+    };
+    const style = subtitleDocument.styles[0]!;
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(
+      createBurnInExportJob("project-1", { mode: "bilingual", style }, baseUrl)
+    ).resolves.toEqual(response);
+
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/exports/video`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "bilingual",
+        stylePresetId: null,
+        style,
+        outputPath: null,
+        videoCodec: "libx264",
+        crf: 18,
+        preset: "medium"
+      })
     });
   });
 
