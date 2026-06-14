@@ -49,10 +49,14 @@ const defaultAnalysisConfig: AnalysisJobRequest = {
 };
 
 const defaultTranslationConfig: TranslationJobRequest = {
-  provider: "fake",
+  provider: "ct2-marian",
+  modelId: null,
+  modelNameOrPath: null,
   sourceLanguage: "zh",
   targetLanguage: "en",
   mode: "missing_only",
+  device: "cuda",
+  computeType: "float16",
   endpoint: null,
   apiKeyEnv: null
 };
@@ -122,7 +126,6 @@ export function WorkbenchPage() {
   const [subtitleFilter, setSubtitleFilter] = useState<SubtitleGridFilter>("all");
   const [analysisConfig, setAnalysisConfig] = useState(defaultAnalysisConfig);
   const [translationConfig, setTranslationConfig] = useState(defaultTranslationConfig);
-  const [selectedTranslationModelId, setSelectedTranslationModelId] = useState<string | null>(null);
   const [exportMode, setExportMode] = useState<SrtExportMode>("bilingual");
   const [exportResult, setExportResult] = useState<SrtExportResponse | null>(null);
   const [latestTask, setLatestTask] = useState<TaskResponse | null>(null);
@@ -199,7 +202,7 @@ export function WorkbenchPage() {
     setLatestTask(null);
     setLatestTaskId(null);
     refetchedTaskId.current = null;
-    setSelectedTranslationModelId(null);
+    setTranslationConfig(defaultTranslationConfig);
   }, [activeProjectId]);
 
   useEffect(() => {
@@ -364,10 +367,8 @@ export function WorkbenchPage() {
             config={translationConfig}
             busy={!activeProjectId || taskActive}
             modelCatalog={modelCatalog}
-            selectedModelId={selectedTranslationModelId}
             canCancel={canCancelTask}
             canRetry={canRetryTranslationTask}
-            onSelectedModelChange={setSelectedTranslationModelId}
             onConfigChange={setTranslationConfig}
             onStart={() => void handleStartTranslation()}
             onCancel={() => void handleCancelTask()}

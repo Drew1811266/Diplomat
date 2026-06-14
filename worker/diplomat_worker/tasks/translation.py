@@ -11,6 +11,10 @@ from diplomat_worker.translation.base import (
     TranslationRequest,
 )
 from diplomat_worker.translation.config import TranslationProviderConfig
+from diplomat_worker.translation.resolver import (
+    TranslationConfigurationError,
+    resolve_translation_provider_config,
+)
 
 if TYPE_CHECKING:
     from diplomat_worker.api.runtime import WorkerRuntime
@@ -36,6 +40,7 @@ class TranslationJobManager:
         self.runtime.store.get_project(project_id)
         if mode not in {"missing_only", "overwrite_all"}:
             raise ValueError("Unsupported translation mode")
+        self._resolve_config(provider_config, source_language, target_language)
         task = self.runtime.store.create_task(
             project_id=project_id,
             task_type="translation",
@@ -128,7 +133,8 @@ class TranslationJobManager:
             target_language = payload["targetLanguage"]
             mode = payload["mode"]
             provider_config = TranslationProviderConfig.from_request_payload(payload)
-            provider = self.runtime.translation_provider_factory(provider_config)
+            resolved_config = self._resolve_config(provider_config, source_language, target_language)
+            provider = self.runtime.translation_provider_factory(resolved_config)
 
             document = self.runtime.store.load_subtitle_document(task.project_id)
             selected_lines = self._select_lines(document.lines, mode)
@@ -218,6 +224,18 @@ class TranslationJobManager:
                 completed=True,
                 diagnostic_log_path=str(diagnostic_path),
             )
+        except TranslationConfigurationError as exc:
+            log(exc.message)
+            self._mark_first_failed_line(task, exc.message)
+            self.runtime.store.update_task(
+                task_id,
+                status="failed",
+                message=exc.message,
+                completed=True,
+                error_code=exc.code,
+                error_message=exc.message,
+                diagnostic_log_path=str(diagnostic_path),
+            )
         except Exception as exc:
             log(traceback.format_exc())
             self._mark_first_failed_line(task, str(exc))
@@ -233,6 +251,21 @@ class TranslationJobManager:
         finally:
             with self._lock:
                 self._cancel_tokens.pop(task_id, None)
+
+    def _resolve_config(
+        self,
+        config: TranslationProviderConfig,
+        source_language: str,
+        target_language: str,
+    ) -> TranslationProviderConfig:
+        return resolve_translation_provider_config(
+            config,
+            store=self.runtime.store,
+            registry=self.runtime.model_registry or [],
+            fallback_source_language=source_language,
+            fallback_target_language=target_language,
+            allow_unmanaged_models=self.runtime.allow_unmanaged_translation_models,
+        )
 
     def _select_lines(self, lines: list[SubtitleLine], mode: str) -> list[SubtitleLine]:
         if mode == "overwrite_all":

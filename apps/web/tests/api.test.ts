@@ -355,9 +355,13 @@ describe("worker API helpers", () => {
     const response = {
       projectId: "project-1",
       provider: "fake",
+      modelId: null,
+      modelNameOrPath: null,
       sourceLanguage: "en",
       targetLanguage: "zh",
       mode: "missing_only",
+      device: "cpu",
+      computeType: "int8",
       endpoint: null,
       apiKeyEnv: null,
       updatedAt: "2026-06-07T00:00:00+00:00"
@@ -374,10 +378,14 @@ describe("worker API helpers", () => {
   it("saveTranslationSettings puts normalized request body", async () => {
     const response = {
       projectId: "project-1",
-      provider: "fake",
+      provider: "ct2-marian",
+      modelId: "translation.opus-mt.en-zh",
+      modelNameOrPath: null,
       sourceLanguage: "en",
       targetLanguage: "zh",
       mode: "missing_only",
+      device: "cuda",
+      computeType: "float16",
       endpoint: null,
       apiKeyEnv: null,
       updatedAt: "2026-06-07T00:00:00+00:00"
@@ -385,17 +393,32 @@ describe("worker API helpers", () => {
     const fetchMock = stubJsonResponse(response);
 
     await expect(
-      saveTranslationSettings("project-1", { sourceLanguage: "en", targetLanguage: "zh" }, baseUrl)
+      saveTranslationSettings(
+        "project-1",
+        {
+          provider: "ct2-marian",
+          modelId: "translation.opus-mt.en-zh",
+          sourceLanguage: "en",
+          targetLanguage: "zh",
+          device: "cuda",
+          computeType: "float16"
+        },
+        baseUrl
+      )
     ).resolves.toEqual(response);
 
     expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/translation-settings`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        provider: "fake",
+        provider: "ct2-marian",
+        modelId: "translation.opus-mt.en-zh",
+        modelNameOrPath: null,
         sourceLanguage: "en",
         targetLanguage: "zh",
         mode: "missing_only",
+        device: "cuda",
+        computeType: "float16",
         endpoint: null,
         apiKeyEnv: null
       })
@@ -419,9 +442,13 @@ describe("worker API helpers", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         provider: "fake",
+        modelId: null,
+        modelNameOrPath: null,
         sourceLanguage: "en",
         targetLanguage: "zh",
         mode: "missing_only",
+        device: "cpu",
+        computeType: "int8",
         endpoint: null,
         apiKeyEnv: null
       })
@@ -493,12 +520,13 @@ describe("worker API helpers", () => {
       retryTask(
         "task-1",
         {
-          provider: "libretranslate",
+          provider: "ct2-marian",
+          modelId: "translation.opus-mt.zh-en",
           sourceLanguage: "zh",
           targetLanguage: "en",
           mode: "overwrite_all",
-          endpoint: "http://localhost:5000",
-          apiKeyEnv: "LIBRETRANSLATE_API_KEY"
+          device: "cuda",
+          computeType: "float16"
         },
         baseUrl
       )
@@ -508,12 +536,16 @@ describe("worker API helpers", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        provider: "libretranslate",
+        provider: "ct2-marian",
+        modelId: "translation.opus-mt.zh-en",
+        modelNameOrPath: null,
         sourceLanguage: "zh",
         targetLanguage: "en",
         mode: "overwrite_all",
-        endpoint: "http://localhost:5000",
-        apiKeyEnv: "LIBRETRANSLATE_API_KEY"
+        device: "cuda",
+        computeType: "float16",
+        endpoint: null,
+        apiKeyEnv: null
       })
     });
   });

@@ -48,6 +48,7 @@ from diplomat_worker.storage.project_store import StorageMigrationError
 from diplomat_worker.tasks.analysis import AnalysisJobManager
 from diplomat_worker.tasks.translation import TranslationJobManager
 from diplomat_worker.translation.config import TranslationProviderConfig
+from diplomat_worker.translation.resolver import TranslationConfigurationError
 
 DEFAULT_CORS_ORIGINS = ("http://localhost:1420", "http://127.0.0.1:1420")
 
@@ -215,6 +216,10 @@ def analysis_config_from_request(request: AnalysisJobRequest) -> AsrModelConfig:
 def translation_config_from_request(request: TranslationSettingsRequest) -> TranslationProviderConfig:
     return TranslationProviderConfig(
         provider=request.provider,
+        model_id=request.model_id,
+        model_name_or_path=request.model_name_or_path,
+        device=request.device,
+        compute_type=request.compute_type,
         endpoint=request.endpoint,
         api_key_env=request.api_key_env,
     )
@@ -224,9 +229,13 @@ def translation_settings_response(settings) -> TranslationSettingsResponse:
     return TranslationSettingsResponse(
         project_id=settings.project_id,
         provider=settings.provider,
+        model_id=settings.model_id,
+        model_name_or_path=settings.model_name_or_path,
         source_language=settings.source_language,
         target_language=settings.target_language,
         mode=settings.mode,
+        device=settings.device,
+        compute_type=settings.compute_type,
         endpoint=settings.endpoint,
         api_key_env=settings.api_key_env,
         updated_at=settings.updated_at,
@@ -508,9 +517,13 @@ def create_app(
             settings = get_runtime().store.save_translation_settings(
                 project_id,
                 provider=request.provider,
+                model_id=request.model_id,
+                model_name_or_path=request.model_name_or_path,
                 source_language=request.source_language,
                 target_language=request.target_language,
                 mode=request.mode,
+                device=request.device,
+                compute_type=request.compute_type,
                 endpoint=request.endpoint,
                 api_key_env=request.api_key_env,
             )
@@ -530,9 +543,13 @@ def create_app(
             get_runtime().store.save_translation_settings(
                 project_id,
                 provider=request.provider,
+                model_id=request.model_id,
+                model_name_or_path=request.model_name_or_path,
                 source_language=request.source_language,
                 target_language=request.target_language,
                 mode=request.mode,
+                device=request.device,
+                compute_type=request.compute_type,
                 endpoint=request.endpoint,
                 api_key_env=request.api_key_env,
             )
@@ -545,6 +562,8 @@ def create_app(
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
+        except TranslationConfigurationError as exc:
+            raise HTTPException(status_code=409, detail=exc.message) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return task_response(task)

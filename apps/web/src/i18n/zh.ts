@@ -145,6 +145,9 @@ export const zh = {
     selectModel: "选择模型",
     noAsrModelAvailable: "没有已安装的 ASR 模型",
     installAsrModelFirst: "请先在“模型”中安装 ASR 模型，再开始本地转写。",
+    noTranslationModelAvailable: "没有已安装的翻译模型",
+    installTranslationModelFirst: "请先在“模型”中安装翻译模型，再开始本地翻译。",
+    translationPairUnsupported: "所选翻译模型不支持当前语言方向。",
     translationModelUnavailable: "请先安装这个翻译模型再开始翻译。",
     localTranslationPending: "本地翻译模型执行将在 0.25 实现。"
   },

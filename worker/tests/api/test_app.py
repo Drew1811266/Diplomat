@@ -786,6 +786,53 @@ def test_create_translation_job_returns_accepted_task(app_module, tmp_path: Path
     assert payload["progress"] == 0
 
 
+def test_create_translation_job_rejects_uninstalled_curated_translation_model(
+    app_module,
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "translation-model.bin"
+    source_path.write_bytes(b"translation")
+    entry = ModelRegistryEntry(
+        model_id="translation.fixture.en-zh",
+        name="Fixture Translation",
+        task="translation",
+        tier="light",
+        runtime="ct2-marian",
+        provider="ct2-marian",
+        version="test",
+        languages=["en", "zh"],
+        language_pairs=[("en", "zh")],
+        model_size_bytes=source_path.stat().st_size,
+        download_size_bytes=source_path.stat().st_size,
+        disk_requirement_bytes=source_path.stat().st_size,
+        recommended_hardware="test hardware",
+        license_name="MIT",
+        license_url="https://example.invalid/license",
+        source_url=str(source_path),
+        checksum_algorithm="sha256",
+        checksum="d" * 64,
+        terms_summary="Test fixture translation model.",
+    )
+    runtime = make_test_runtime(tmp_path, model_registry=[entry])
+    manager = TranslationJobManager(runtime, auto_start=False)
+    client = TestClient(app_module.create_app(runtime, translation_jobs=manager))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+
+    response = client.post(
+        f"/projects/{project_id}/translation-jobs",
+        json={
+            "provider": "ct2-marian",
+            "modelId": entry.model_id,
+            "sourceLanguage": "en",
+            "targetLanguage": "zh",
+            "mode": "missing_only",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Install Fixture Translation from Models before starting translation."
+
+
 def test_cancel_translation_job_routes_to_translation_manager(app_module, tmp_path: Path) -> None:
     runtime = make_test_runtime(tmp_path)
     manager = TranslationJobManager(runtime, auto_start=False)
@@ -1126,24 +1173,31 @@ def test_translation_settings_request_defaults_to_fake_missing_only() -> None:
     request = TranslationSettingsRequest(sourceLanguage="en", targetLanguage="zh")
 
     assert request.provider == "fake"
+    assert request.model_id is None
+    assert request.model_name_or_path is None
     assert request.source_language == "en"
     assert request.target_language == "zh"
     assert request.mode == "missing_only"
+    assert request.device == "cpu"
+    assert request.compute_type == "int8"
     assert request.endpoint is None
     assert request.api_key_env is None
 
     configured = TranslationSettingsRequest(
-        provider="libretranslate",
+        provider="ct2-marian",
+        modelId="translation.opus-mt.zh-en",
         sourceLanguage="zh",
         targetLanguage="en",
         mode="overwrite_all",
-        endpoint="http://translate.local",
-        apiKeyEnv="LIBRETRANSLATE_API_KEY",
+        device="cuda",
+        computeType="float16",
     )
 
-    assert configured.provider == "libretranslate"
+    assert configured.provider == "ct2-marian"
+    assert configured.model_id == "translation.opus-mt.zh-en"
     assert configured.mode == "overwrite_all"
-    assert configured.api_key_env == "LIBRETRANSLATE_API_KEY"
+    assert configured.device == "cuda"
+    assert configured.compute_type == "float16"
 
 
 def test_default_data_dir_uses_configured_dir_then_local_app_data(monkeypatch, tmp_path: Path) -> None:

@@ -147,6 +147,9 @@ export const en = {
     selectModel: "Select model",
     noAsrModelAvailable: "No installed ASR model",
     installAsrModelFirst: "Install an ASR model from Models before starting local transcription.",
+    noTranslationModelAvailable: "No installed translation model",
+    installTranslationModelFirst: "Install a translation model from Models before starting local translation.",
+    translationPairUnsupported: "Selected translation model does not support this language pair.",
     translationModelUnavailable: "Install this translation model before starting translation.",
     localTranslationPending: "Local translation model execution lands in 0.25."
   },

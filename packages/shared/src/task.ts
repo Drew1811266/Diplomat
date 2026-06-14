@@ -22,13 +22,22 @@ export const AnalysisJobRequestSchema = z.object({
 });
 
 export const TranslationModeSchema = z.enum(["missing_only", "overwrite_all"]);
-export const TranslationProviderSchema = z.enum(["fake", "libretranslate"]);
+export const TranslationProviderSchema = z.enum([
+  "fake",
+  "libretranslate",
+  "ct2-marian",
+  "local-llm"
+]);
 
 export const TranslationJobRequestSchema = z.object({
   provider: TranslationProviderSchema.default("fake"),
+  modelId: z.string().nullable().default(null),
+  modelNameOrPath: z.string().nullable().default(null),
   sourceLanguage: z.string().min(2).max(12),
   targetLanguage: z.string().min(2).max(12),
   mode: TranslationModeSchema.default("missing_only"),
+  device: z.string().min(1).default("cpu"),
+  computeType: z.string().min(1).default("int8"),
   endpoint: z.string().nullable().default(null),
   apiKeyEnv: z.string().nullable().default(null)
 });
