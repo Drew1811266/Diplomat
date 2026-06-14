@@ -120,6 +120,36 @@ struct ToolStatus {
     message: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeStatus {
+    mode: String,
+    worker: WorkerStatus,
+    directories: RuntimeDirectories,
+    ffmpeg: ToolStatus,
+    ffprobe: ToolStatus,
+    diagnostics: RuntimeDiagnostics,
+}
+
+impl RuntimeStatus {
+    fn new(
+        worker: WorkerStatus,
+        directories: RuntimeDirectories,
+        ffmpeg: ToolStatus,
+        ffprobe: ToolStatus,
+    ) -> Self {
+        let diagnostics = RuntimeDiagnostics::from_directories(&directories);
+        Self {
+            mode: "desktop".to_string(),
+            worker,
+            directories,
+            ffmpeg,
+            ffprobe,
+            diagnostics,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ToolProbeError {
     Missing(String),
@@ -156,15 +186,18 @@ fn configured_tool_path(configured: Option<&str>, fallback: &str) -> String {
 }
 
 fn probe_cli_tool(path: &str) -> Result<String, ToolProbeError> {
-    let output = Command::new(path).arg("-version").output().map_err(|error| {
-        if error.kind() == std::io::ErrorKind::NotFound {
-            ToolProbeError::Missing(format!(
-                "{path} was not found. Install FFmpeg or configure the bundled runtime path."
-            ))
-        } else {
-            ToolProbeError::CommandFailed(format!("Unable to run {path}: {error}"))
-        }
-    })?;
+    let output = Command::new(path)
+        .arg("-version")
+        .output()
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                ToolProbeError::Missing(format!(
+                    "{path} was not found. Install FFmpeg or configure the bundled runtime path."
+                ))
+            } else {
+                ToolProbeError::CommandFailed(format!("Unable to run {path}: {error}"))
+            }
+        })?;
 
     if !output.status.success() {
         return Err(ToolProbeError::CommandFailed(format!(
@@ -253,6 +286,30 @@ fn worker_status(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerSt
 }
 
 #[tauri::command]
+fn runtime_status(state: State<'_, Mutex<WorkerProcessState>>) -> Result<RuntimeStatus, String> {
+    let directories = runtime_directories()?;
+    let worker = {
+        let mut guard = state
+            .lock()
+            .map_err(|_| "Worker process state lock is poisoned".to_string())?;
+        clear_exited_child(&mut guard);
+        if guard.child.is_some() {
+            worker_status_from_state(&guard)
+        } else {
+            drop(guard);
+            classify_worker_probe(probe_worker_health())
+        }
+    };
+
+    Ok(RuntimeStatus::new(
+        worker,
+        directories,
+        ffmpeg_status(),
+        ffprobe_status(),
+    ))
+}
+
+#[tauri::command]
 fn start_worker(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerStatus, String> {
     let external_status = classify_worker_probe(probe_worker_health());
     if external_status.status == "running" && external_status.owner == "diplomat" {
@@ -278,19 +335,21 @@ fn start_worker(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerSta
     }
 
     let repo_root = find_repo_root()?;
-    let log_dir = diagnostics_log_dir()?;
+    let directories = runtime_directories()?;
+    let diagnostics = RuntimeDiagnostics::from_directories(&directories);
     let stdout = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(log_dir.join("worker.stdout.log"))
+        .open(Path::new(&diagnostics.worker_stdout_log))
         .map_err(|error| format!("Unable to open Worker stdout log: {error}"))?;
     let stderr = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(log_dir.join("worker.stderr.log"))
+        .open(Path::new(&diagnostics.worker_stderr_log))
         .map_err(|error| format!("Unable to open Worker stderr log: {error}"))?;
 
-    let child = Command::new("python")
+    let mut command = Command::new("python");
+    command
         .args([
             "-m",
             "uvicorn",
@@ -305,7 +364,11 @@ fn start_worker(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerSta
         .current_dir(repo_root)
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr))
+        .stderr(Stdio::from(stderr));
+    for (key, value) in worker_environment(&directories) {
+        command.env(key, value);
+    }
+    let child = command
         .spawn()
         .map_err(|error| format!("Unable to start Diplomat Worker: {error}"))?;
 
@@ -406,16 +469,6 @@ fn clear_exited_child(state: &mut WorkerProcessState) {
     }
 }
 
-fn diagnostics_log_dir() -> Result<PathBuf, String> {
-    let base = env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(env::temp_dir);
-    let log_dir = base.join("Diplomat").join("logs");
-    fs::create_dir_all(&log_dir)
-        .map_err(|error| format!("Unable to create diagnostics log directory: {error}"))?;
-    Ok(log_dir)
-}
-
 fn find_repo_root() -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
     if let Ok(current) = env::current_dir() {
@@ -481,6 +534,7 @@ fn main() {
             start_worker,
             stop_worker,
             worker_status,
+            runtime_status,
             open_path_in_file_manager
         ])
         .run(tauri::generate_context!())
@@ -653,5 +707,35 @@ mod tests {
         let path = configured_tool_path(Some("  "), "ffmpeg");
 
         assert_eq!(path, "ffmpeg");
+    }
+
+    #[test]
+    fn runtime_status_contains_worker_directories_tools_and_diagnostics() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let worker = WorkerStatus::new("stopped", "none", "Worker process is not running.");
+        let ffmpeg = ToolStatus {
+            status: "available".to_string(),
+            path: "ffmpeg".to_string(),
+            version: Some("ffmpeg version test".to_string()),
+            message: "ffmpeg is available.".to_string(),
+        };
+        let ffprobe = ToolStatus {
+            status: "missing".to_string(),
+            path: "ffprobe".to_string(),
+            version: None,
+            message: "ffprobe was not found.".to_string(),
+        };
+
+        let status = RuntimeStatus::new(worker, directories, ffmpeg, ffprobe);
+
+        assert_eq!(status.mode, "desktop");
+        assert_eq!(status.worker.status, "stopped");
+        assert_eq!(status.directories.data, r"C:\Diplomat\data");
+        assert_eq!(status.ffmpeg.status, "available");
+        assert_eq!(status.ffprobe.status, "missing");
+        assert_eq!(
+            status.diagnostics.worker_stdout_log,
+            r"C:\Diplomat\logs\worker.stdout.log"
+        );
     }
 }
