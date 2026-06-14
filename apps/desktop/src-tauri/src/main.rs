@@ -24,6 +24,63 @@ struct WorkerProcessState {
     child: Option<Child>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WorkerLaunchConfig {
+    mode: String,
+    program: PathBuf,
+    args: Vec<String>,
+    current_dir: Option<PathBuf>,
+    env: Vec<(String, String)>,
+}
+
+impl WorkerLaunchConfig {
+    fn packaged(
+        worker_path: PathBuf,
+        directories: &RuntimeDirectories,
+        ffmpeg_path: String,
+        ffprobe_path: String,
+    ) -> Self {
+        let mut env = worker_environment(directories);
+        env.push(("DIPLOMAT_FFMPEG_PATH".to_string(), ffmpeg_path));
+        env.push(("DIPLOMAT_FFPROBE_PATH".to_string(), ffprobe_path));
+        Self {
+            mode: "packaged".to_string(),
+            program: worker_path,
+            args: Vec::new(),
+            current_dir: None,
+            env,
+        }
+    }
+
+    fn development(
+        repo_root: PathBuf,
+        directories: &RuntimeDirectories,
+        ffmpeg_path: String,
+        ffprobe_path: String,
+    ) -> Self {
+        let mut env = worker_environment(directories);
+        env.push(("DIPLOMAT_FFMPEG_PATH".to_string(), ffmpeg_path));
+        env.push(("DIPLOMAT_FFPROBE_PATH".to_string(), ffprobe_path));
+        Self {
+            mode: "development".to_string(),
+            program: PathBuf::from("python"),
+            args: vec![
+                "-m".to_string(),
+                "uvicorn".to_string(),
+                "diplomat_worker.api.app:app".to_string(),
+                "--app-dir".to_string(),
+                "worker".to_string(),
+                "--host".to_string(),
+                "127.0.0.1".to_string(),
+                "--port".to_string(),
+                "8765".to_string(),
+            ],
+            current_dir: Some(repo_root),
+            env,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WorkerStatus {
@@ -651,6 +708,66 @@ mod tests {
                 r"C:\Diplomat\data".to_string()
             )]
         );
+    }
+
+    #[test]
+    fn packaged_worker_command_uses_sidecar_path_and_app_dirs() {
+        let directories =
+            RuntimeDirectories::from_base(&PathBuf::from(r"C:\Users\Drew\AppData\Local\Diplomat"));
+        let config = WorkerLaunchConfig::packaged(
+            PathBuf::from(r"C:\Program Files\Diplomat\diplomat-worker.exe"),
+            &directories,
+            r"C:\Program Files\Diplomat\resources\ffmpeg.exe".to_string(),
+            r"C:\Program Files\Diplomat\resources\ffprobe.exe".to_string(),
+        );
+
+        assert_eq!(
+            config.program,
+            PathBuf::from(r"C:\Program Files\Diplomat\diplomat-worker.exe")
+        );
+        assert_eq!(config.args, Vec::<String>::new());
+        assert!(config.env.iter().any(|(key, value)| {
+            key == "DIPLOMAT_DATA_DIR" && value.ends_with(r"Diplomat\data")
+        }));
+        assert!(config.env.iter().any(|(key, value)| {
+            key == "DIPLOMAT_FFMPEG_PATH" && value.ends_with("ffmpeg.exe")
+        }));
+        assert!(config.env.iter().any(|(key, value)| {
+            key == "DIPLOMAT_FFPROBE_PATH" && value.ends_with("ffprobe.exe")
+        }));
+        assert_eq!(config.mode, "packaged");
+    }
+
+    #[test]
+    fn development_worker_command_keeps_repo_app_dir() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let config = WorkerLaunchConfig::development(
+            PathBuf::from(r"D:\Software Project\Diplomat"),
+            &directories,
+            "ffmpeg".to_string(),
+            "ffprobe".to_string(),
+        );
+
+        assert_eq!(config.program, PathBuf::from("python"));
+        assert_eq!(
+            config.args,
+            vec![
+                "-m",
+                "uvicorn",
+                "diplomat_worker.api.app:app",
+                "--app-dir",
+                "worker",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8765",
+            ]
+        );
+        assert_eq!(
+            config.current_dir,
+            Some(PathBuf::from(r"D:\Software Project\Diplomat"))
+        );
+        assert_eq!(config.mode, "development");
     }
 
     #[test]
