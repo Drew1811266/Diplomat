@@ -7,10 +7,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from diplomat_worker.schemas.subtitle import SubtitleDocument
+from diplomat_worker.schemas.subtitle import SubtitleDocument, SubtitleStyle
 
 SCHEMA_VERSION = 6
 SUBTITLE_SNAPSHOT_SCHEMA_VERSION = "diplomat.subtitle-snapshot.v1"
+STYLE_PRESET_SCHEMA_VERSION = "diplomat.style-presets.v1"
 SUBTITLE_SNAPSHOT_REASONS = {
     "manual",
     "analysis_overwrite",
@@ -132,6 +133,22 @@ class SubtitleSnapshotRecord:
     created_at: str
     line_count: int
     document: SubtitleDocument
+
+
+@dataclass(frozen=True)
+class StylePresetRecord:
+    id: str
+    name: str
+    style: SubtitleStyle
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class StylePresetListRecord:
+    project_id: str
+    active_preset_id: str | None
+    presets: list[StylePresetRecord]
 
 
 @dataclass(frozen=True)
@@ -652,6 +669,9 @@ class ProjectStore:
                 for item in snapshots_dir.rglob("*.diplomat-snapshot.json"):
                     if item.is_file():
                         archive.write(item, Path("snapshots") / item.relative_to(snapshots_dir))
+            style_presets_path = project.project_dir / "style-presets.diplomat.json"
+            if style_presets_path.is_file():
+                archive.write(style_presets_path, "style-presets.diplomat.json")
             settings = self.get_translation_settings(project.project_id)
             archive.writestr(
                 "translation-settings.json",
@@ -733,6 +753,12 @@ class ProjectStore:
                     json.dumps(self._subtitle_snapshot_payload(record), ensure_ascii=False, indent=2),
                     encoding="utf-8",
                 )
+
+            if "style-presets.diplomat.json" in archive.namelist():
+                style_preset_payload = json.loads(archive.read("style-presets.diplomat.json").decode("utf-8"))
+                style_preset_payload["projectId"] = project.project_id
+                style_presets = self._style_preset_list_from_payload(style_preset_payload)
+                self._write_style_preset_list(project, style_presets)
 
             if "translation-settings.json" in archive.namelist():
                 settings = json.loads(archive.read("translation-settings.json").decode("utf-8"))
@@ -957,6 +983,116 @@ class ProjectStore:
             document=document,
         )
 
+    def _style_preset_path(self, project: ProjectRecord) -> Path:
+        return project.project_dir / "style-presets.diplomat.json"
+
+    def _style_preset_payload(self, record: StylePresetRecord) -> dict:
+        return {
+            "id": record.id,
+            "name": record.name,
+            "style": record.style.model_dump(by_alias=True),
+            "createdAt": record.created_at,
+            "updatedAt": record.updated_at,
+        }
+
+    def _style_preset_list_payload(self, record: StylePresetListRecord) -> dict:
+        return {
+            "schemaVersion": STYLE_PRESET_SCHEMA_VERSION,
+            "projectId": record.project_id,
+            "activePresetId": record.active_preset_id,
+            "presets": [self._style_preset_payload(preset) for preset in record.presets],
+        }
+
+    def _style_preset_from_payload(self, payload: dict) -> StylePresetRecord:
+        style = SubtitleStyle.model_validate(payload["style"])
+        return StylePresetRecord(
+            id=str(payload["id"]),
+            name=str(payload["name"]),
+            style=style,
+            created_at=str(payload["createdAt"]),
+            updated_at=str(payload["updatedAt"]),
+        )
+
+    def _style_preset_list_from_payload(self, payload: dict) -> StylePresetListRecord:
+        if payload.get("schemaVersion") != STYLE_PRESET_SCHEMA_VERSION:
+            raise ValueError("Unsupported style preset schema version")
+        project_id = str(payload["projectId"])
+        presets = [self._style_preset_from_payload(item) for item in payload.get("presets", [])]
+        active_preset_id = payload.get("activePresetId")
+        if active_preset_id is not None and not any(preset.id == active_preset_id for preset in presets):
+            active_preset_id = presets[0].id if presets else None
+        return StylePresetListRecord(
+            project_id=project_id,
+            active_preset_id=active_preset_id,
+            presets=presets,
+        )
+
+    def _read_style_preset_list(self, project: ProjectRecord) -> StylePresetListRecord:
+        path = self._style_preset_path(project)
+        if not path.is_file():
+            return self._default_style_preset_list(project)
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        record = self._style_preset_list_from_payload(payload)
+        if record.project_id != project.project_id:
+            raise ValueError("style preset project_id must match project_id")
+        if not record.presets:
+            return self._default_style_preset_list(project)
+        return record
+
+    def _write_style_preset_list(self, project: ProjectRecord, record: StylePresetListRecord) -> None:
+        if record.project_id != project.project_id:
+            raise ValueError("style preset project_id must match project_id")
+        path = self._style_preset_path(project)
+        path.write_text(
+            json.dumps(self._style_preset_list_payload(record), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        self.touch_project(project.project_id)
+
+    def _default_style_preset_list(self, project: ProjectRecord) -> StylePresetListRecord:
+        now = project.updated_at or self._utc_now()
+        style = self._project_default_style(project)
+        preset = StylePresetRecord(
+            id="preset-default",
+            name=style.name or "Default",
+            style=style.model_copy(update={"id": style.id or "default", "name": style.name or "Default"}),
+            created_at=now,
+            updated_at=now,
+        )
+        return StylePresetListRecord(
+            project_id=project.project_id,
+            active_preset_id=preset.id,
+            presets=[preset],
+        )
+
+    def _project_default_style(self, project: ProjectRecord) -> SubtitleStyle:
+        subtitle_path = project.project_dir / "subtitle.diplomat.json"
+        if subtitle_path.is_file():
+            try:
+                document = self.load_subtitle_document(project.project_id)
+                if document.styles:
+                    return document.styles[0]
+            except Exception:
+                pass
+        return self._fallback_subtitle_style()
+
+    def _fallback_subtitle_style(self) -> SubtitleStyle:
+        return SubtitleStyle(
+            id="default",
+            name="Default",
+            font_family="Arial",
+            font_size=36,
+            primary_color="#FFFFFF",
+            secondary_color="#14B8A6",
+            stroke_width=3,
+            shadow=1,
+            position="bottom-center",
+            margin_v=48,
+            alignment="center",
+            bilingual_layout="source-above-target",
+            line_spacing=1.15,
+        )
+
     def _record_from_row(self, row: sqlite3.Row) -> ProjectRecord:
         return ProjectRecord(
             project_id=row["project_id"],
@@ -1108,6 +1244,131 @@ class ProjectStore:
         record = self.load_subtitle_snapshot(project_id, snapshot_id)
         self.save_subtitle_document(project_id, record.document)
         return record.document
+
+    def list_style_presets(self, project_id: str) -> StylePresetListRecord:
+        project = self.get_project(project_id)
+        return self._read_style_preset_list(project)
+
+    def get_style_preset(self, project_id: str, preset_id: str) -> StylePresetRecord:
+        presets = self.list_style_presets(project_id)
+        for preset in presets.presets:
+            if preset.id == preset_id:
+                return preset
+        raise FileNotFoundError(f"Style preset not found: {preset_id}")
+
+    def create_style_preset(
+        self,
+        project_id: str,
+        name: str,
+        style: SubtitleStyle,
+    ) -> StylePresetRecord:
+        project = self.get_project(project_id)
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise ValueError("style preset name must not be empty")
+        presets = self._read_style_preset_list(project)
+        now = self._utc_now()
+        record = StylePresetRecord(
+            id=f"preset-{uuid.uuid4().hex}",
+            name=normalized_name,
+            style=style.model_copy(update={"name": normalized_name}),
+            created_at=now,
+            updated_at=now,
+        )
+        self._write_style_preset_list(
+            project,
+            StylePresetListRecord(
+                project_id=project_id,
+                active_preset_id=presets.active_preset_id,
+                presets=[*presets.presets, record],
+            ),
+        )
+        return record
+
+    def update_style_preset(
+        self,
+        project_id: str,
+        preset_id: str,
+        *,
+        name: str | None = None,
+        style: SubtitleStyle | None = None,
+    ) -> StylePresetRecord:
+        project = self.get_project(project_id)
+        presets = self._read_style_preset_list(project)
+        normalized_name = name.strip() if name is not None else None
+        if normalized_name == "":
+            raise ValueError("style preset name must not be empty")
+        now = self._utc_now()
+        updated_record: StylePresetRecord | None = None
+        updated_presets: list[StylePresetRecord] = []
+        for preset in presets.presets:
+            if preset.id != preset_id:
+                updated_presets.append(preset)
+                continue
+            next_name = normalized_name or preset.name
+            next_style = style or preset.style
+            next_style = next_style.model_copy(update={"name": next_name})
+            updated_record = StylePresetRecord(
+                id=preset.id,
+                name=next_name,
+                style=next_style,
+                created_at=preset.created_at,
+                updated_at=now,
+            )
+            updated_presets.append(updated_record)
+        if updated_record is None:
+            raise FileNotFoundError(f"Style preset not found: {preset_id}")
+        self._write_style_preset_list(
+            project,
+            StylePresetListRecord(
+                project_id=project_id,
+                active_preset_id=presets.active_preset_id,
+                presets=updated_presets,
+            ),
+        )
+        return updated_record
+
+    def delete_style_preset(self, project_id: str, preset_id: str) -> StylePresetListRecord:
+        project = self.get_project(project_id)
+        presets = self._read_style_preset_list(project)
+        next_presets = [preset for preset in presets.presets if preset.id != preset_id]
+        if len(next_presets) == len(presets.presets):
+            raise FileNotFoundError(f"Style preset not found: {preset_id}")
+        if not next_presets:
+            next_presets = self._default_style_preset_list(project).presets
+        active_preset_id = presets.active_preset_id
+        if active_preset_id == preset_id or not any(preset.id == active_preset_id for preset in next_presets):
+            active_preset_id = next_presets[0].id
+        record = StylePresetListRecord(
+            project_id=project_id,
+            active_preset_id=active_preset_id,
+            presets=next_presets,
+        )
+        self._write_style_preset_list(project, record)
+        return record
+
+    def apply_style_preset(self, project_id: str, preset_id: str) -> StylePresetListRecord:
+        project = self.get_project(project_id)
+        presets = self._read_style_preset_list(project)
+        selected = None
+        for preset in presets.presets:
+            if preset.id == preset_id:
+                selected = preset
+                break
+        if selected is None:
+            raise FileNotFoundError(f"Style preset not found: {preset_id}")
+
+        document = self.load_subtitle_document(project_id)
+        style = selected.style.model_copy(update={"name": selected.name})
+        next_styles = [style, *document.styles[1:]] if document.styles else [style]
+        self.save_subtitle_document(project_id, document.model_copy(update={"styles": next_styles}))
+        record = StylePresetListRecord(
+            project_id=project_id,
+            active_preset_id=selected.id,
+            presets=presets.presets,
+        )
+        self._write_style_preset_list(project, record)
+        return record
 
     def get_translation_settings(self, project_id: str) -> TranslationSettingsRecord:
         project = self.get_project(project_id)

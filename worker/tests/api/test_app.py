@@ -14,6 +14,7 @@ from diplomat_worker.api.schemas import (
     CreateProjectRequest,
     ProjectResponse,
     ProjectDiagnosticsResponse,
+    SubtitleExportRequest,
     SrtExportRequest,
     TranslationSettingsRequest,
 )
@@ -161,11 +162,17 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("GET", "/projects/{project_id}/subtitle/snapshots"),
         ("POST", "/projects/{project_id}/subtitle/snapshots"),
         ("POST", "/projects/{project_id}/subtitle/snapshots/{snapshot_id}/restore"),
+        ("GET", "/projects/{project_id}/style-presets"),
+        ("POST", "/projects/{project_id}/style-presets"),
+        ("PATCH", "/projects/{project_id}/style-presets/{preset_id}"),
+        ("DELETE", "/projects/{project_id}/style-presets/{preset_id}"),
+        ("POST", "/projects/{project_id}/style-presets/{preset_id}/apply"),
         ("GET", "/projects/{project_id}/translation-settings"),
         ("PUT", "/projects/{project_id}/translation-settings"),
         ("POST", "/projects/{project_id}/translation-jobs"),
         ("GET", "/projects/{project_id}/waveform"),
         ("POST", "/projects/{project_id}/waveform-jobs"),
+        ("POST", "/projects/{project_id}/exports/subtitles"),
         ("POST", "/projects/{project_id}/exports/srt"),
         ("GET", "/projects/{project_id}/subtitle"),
         ("PUT", "/projects/{project_id}/subtitle"),
@@ -361,7 +368,26 @@ def create_project_with_saved_subtitle(client: TestClient, tmp_path: Path) -> st
         "mediaId": "media-1",
         "durationMs": 1000,
         "speakers": [],
-        "styles": [],
+        "styles": [
+            {
+                "id": "default",
+                "name": "Default",
+                "fontFamily": "Arial",
+                "fontSize": 36,
+                "primaryColor": "#FFFFFF",
+                "secondaryColor": "#14B8A6",
+                "strokeWidth": 3,
+                "shadow": 1,
+                "position": "bottom-center",
+                "marginV": 48,
+                "alignment": "center",
+                "bilingualLayout": "source-above-target",
+                "lineSpacing": 1.15,
+                "backgroundBar": False,
+                "backgroundColor": "#000000cc",
+                "safeAreaMargin": 32,
+            }
+        ],
         "lines": [
             {
                 "id": "line-1",
@@ -455,6 +481,46 @@ def test_subtitle_snapshot_routes_create_list_and_restore(app_module, tmp_path: 
     assert restore_response.status_code == 200
     assert restore_response.json()["lines"][0]["sourceText"] == "Snapshot edit"
     assert missing_restore.status_code == 404
+
+
+def test_style_preset_routes_round_trip(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    client = TestClient(app_module.create_app(runtime))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+    style = client.get(f"/projects/{project_id}/subtitle").json()["styles"][0]
+
+    default_response = client.get(f"/projects/{project_id}/style-presets")
+    create_response = client.post(
+        f"/projects/{project_id}/style-presets",
+        json={"name": "Broadcast", "style": style},
+    )
+    preset_id = create_response.json()["id"]
+    list_response = client.get(f"/projects/{project_id}/style-presets")
+    rename_response = client.patch(
+        f"/projects/{project_id}/style-presets/{preset_id}",
+        json={"name": "Broadcast Renamed"},
+    )
+    apply_response = client.post(f"/projects/{project_id}/style-presets/{preset_id}/apply")
+    subtitle_response = client.get(f"/projects/{project_id}/subtitle")
+    delete_response = client.delete(f"/projects/{project_id}/style-presets/{preset_id}")
+    missing_response = client.patch(
+        f"/projects/{project_id}/style-presets/preset-missing",
+        json={"name": "Missing"},
+    )
+
+    assert default_response.status_code == 200
+    assert default_response.json()["activePresetId"] == "preset-default"
+    assert create_response.status_code == 201
+    assert create_response.json()["name"] == "Broadcast"
+    assert list_response.json()["presets"][-1]["id"] == preset_id
+    assert rename_response.status_code == 200
+    assert rename_response.json()["name"] == "Broadcast Renamed"
+    assert apply_response.status_code == 200
+    assert apply_response.json()["activePresetId"] == preset_id
+    assert subtitle_response.json()["styles"][0]["name"] == "Broadcast Renamed"
+    assert delete_response.status_code == 200
+    assert delete_response.json()["activePresetId"] == "preset-default"
+    assert missing_response.status_code == 404
 
 
 def test_project_source_media_endpoint_returns_source_file(app_module, tmp_path: Path) -> None:
@@ -646,6 +712,9 @@ def test_project_analyze_and_subtitle_round_trip(app_module, tmp_path: Path) -> 
 
     assert subtitle_response.status_code == 200
     document = subtitle_response.json()
+    for index, line in enumerate(document["lines"]):
+        line["startMs"] = index * 30_000
+        line["endMs"] = min((index + 1) * 30_000, document["durationMs"])
     document["lines"][0]["sourceText"] = "Edited text"
     document["lines"][0]["translatedText"] = "Translated text"
 
@@ -669,6 +738,70 @@ def test_project_analyze_and_subtitle_round_trip(app_module, tmp_path: Path) -> 
     assert export_path.exists()
     exported_srt = export_path.read_text(encoding="utf-8")
     assert "1\n00:00:00,000 --> 00:00:30,000\nEdited text\nTranslated text" in exported_srt
+
+
+def test_general_subtitle_export_writes_vtt_and_ass(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    client = TestClient(app_module.create_app(runtime))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+    document = client.get(f"/projects/{project_id}/subtitle").json()
+    document["lines"][0]["translatedText"] = "你好，世界"
+    client.put(f"/projects/{project_id}/subtitle", json={"document": document})
+
+    vtt_response = client.post(
+        f"/projects/{project_id}/exports/subtitles",
+        json={"format": "vtt", "mode": "bilingual"},
+    )
+    ass_response = client.post(
+        f"/projects/{project_id}/exports/subtitles",
+        json={"format": "ass", "mode": "target", "style": document["styles"][0]},
+    )
+
+    assert vtt_response.status_code == 200
+    assert vtt_response.json()["format"] == "vtt"
+    assert vtt_response.json()["exportPath"].endswith("subtitle-bilingual.vtt")
+    assert Path(vtt_response.json()["exportPath"]).read_text(encoding="utf-8").startswith("WEBVTT")
+    assert ass_response.status_code == 200
+    assert ass_response.json()["format"] == "ass"
+    ass_text = Path(ass_response.json()["exportPath"]).read_text(encoding="utf-8")
+    assert "[Events]" in ass_text
+    assert "你好，世界" in ass_text
+
+
+def test_general_subtitle_export_blocks_overlap(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    client = TestClient(app_module.create_app(runtime))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+    document = client.get(f"/projects/{project_id}/subtitle").json()
+    document["lines"].append({**document["lines"][0], "id": "line-overlap"})
+    save_response = client.put(f"/projects/{project_id}/subtitle", json={"document": document})
+
+    response = client.post(
+        f"/projects/{project_id}/exports/subtitles",
+        json={"format": "ass", "mode": "bilingual"},
+    )
+
+    assert save_response.status_code == 200
+    assert response.status_code == 409
+    assert any("overlap" in issue["code"] for issue in response.json()["detail"])
+
+
+def test_general_subtitle_export_returns_warnings(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    client = TestClient(app_module.create_app(runtime))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+    document = client.get(f"/projects/{project_id}/subtitle").json()
+    document["lines"][0]["endMs"] = 200
+    save_response = client.put(f"/projects/{project_id}/subtitle", json={"document": document})
+
+    response = client.post(
+        f"/projects/{project_id}/exports/subtitles",
+        json={"format": "srt", "mode": "source"},
+    )
+
+    assert save_response.status_code == 200
+    assert response.status_code == 200
+    assert response.json()["warnings"][0]["code"] == "too_short"
 
 
 def test_create_analysis_job_returns_accepted_task(app_module, tmp_path: Path) -> None:
@@ -1119,6 +1252,19 @@ def test_export_srt_before_subtitle_document_returns_404(app_module, tmp_path: P
     assert response.json()["detail"] == "Subtitle document not found"
 
 
+def test_general_subtitle_export_for_missing_style_preset_returns_404(app_module, tmp_path: Path) -> None:
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+
+    response = client.post(
+        f"/projects/{project_id}/exports/subtitles",
+        json={"format": "ass", "mode": "bilingual", "stylePresetId": "preset-missing"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Style preset not found"
+
+
 def test_export_srt_rejects_invalid_mode(app_module, tmp_path: Path) -> None:
     source_video = tmp_path / "source.mp4"
     source_video.write_bytes(b"fake-video")
@@ -1173,6 +1319,14 @@ def test_m2a_api_schemas_validate_project_payload(tmp_path: Path) -> None:
     assert request.source_video_path == source_video
     assert request.source_language == "zh"
     assert request.target_language == "en"
+
+
+def test_subtitle_export_request_defaults_to_srt_bilingual() -> None:
+    request = SubtitleExportRequest()
+
+    assert request.format == "srt"
+    assert request.mode == "bilingual"
+    assert request.style_preset_id is None
 
 
 def test_project_response_populates_by_field_name_and_dumps_by_alias(tmp_path: Path) -> None:

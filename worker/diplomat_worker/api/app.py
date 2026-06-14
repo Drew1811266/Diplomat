@@ -24,10 +24,18 @@ from diplomat_worker.api.schemas import (
     ProjectMaintenanceResponse,
     ProjectResponse,
     ProjectWarningResponse,
+    ExportValidationIssueResponse,
     SrtExportRequest,
     SrtExportResponse,
+    StylePresetApplyResponse,
+    StylePresetCreateRequest,
+    StylePresetListResponse,
+    StylePresetResponse,
+    StylePresetUpdateRequest,
     SubtitleDraftResponse,
     SubtitleDocumentRequest,
+    SubtitleExportRequest,
+    SubtitleExportResponse,
     SubtitleSnapshotCreateRequest,
     SubtitleSnapshotListResponse,
     SubtitleSnapshotResponse,
@@ -40,7 +48,12 @@ from diplomat_worker.api.schemas import (
 )
 from diplomat_worker.asr.config import AsrModelConfig
 from diplomat_worker.asr.resolver import AsrConfigurationError
-from diplomat_worker.export.srt import write_srt_export
+from diplomat_worker.export.text_subtitles import (
+    ExportValidationError,
+    ExportValidationIssue,
+    validate_subtitle_document_for_export,
+    write_subtitle_export,
+)
 from diplomat_worker.media.waveform import WaveformData, read_waveform_cache
 from diplomat_worker.models.manager import (
     ModelCatalogEntry as ModelCatalogEntryRecord,
@@ -54,6 +67,8 @@ from diplomat_worker.schemas.task import TaskResponse
 from diplomat_worker.storage.project_store import ModelInstallationRecord
 from diplomat_worker.storage.project_store import SubtitleDraftRecord
 from diplomat_worker.storage.project_store import SubtitleSnapshotRecord
+from diplomat_worker.storage.project_store import StylePresetListRecord
+from diplomat_worker.storage.project_store import StylePresetRecord
 from diplomat_worker.storage.project_store import TaskRecord
 from diplomat_worker.storage.project_store import StorageMigrationError
 from diplomat_worker.tasks.analysis import AnalysisJobManager
@@ -161,6 +176,44 @@ def subtitle_snapshot_response(snapshot: SubtitleSnapshotRecord) -> SubtitleSnap
         created_at=snapshot.created_at,
         line_count=snapshot.line_count,
         document=snapshot.document,
+    )
+
+
+def style_preset_response(preset: StylePresetRecord) -> StylePresetResponse:
+    return StylePresetResponse(
+        id=preset.id,
+        name=preset.name,
+        style=preset.style,
+        created_at=preset.created_at,
+        updated_at=preset.updated_at,
+    )
+
+
+def style_preset_list_response(presets: StylePresetListRecord) -> StylePresetListResponse:
+    return StylePresetListResponse(
+        project_id=presets.project_id,
+        active_preset_id=presets.active_preset_id,
+        presets=[style_preset_response(preset) for preset in presets.presets],
+    )
+
+
+def style_preset_apply_response(
+    presets: StylePresetListRecord,
+    preset: StylePresetRecord,
+) -> StylePresetApplyResponse:
+    return StylePresetApplyResponse(
+        project_id=presets.project_id,
+        active_preset_id=preset.id,
+        style=preset.style,
+    )
+
+
+def export_validation_issue_response(issue: ExportValidationIssue) -> ExportValidationIssueResponse:
+    return ExportValidationIssueResponse(
+        line_id=issue.line_id,
+        code=issue.code,
+        severity=issue.severity,
+        message=issue.message,
     )
 
 
@@ -829,6 +882,89 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/projects/{project_id}/style-presets", response_model=StylePresetListResponse)
+    def list_style_presets(project_id: str) -> StylePresetListResponse:
+        try:
+            return style_preset_list_response(get_runtime().store.list_style_presets(project_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post(
+        "/projects/{project_id}/style-presets",
+        response_model=StylePresetResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def create_style_preset(
+        project_id: str,
+        request: StylePresetCreateRequest,
+    ) -> StylePresetResponse:
+        try:
+            return style_preset_response(
+                get_runtime().store.create_style_preset(project_id, request.name, request.style)
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.patch(
+        "/projects/{project_id}/style-presets/{preset_id}",
+        response_model=StylePresetResponse,
+    )
+    def update_style_preset(
+        project_id: str,
+        preset_id: str,
+        request: StylePresetUpdateRequest,
+    ) -> StylePresetResponse:
+        try:
+            return style_preset_response(
+                get_runtime().store.update_style_preset(
+                    project_id,
+                    preset_id,
+                    name=request.name,
+                    style=request.style,
+                )
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Style preset not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete(
+        "/projects/{project_id}/style-presets/{preset_id}",
+        response_model=StylePresetListResponse,
+    )
+    def delete_style_preset(project_id: str, preset_id: str) -> StylePresetListResponse:
+        try:
+            return style_preset_list_response(get_runtime().store.delete_style_preset(project_id, preset_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Style preset not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post(
+        "/projects/{project_id}/style-presets/{preset_id}/apply",
+        response_model=StylePresetApplyResponse,
+    )
+    def apply_style_preset(project_id: str, preset_id: str) -> StylePresetApplyResponse:
+        active_runtime = get_runtime()
+        try:
+            presets = active_runtime.store.apply_style_preset(project_id, preset_id)
+            preset = active_runtime.store.get_style_preset(project_id, preset_id)
+            return style_preset_apply_response(presets, preset)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Style preset not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/projects/{project_id}/subtitle", response_model=SubtitleDocument)
     def get_subtitle(project_id: str) -> SubtitleDocument:
         active_runtime = get_runtime()
@@ -854,8 +990,8 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return request.document
 
-    @app.post("/projects/{project_id}/exports/srt", response_model=SrtExportResponse)
-    def export_srt(project_id: str, request: SrtExportRequest) -> SrtExportResponse:
+    @app.post("/projects/{project_id}/exports/subtitles", response_model=SubtitleExportResponse)
+    def export_subtitles(project_id: str, request: SubtitleExportRequest) -> SubtitleExportResponse:
         active_runtime = get_runtime()
         try:
             project = active_runtime.store.get_project(project_id)
@@ -866,10 +1002,48 @@ def create_app(
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail="Subtitle document not found") from exc
 
-        export_path = project.project_dir / "exports" / f"subtitle-{request.mode}.srt"
-        write_srt_export(document, export_path, mode=request.mode)
+        style = request.style
+        if style is None and request.style_preset_id is not None:
+            try:
+                style = active_runtime.store.get_style_preset(project_id, request.style_preset_id).style
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail="Style preset not found") from exc
+
+        try:
+            warnings = validate_subtitle_document_for_export(document)
+            export_path = project.project_dir / "exports" / f"subtitle-{request.mode}.{request.format}"
+            write_subtitle_export(document, export_path, request.format, request.mode, style=style)
+        except ExportValidationError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=[
+                    export_validation_issue_response(issue).model_dump(by_alias=True)
+                    for issue in exc.issues
+                ],
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
         active_runtime.store.touch_project(project_id)
-        return SrtExportResponse(project_id=project_id, export_path=str(export_path), mode=request.mode)
+        return SubtitleExportResponse(
+            project_id=project_id,
+            export_path=str(export_path),
+            format=request.format,
+            mode=request.mode,
+            warnings=[export_validation_issue_response(issue) for issue in warnings],
+        )
+
+    @app.post("/projects/{project_id}/exports/srt", response_model=SrtExportResponse)
+    def export_srt(project_id: str, request: SrtExportRequest) -> SrtExportResponse:
+        response = export_subtitles(
+            project_id,
+            SubtitleExportRequest(format="srt", mode=request.mode),
+        )
+        return SrtExportResponse(
+            project_id=response.project_id,
+            export_path=response.export_path,
+            mode=response.mode,
+        )
 
     return app
 

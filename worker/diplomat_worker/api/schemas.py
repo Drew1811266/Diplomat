@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from diplomat_worker.schemas.subtitle import SubtitleDocument
+from diplomat_worker.schemas.subtitle import SubtitleDocument, SubtitleStyle
 
 
 class CamelModel(BaseModel):
@@ -249,6 +249,36 @@ class SubtitleSnapshotListResponse(CamelModel):
     snapshots: list[SubtitleSnapshotSummaryResponse]
 
 
+class StylePresetResponse(CamelModel):
+    id: str
+    name: str
+    style: SubtitleStyle
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
+
+
+class StylePresetListResponse(CamelModel):
+    project_id: str = Field(alias="projectId")
+    active_preset_id: str | None = Field(default=None, alias="activePresetId")
+    presets: list[StylePresetResponse]
+
+
+class StylePresetCreateRequest(CamelModel):
+    name: str = Field(min_length=1)
+    style: SubtitleStyle
+
+
+class StylePresetUpdateRequest(CamelModel):
+    name: str | None = Field(default=None, min_length=1)
+    style: SubtitleStyle | None = None
+
+
+class StylePresetApplyResponse(CamelModel):
+    project_id: str = Field(alias="projectId")
+    active_preset_id: str = Field(alias="activePresetId")
+    style: SubtitleStyle
+
+
 class WaveformPeakResponse(CamelModel):
     index: int = Field(ge=0)
     start_ms: int = Field(alias="startMs", ge=0)
@@ -265,11 +295,45 @@ class WaveformResponse(CamelModel):
     peaks: list[WaveformPeakResponse]
 
 
+ExportFormat = Literal["srt", "vtt", "ass"]
+ExportMode = Literal["source", "target", "bilingual"]
+ExportValidationCode = Literal[
+    "negative_time",
+    "end_before_start",
+    "too_short",
+    "overlap_previous",
+    "overlap_next",
+    "overlong_text",
+]
+
+
+class ExportValidationIssueResponse(CamelModel):
+    line_id: str = Field(alias="lineId")
+    code: ExportValidationCode
+    severity: Literal["warning", "error"]
+    message: str
+
+
+class SubtitleExportRequest(CamelModel):
+    format: ExportFormat = "srt"
+    mode: ExportMode = "bilingual"
+    style_preset_id: str | None = Field(default=None, alias="stylePresetId")
+    style: SubtitleStyle | None = None
+
+
+class SubtitleExportResponse(CamelModel):
+    project_id: str = Field(alias="projectId")
+    export_path: str = Field(alias="exportPath")
+    format: ExportFormat
+    mode: ExportMode
+    warnings: list[ExportValidationIssueResponse] = Field(default_factory=list)
+
+
 class SrtExportRequest(CamelModel):
-    mode: Literal["source", "target", "bilingual"] = "bilingual"
+    mode: ExportMode = "bilingual"
 
 
 class SrtExportResponse(CamelModel):
     project_id: str = Field(alias="projectId")
     export_path: str = Field(alias="exportPath")
-    mode: Literal["source", "target", "bilingual"]
+    mode: ExportMode
