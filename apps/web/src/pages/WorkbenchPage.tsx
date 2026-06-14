@@ -1,4 +1,4 @@
-import { Box, Stack, Text } from "@mantine/core";
+import { Box, Button, Stack, Text } from "@mantine/core";
 import type {
   AnalysisJobRequest,
   SrtExportMode,
@@ -9,8 +9,10 @@ import type {
   TranslationJobRequest
 } from "@diplomat/shared";
 import { useMediaQuery } from "@mantine/hooks";
+import { IconWaveSine } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { projectMediaUrl } from "../api";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { AnalysisInspector } from "../components/inspectors/AnalysisInspector";
 import { ExportInspector } from "../components/inspectors/ExportInspector";
@@ -18,9 +20,11 @@ import { LineInspector } from "../components/inspectors/LineInspector";
 import { TranslationInspector } from "../components/inspectors/TranslationInspector";
 import { SubtitleGrid, type SubtitleGridFilter } from "../components/SubtitleGrid";
 import { TaskStatusSurface } from "../components/TaskStatusSurface";
+import { TimelineEditor } from "../components/TimelineEditor";
 import { TimelineStrip } from "../components/TimelineStrip";
 import { TopToolbar } from "../components/TopToolbar";
 import { VideoPreviewPanel } from "../components/VideoPreviewPanel";
+import { validateSubtitleTiming } from "../lib/timingValidation";
 import { useExportSrtMutation } from "../queries/exportQueries";
 import { useModelsQuery } from "../queries/modelQueries";
 import { useProjectQuery } from "../queries/projectQueries";
@@ -36,6 +40,10 @@ import {
   useCreateTranslationJobMutation,
   useRetryTaskMutation
 } from "../queries/taskQueries";
+import {
+  useCreateWaveformJobMutation,
+  useWaveformQuery
+} from "../queries/waveformQueries";
 import { useUiStore } from "../state/uiStore";
 
 const defaultAnalysisConfig: AnalysisJobRequest = {
@@ -119,6 +127,8 @@ export function WorkbenchPage() {
   const saveSubtitle = useSaveSubtitleDocumentMutation(activeProjectId);
   const createAnalysisJob = useCreateAnalysisJobMutation(activeProjectId);
   const createTranslationJob = useCreateTranslationJobMutation(activeProjectId);
+  const waveform = useWaveformQuery(activeProjectId);
+  const createWaveformJob = useCreateWaveformJobMutation(activeProjectId);
   const cancelTask = useCancelTaskMutation();
   const retryTask = useRetryTaskMutation();
   const exportSrt = useExportSrtMutation(activeProjectId);
@@ -130,6 +140,8 @@ export function WorkbenchPage() {
   const [exportResult, setExportResult] = useState<SrtExportResponse | null>(null);
   const [latestTask, setLatestTask] = useState<TaskResponse | null>(null);
   const [latestTaskId, setLatestTaskId] = useState<string | null>(null);
+  const [currentTimeMs, setCurrentTimeMs] = useState(0);
+  const [seekRequestMs, setSeekRequestMs] = useState<number | null>(null);
   const task = useTaskQuery(latestTaskId);
   const refetchedTaskId = useRef<string | null>(null);
   const polledTask = task.data;
@@ -145,6 +157,7 @@ export function WorkbenchPage() {
     isTaskActive(observedTask) ||
     createAnalysisJob.isPending ||
     createTranslationJob.isPending ||
+    createWaveformJob.isPending ||
     taskOperationPending;
   const canCancelTask = Boolean(observedTask && isTaskActive(observedTask) && !cancelTask.isPending);
   const canRetryCurrentTask = Boolean(
@@ -164,6 +177,7 @@ export function WorkbenchPage() {
   const taskStatusError =
     observedTask?.errorMessage ??
     getErrorMessage(task.error) ??
+    getErrorMessage(createWaveformJob.error) ??
     getErrorMessage(cancelTask.error) ??
     getErrorMessage(retryTask.error);
   const hasProjectError = project.isError;
@@ -192,6 +206,16 @@ export function WorkbenchPage() {
     () => subtitleLines.find((line) => line.id === selectedLineId) ?? null,
     [selectedLineId, subtitleLines]
   );
+  const timingValidation = useMemo(() => validateSubtitleTiming(subtitleLines), [subtitleLines]);
+  const activeLineId = useMemo(
+    () =>
+      subtitleLines.find(
+        (line) => currentTimeMs >= line.startMs && currentTimeMs < line.endMs
+      )?.id ?? null,
+    [currentTimeMs, subtitleLines]
+  );
+  const mediaUrl = activeProjectId ? projectMediaUrl(activeProjectId) : null;
+  const timelineDurationMs = subtitleDocument?.durationMs ?? project.data?.durationMs ?? 0;
 
   useEffect(() => {
     setDraftDocument(null);
@@ -203,6 +227,8 @@ export function WorkbenchPage() {
     setLatestTaskId(null);
     refetchedTaskId.current = null;
     setTranslationConfig(defaultTranslationConfig);
+    setCurrentTimeMs(0);
+    setSeekRequestMs(null);
   }, [activeProjectId]);
 
   useEffect(() => {
@@ -219,7 +245,10 @@ export function WorkbenchPage() {
     if (finishedTask.type === "analysis" || finishedTask.type === "translation") {
       void subtitle.refetch();
     }
-  }, [polledTask, subtitle.refetch]);
+    if (finishedTask.type === "waveform") {
+      void waveform.refetch();
+    }
+  }, [polledTask, subtitle.refetch, waveform.refetch]);
 
   function updateLine(nextLine: SubtitleLine) {
     if (!subtitleDocument) {
@@ -234,6 +263,20 @@ export function WorkbenchPage() {
         lines: sourceDocument.lines.map((line) => (line.id === nextLine.id ? nextLine : line))
       };
     });
+  }
+
+  function handleSelectLine(lineId: string) {
+    setSelectedLineId(lineId);
+    const line = subtitleLines.find((candidate) => candidate.id === lineId);
+    if (line) {
+      setSeekRequestMs(line.startMs);
+      setCurrentTimeMs(line.startMs);
+    }
+  }
+
+  function handleTimelineSeek(timeMs: number) {
+    setSeekRequestMs(timeMs);
+    setCurrentTimeMs(timeMs);
   }
 
   async function handleSave() {
@@ -271,6 +314,20 @@ export function WorkbenchPage() {
 
     try {
       const nextTask = await createTranslationJob.mutateAsync(translationConfig);
+      setLatestTask(nextTask);
+      setLatestTaskId(nextTask.taskId);
+    } catch {
+      // Mutation state surfaces the failure; avoid throwing from the UI event.
+    }
+  }
+
+  async function handleCreateWaveform() {
+    if (!activeProjectId) {
+      return;
+    }
+
+    try {
+      const nextTask = await createWaveformJob.mutateAsync();
       setLatestTask(nextTask);
       setLatestTaskId(nextTask.taskId);
     } catch {
@@ -445,6 +502,52 @@ export function WorkbenchPage() {
   }
 
   const dataNotice = renderDataNotice();
+  const timelinePanel =
+    activeProjectId && subtitleDocument ? (
+      <Box
+        style={{
+          minHeight: 156,
+          display: "grid",
+          gridTemplateRows: waveform.data ? "minmax(0, 1fr)" : "auto minmax(0, 1fr)"
+        }}
+      >
+        {waveform.data ? null : (
+          <Box
+            px="sm"
+            py={6}
+            bg="#0f172a"
+            style={{ borderTop: "1px solid #1e293b" }}
+          >
+            <Button
+              type="button"
+              size="compact-xs"
+              variant="light"
+              color="cyan"
+              leftSection={<IconWaveSine size={14} />}
+              disabled={!activeProjectId || taskActive}
+              loading={createWaveformJob.isPending}
+              onClick={() => void handleCreateWaveform()}
+            >
+              {t("timelineEditor.generateWaveform")}
+            </Button>
+          </Box>
+        )}
+        <TimelineEditor
+          durationMs={timelineDurationMs}
+          currentTimeMs={currentTimeMs}
+          lines={subtitleLines}
+          waveform={waveform.data ?? null}
+          selectedLineId={selectedLineId}
+          activeLineId={activeLineId}
+          timingIssuesByLineId={timingValidation.byLineId}
+          onSelectLine={handleSelectLine}
+          onSeek={handleTimelineSeek}
+          onChangeLine={updateLine}
+        />
+      </Box>
+    ) : (
+      <TimelineStrip durationMs={timelineDurationMs} lineCount={subtitleLines.length} />
+    );
 
   return (
     <Box
@@ -504,8 +607,10 @@ export function WorkbenchPage() {
         >
           <Box p="md" bg="#111827" style={{ minHeight: 0 }}>
             <VideoPreviewPanel
-              sourceVideoPath={activeProjectId ? project.data?.sourceVideoPath ?? null : null}
+              mediaUrl={mediaUrl}
               selectedLine={selectedLine}
+              seekRequestMs={seekRequestMs}
+              onTimeUpdate={setCurrentTimeMs}
             />
           </Box>
 
@@ -521,16 +626,15 @@ export function WorkbenchPage() {
             <SubtitleGrid
               lines={subtitleLines}
               selectedLineId={selectedLineId}
+              activeLineId={activeLineId}
+              timingIssuesByLineId={timingValidation.byLineId}
               filter={subtitleFilter}
               onFilterChange={setSubtitleFilter}
-              onSelectLine={setSelectedLineId}
+              onSelectLine={handleSelectLine}
             />
           </Box>
 
-          <TimelineStrip
-            durationMs={subtitleDocument?.durationMs ?? project.data?.durationMs ?? 0}
-            lineCount={subtitleLines.length}
-          />
+          {timelinePanel}
         </Box>
 
         <InspectorPanel mode={inspectorMode} layout={isNarrow ? "stacked" : "side"}>

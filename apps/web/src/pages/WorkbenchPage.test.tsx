@@ -1,6 +1,11 @@
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ModelCatalogResponse, SubtitleDocument, TaskResponse } from "@diplomat/shared";
+import type {
+  ModelCatalogResponse,
+  SubtitleDocument,
+  TaskResponse,
+  WaveformResponse
+} from "@diplomat/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appI18n } from "../app/i18n";
 import { useUiStore } from "../state/uiStore";
@@ -36,6 +41,32 @@ const refreshedSubtitleDocument = {
   ]
 };
 
+const waveformFixture: WaveformResponse = {
+  projectId: "project-demo",
+  durationMs: 12_000,
+  sampleRate: 8000,
+  peakCount: 2,
+  peaks: [
+    { index: 0, startMs: 0, endMs: 6000, min: -0.4, max: 0.7 },
+    { index: 1, startMs: 6000, endMs: 12_000, min: -0.6, max: 0.5 }
+  ]
+};
+
+const queuedWaveformTaskFixture: TaskResponse = {
+  taskId: "waveform-task-1",
+  projectId: "project-demo",
+  type: "waveform",
+  status: "queued",
+  progress: 0,
+  message: "Waveform queued",
+  startedAt: null,
+  updatedAt: "2026-06-07T00:00:01+00:00",
+  completedAt: null,
+  errorCode: null,
+  errorMessage: null,
+  diagnosticLogPath: null
+};
+
 const modelCatalogWithInstalledTranslation: ModelCatalogResponse = {
   models: modelCatalogFixture.models.map((model) =>
     model.modelId === "translation.opus-mt.zh-en"
@@ -58,6 +89,7 @@ const modelCatalogWithInstalledTranslation: ModelCatalogResponse = {
 };
 
 function stubMatchMedia(matches: boolean) {
+  vi.stubGlobal("PointerEvent", window.MouseEvent);
   vi.stubGlobal("matchMedia", () => ({
     matches,
     addEventListener: vi.fn(),
@@ -74,13 +106,16 @@ type ActiveProjectFetchOptions = {
   exportError?: { status: number; detail: string };
   cancelError?: { status: number; detail: string };
   retryError?: { status: number; detail: string };
+  waveformError?: { status: number; detail: string };
   analysisTask?: TaskResponse;
   translationTask?: TaskResponse;
+  waveformTask?: TaskResponse;
   cancelTask?: TaskResponse;
   retryTask?: TaskResponse;
   taskResponses?: TaskResponse[];
   subtitleDocuments?: SubtitleDocument[];
   modelCatalog?: ModelCatalogResponse;
+  waveform?: WaveformResponse | null;
 };
 
 function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
@@ -175,6 +210,30 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
       } as Response;
     }
 
+    if (url.endsWith("/projects/project-demo/waveform") && init?.method === undefined) {
+      if (options.waveformError) {
+        return errorResponse(options.waveformError);
+      }
+
+      if (options.waveform === null || options.waveform === undefined) {
+        return errorResponse({ status: 404, detail: "Waveform missing" });
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => options.waveform
+      } as Response;
+    }
+
+    if (url.endsWith("/projects/project-demo/waveform-jobs") && init?.method === "POST") {
+      return {
+        ok: true,
+        status: 202,
+        json: async () => options.waveformTask ?? queuedWaveformTaskFixture
+      } as Response;
+    }
+
     if (url.endsWith("/projects/project-demo/exports/srt") && init?.method === "POST") {
       if (options.exportError) {
         return errorResponse(options.exportError);
@@ -191,11 +250,11 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
       } as Response;
     }
 
-    if (url.endsWith("/tasks/task-1") && init?.method === undefined) {
+    if (/\/tasks\/[^/]+$/.test(url) && init?.method === undefined) {
       const task =
         options.taskResponses?.[
           Math.min(taskFetchCount, options.taskResponses.length - 1)
-        ] ?? completedAnalysisTaskFixture;
+        ] ?? (url.endsWith("/waveform-task-1") ? queuedWaveformTaskFixture : completedAnalysisTaskFixture);
       taskFetchCount += 1;
 
       return {
@@ -205,7 +264,7 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
       } as Response;
     }
 
-    if (url.endsWith("/tasks/task-1/cancel") && init?.method === "POST") {
+    if (/\/tasks\/[^/]+\/cancel$/.test(url) && init?.method === "POST") {
       if (options.cancelError) {
         return errorResponse(options.cancelError);
       }
@@ -224,7 +283,7 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
       } as Response;
     }
 
-    if (url.endsWith("/tasks/task-1/retry") && init?.method === "POST") {
+    if (/\/tasks\/[^/]+\/retry$/.test(url) && init?.method === "POST") {
       if (options.retryError) {
         return errorResponse(options.retryError);
       }
@@ -298,9 +357,85 @@ describe("WorkbenchPage", () => {
 
     expect(screen.getByRole("toolbar", { name: "Project tools" })).toBeInTheDocument();
     expect(screen.getByLabelText("Video preview")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Video preview media")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:8765/projects/project-demo/media/source"
+    );
     expect(await screen.findByLabelText("Subtitle Grid")).toBeInTheDocument();
     expect(screen.getByLabelText("Inspector")).toBeInTheDocument();
-    expect(screen.getByLabelText("Timeline")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Timeline editor" })).toBeInTheDocument();
+  });
+
+  it("clicks subtitle rows to select and seek the preview", async () => {
+    const user = userEvent.setup();
+    stubActiveProjectFetch({ waveform: waveformFixture });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    const media = (await screen.findByLabelText("Video preview media")) as HTMLVideoElement;
+    await user.click(await screen.findByRole("button", { name: "Select line line-1" }));
+
+    expect(screen.getByLabelText("Source text")).toHaveValue("查询字幕文本");
+    expect(media.currentTime).toBe(1);
+  });
+
+  it("highlights the active subtitle row from playback time", async () => {
+    stubActiveProjectFetch({ waveform: waveformFixture });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    const media = (await screen.findByLabelText("Video preview media")) as HTMLVideoElement;
+    media.currentTime = 1.2;
+    fireEvent.timeUpdate(media);
+
+    expect(await screen.findByTestId("subtitle-row-line-1")).toHaveAttribute("data-active", "true");
+  });
+
+  it("starts waveform generation from the timeline panel", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubActiveProjectFetch({ waveform: null });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Generate waveform" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/waveform-jobs$/),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(await screen.findByText("Queued · Waveform queued · 0%")).toBeInTheDocument();
+  });
+
+  it("drags timeline blocks into a subtitle draft that can be saved", async () => {
+    stubActiveProjectFetch({ waveform: waveformFixture });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    const track = await screen.findByTestId("timeline-track");
+    vi.spyOn(track, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 1000,
+      bottom: 160,
+      width: 1000,
+      height: 160,
+      toJSON: () => ({})
+    });
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Timeline block line-1" }), {
+      clientX: 200,
+      pointerId: 1
+    });
+    fireEvent.pointerMove(track, { clientX: 220, pointerId: 1 });
+    fireEvent.pointerUp(track, { clientX: 220, pointerId: 1 });
+
+    const toolbar = screen.getByRole("toolbar", { name: "Project tools" });
+    expect(within(toolbar).getByRole("button", { name: "Save" })).toBeEnabled();
+    expect(screen.getByText("00:01.250")).toBeInTheDocument();
   });
 
   it("stacks the inspector below media panes on narrow screens", () => {
@@ -740,7 +875,7 @@ describe("WorkbenchPage", () => {
     expect(screen.getByLabelText("视频预览")).toBeInTheDocument();
     expect(await screen.findByLabelText("字幕表格")).toBeInTheDocument();
     expect(screen.getByLabelText("检查器")).toBeInTheDocument();
-    expect(screen.getByLabelText("时间线")).toBeInTheDocument();
-    expect(await screen.findByText("1 行字幕")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "时间线编辑器" })).toBeInTheDocument();
+    expect(await screen.findByText("1 行")).toBeInTheDocument();
   });
 });

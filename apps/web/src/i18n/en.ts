@@ -141,7 +141,8 @@ export const en = {
     zoom: "Zoom timeline",
     blockLabel: "Timeline block {{id}}",
     resizeStart: "Resize start for {{id}}",
-    resizeEnd: "Resize end for {{id}}"
+    resizeEnd: "Resize end for {{id}}",
+    generateWaveform: "Generate waveform"
   },
   inspector: {
     line: "Line",

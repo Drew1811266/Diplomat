@@ -139,7 +139,8 @@ export const zh = {
     zoom: "缩放时间线",
     blockLabel: "时间线字幕块 {{id}}",
     resizeStart: "调整 {{id}} 开始时间",
-    resizeEnd: "调整 {{id}} 结束时间"
+    resizeEnd: "调整 {{id}} 结束时间",
+    generateWaveform: "生成波形"
   },
   inspector: {
     line: "字幕行",
