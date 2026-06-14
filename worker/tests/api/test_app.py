@@ -26,6 +26,7 @@ from diplomat_worker.models.manager import ModelDownloadManager
 from diplomat_worker.models.registry import ModelRegistryEntry
 from diplomat_worker.storage.project_store import ProjectStore
 from diplomat_worker.tasks.analysis import AnalysisJobManager
+from diplomat_worker.tasks.export import BurnInExportJobManager
 from diplomat_worker.tasks.translation import TranslationJobManager
 from diplomat_worker.tasks.waveform import WaveformJobManager
 
@@ -173,6 +174,7 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("GET", "/projects/{project_id}/waveform"),
         ("POST", "/projects/{project_id}/waveform-jobs"),
         ("POST", "/projects/{project_id}/exports/subtitles"),
+        ("POST", "/projects/{project_id}/exports/video"),
         ("POST", "/projects/{project_id}/exports/srt"),
         ("GET", "/projects/{project_id}/subtitle"),
         ("PUT", "/projects/{project_id}/subtitle"),
@@ -1263,6 +1265,41 @@ def test_general_subtitle_export_for_missing_style_preset_returns_404(app_module
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Style preset not found"
+
+
+def test_create_burn_in_export_job_returns_task(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    manager = BurnInExportJobManager(runtime, auto_start=False)
+    client = TestClient(app_module.create_app(runtime, export_jobs=manager))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+
+    response = client.post(
+        f"/projects/{project_id}/exports/video",
+        json={"mode": "bilingual", "videoCodec": "libx264", "crf": 18, "preset": "medium"},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["type"] == "export"
+    assert response.json()["status"] == "queued"
+    task_id = response.json()["taskId"]
+    assert runtime.store.get_task(task_id).request_payload["mode"] == "bilingual"
+
+
+def test_cancel_and_retry_export_task_dispatch_to_export_manager(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    manager = BurnInExportJobManager(runtime, auto_start=False)
+    client = TestClient(app_module.create_app(runtime, export_jobs=manager))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+    task = client.post(f"/projects/{project_id}/exports/video", json={"mode": "target"}).json()
+
+    canceled = client.post(f"/tasks/{task['taskId']}/cancel")
+    retry = client.post(f"/tasks/{task['taskId']}/retry")
+
+    assert canceled.status_code == 200
+    assert canceled.json()["status"] == "canceled"
+    assert retry.status_code == 202
+    assert retry.json()["type"] == "export"
+    assert retry.json()["taskId"] != task["taskId"]
 
 
 def test_export_srt_rejects_invalid_mode(app_module, tmp_path: Path) -> None:
