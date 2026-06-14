@@ -21,9 +21,15 @@ test("opens the demo project and exports subtitles from the workbench", async ({
     .click();
   await expect(page.getByRole("heading", { name: "Export" })).toBeVisible();
 
-  await page.getByTestId("inspector-body").getByRole("button", { name: "Export" }).click();
+  const inspector = page.getByTestId("inspector-body");
+  await inspector.getByLabel("Format").selectOption("ass");
+  await inspector.getByRole("button", { name: "Apply preset" }).click();
+  await inspector.getByLabel("Safe area").click();
+  await expect(page.getByTestId("subtitle-safe-area")).toBeVisible();
+
+  await inspector.getByRole("button", { name: "Export" }).click();
 
   await expect(
-    page.getByText("SRT exported: D:/Diplomat/exports/project-demo.bilingual.srt")
+    page.getByText("ASS exported: D:/Diplomat/exports/project-demo.bilingual.ass")
   ).toBeVisible();
 });

@@ -10,6 +10,7 @@ export const queryKeys = {
   subtitleDraft: (projectId: string) => ["projects", projectId, "subtitle", "draft"] as const,
   subtitleSnapshots: (projectId: string) =>
     ["projects", projectId, "subtitle", "snapshots"] as const,
+  stylePresets: (projectId: string) => ["projects", projectId, "style-presets"] as const,
   waveform: (projectId: string) => ["projects", projectId, "waveform"] as const,
   translationSettings: (projectId: string) =>
     ["projects", projectId, "translation-settings"] as const,

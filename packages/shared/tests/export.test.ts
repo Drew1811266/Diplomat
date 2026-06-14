@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { SrtExportRequestSchema, SrtExportResponseSchema } from "../src/export";
+import {
+  StylePresetCreateRequestSchema,
+  StylePresetListResponseSchema,
+  SubtitleExportRequestSchema,
+  SubtitleExportResponseSchema,
+  SrtExportRequestSchema,
+  SrtExportResponseSchema
+} from "../src/export";
+
+const style = {
+  id: "default",
+  name: "Default",
+  fontFamily: "Arial",
+  fontSize: 42,
+  primaryColor: "#ffffff",
+  secondaryColor: "#14b8a6",
+  strokeWidth: 2,
+  shadow: 1,
+  position: "bottom",
+  marginV: 48,
+  alignment: "center",
+  bilingualLayout: "source_top",
+  lineSpacing: 1.1,
+  backgroundBar: true,
+  backgroundColor: "#000000cc",
+  safeAreaMargin: 32
+};
 
 describe("SrtExportRequestSchema", () => {
   it("defaults the export mode to bilingual", () => {
@@ -23,5 +49,64 @@ describe("SrtExportResponseSchema", () => {
 
     expect(response.projectId).toBe("project-1");
     expect(response.mode).toBe("target");
+  });
+});
+
+describe("SubtitleExportRequestSchema", () => {
+  it("parses general subtitle export requests and warning responses", () => {
+    const request = SubtitleExportRequestSchema.parse({
+      format: "ass",
+      mode: "bilingual",
+      stylePresetId: "preset-default",
+      style
+    });
+
+    const response = SubtitleExportResponseSchema.parse({
+      projectId: "project-demo",
+      exportPath: "D:/Diplomat/projects/project-demo/exports/subtitle-bilingual.ass",
+      format: request.format,
+      mode: request.mode,
+      warnings: [
+        {
+          lineId: "line-1",
+          code: "too_short",
+          severity: "warning",
+          message: "Cue is shorter than 300ms."
+        }
+      ]
+    });
+
+    expect(response.format).toBe("ass");
+    expect(response.warnings[0]?.code).toBe("too_short");
+  });
+
+  it("defaults to SRT bilingual export without a preset or inline style", () => {
+    const request = SubtitleExportRequestSchema.parse({});
+
+    expect(request.format).toBe("srt");
+    expect(request.mode).toBe("bilingual");
+    expect(request.stylePresetId).toBeNull();
+    expect(request.style).toBeNull();
+  });
+});
+
+describe("StylePreset schemas", () => {
+  it("parses style preset requests and list responses", () => {
+    const create = StylePresetCreateRequestSchema.parse({ name: "Broadcast", style });
+    const list = StylePresetListResponseSchema.parse({
+      projectId: "project-demo",
+      activePresetId: "preset-default",
+      presets: [
+        {
+          id: "preset-default",
+          name: create.name,
+          style,
+          createdAt: "2026-06-14T00:00:00+00:00",
+          updatedAt: "2026-06-14T00:00:00+00:00"
+        }
+      ]
+    });
+
+    expect(list.presets[0]?.style.backgroundBar).toBe(true);
   });
 });

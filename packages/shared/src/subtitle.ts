@@ -62,7 +62,10 @@ export const SubtitleStyleSchema = z.object({
   marginV: z.number().int().nonnegative(),
   alignment: z.string().min(1),
   bilingualLayout: z.string().min(1),
-  lineSpacing: z.number().positive()
+  lineSpacing: z.number().positive(),
+  backgroundBar: z.boolean().default(false),
+  backgroundColor: z.string().min(1).default("#000000cc"),
+  safeAreaMargin: z.number().int().nonnegative().default(32)
 });
 
 export const SubtitleLineSchema = z

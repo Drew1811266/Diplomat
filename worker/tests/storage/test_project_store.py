@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from diplomat_worker.schemas.subtitle import AiOrigin, SubtitleDocument, SubtitleLine
+from diplomat_worker.schemas.subtitle import AiOrigin, SubtitleDocument, SubtitleLine, SubtitleStyle
 from diplomat_worker.storage.project_store import ProjectStore
 
 
@@ -12,6 +12,23 @@ def translated_document(project_id: str) -> SubtitleDocument:
         project_id=project_id,
         media_id="media-1",
         duration_ms=2500,
+        styles=[
+            SubtitleStyle(
+                id="default",
+                name="Default",
+                font_family="Arial",
+                font_size=36,
+                primary_color="#FFFFFF",
+                secondary_color="#14B8A6",
+                stroke_width=3,
+                shadow=1,
+                position="bottom-center",
+                margin_v=48,
+                alignment="center",
+                bilingual_layout="source-above-target",
+                line_spacing=1.15,
+            )
+        ],
         lines=[
             SubtitleLine(
                 id="line-1",
@@ -297,6 +314,72 @@ def test_subtitle_snapshot_round_trips_and_restores(tmp_path: Path) -> None:
     assert store.load_subtitle_document(project.project_id).lines[0].source_text == "修改"
 
 
+def test_style_presets_return_default_and_round_trip(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    project = store.create_project(
+        name="Demo",
+        source_video_path=tmp_path / "demo.mp4",
+        duration_ms=1000,
+        source_language="zh",
+        target_language="en",
+    )
+    document = translated_document(project.project_id)
+    store.save_subtitle_document(project.project_id, document)
+
+    defaults = store.list_style_presets(project.project_id)
+    created = store.create_style_preset(project.project_id, "Broadcast", defaults.presets[0].style)
+    renamed = store.update_style_preset(project.project_id, created.id, name="Broadcast Renamed")
+    applied = store.apply_style_preset(project.project_id, renamed.id)
+
+    assert defaults.project_id == project.project_id
+    assert defaults.active_preset_id == "preset-default"
+    assert defaults.presets[0].name == "Default"
+    assert created.name == "Broadcast"
+    assert renamed.name == "Broadcast Renamed"
+    assert renamed.style.name == "Broadcast Renamed"
+    assert applied.active_preset_id == renamed.id
+    assert store.get_style_preset(project.project_id, renamed.id).name == "Broadcast Renamed"
+    assert store.load_subtitle_document(project.project_id).styles[0].name == "Broadcast Renamed"
+
+
+def test_delete_active_style_preset_falls_back_to_default(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    project = store.create_project(
+        name="Demo",
+        source_video_path=tmp_path / "demo.mp4",
+        duration_ms=1000,
+        source_language="zh",
+        target_language="en",
+    )
+    document = translated_document(project.project_id)
+    store.save_subtitle_document(project.project_id, document)
+    preset = store.create_style_preset(project.project_id, "Temporary", document.styles[0])
+    store.apply_style_preset(project.project_id, preset.id)
+
+    remaining = store.delete_style_preset(project.project_id, preset.id)
+
+    assert remaining.active_preset_id == "preset-default"
+    assert [preset.name for preset in remaining.presets] == ["Default"]
+
+
+def test_style_preset_operations_validate_project_and_preset_ids(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    project = store.create_project(
+        name="Demo",
+        source_video_path=tmp_path / "demo.mp4",
+        duration_ms=1000,
+        source_language="zh",
+        target_language="en",
+    )
+    store.save_subtitle_document(project.project_id, translated_document(project.project_id))
+
+    with pytest.raises(ValueError, match="name"):
+        store.create_style_preset(project.project_id, " ", store.list_style_presets(project.project_id).presets[0].style)
+
+    with pytest.raises(FileNotFoundError):
+        store.get_style_preset(project.project_id, "preset-missing")
+
+
 def test_project_store_diagnostics_warn_when_source_video_is_missing(tmp_path: Path) -> None:
     store = ProjectStore(tmp_path / "diplomat.db")
     project = store.create_project(
@@ -412,13 +495,15 @@ def test_project_store_backup_and_import_round_trip(tmp_path: Path) -> None:
         update={"lines": [document.lines[0].model_copy(update={"source_text": "Snapshot source"})]}
     )
     store.save_subtitle_document(project.project_id, document)
-    store.save_subtitle_draft(project.project_id, draft_document)
     snapshot = store.create_subtitle_snapshot(
         project.project_id,
         reason="manual",
         label="Manual checkpoint",
         document=snapshot_document,
     )
+    preset = store.create_style_preset(project.project_id, "Broadcast", document.styles[0])
+    store.apply_style_preset(project.project_id, preset.id)
+    store.save_subtitle_draft(project.project_id, draft_document)
     export_file = project.project_dir / "exports" / "subtitle.srt"
     export_file.parent.mkdir(exist_ok=True)
     export_file.write_text("subtitle", encoding="utf-8")
@@ -437,6 +522,10 @@ def test_project_store_backup_and_import_round_trip(tmp_path: Path) -> None:
     assert len(imported_snapshots) == 1
     assert imported_snapshots[0].snapshot_id == snapshot.snapshot_id
     assert store.load_subtitle_snapshot(imported.project_id, snapshot.snapshot_id).project_id == imported.project_id
+    imported_presets = store.list_style_presets(imported.project_id)
+    assert imported_presets.project_id == imported.project_id
+    assert imported_presets.active_preset_id == preset.id
+    assert any(candidate.name == "Broadcast" for candidate in imported_presets.presets)
     assert (imported.project_dir / "exports" / "subtitle.srt").exists()
 
 

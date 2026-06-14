@@ -62,6 +62,9 @@ class SubtitleStyle(CamelModel):
     alignment: str = Field(min_length=1)
     bilingual_layout: str = Field(alias="bilingualLayout", min_length=1)
     line_spacing: float = Field(alias="lineSpacing", gt=0)
+    background_bar: bool = Field(default=False, alias="backgroundBar")
+    background_color: str = Field(default="#000000cc", alias="backgroundColor", min_length=1)
+    safe_area_margin: int = Field(default=32, alias="safeAreaMargin", ge=0)
 
 
 class StyleOverrides(CamelModel):

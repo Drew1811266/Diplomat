@@ -1,7 +1,10 @@
 import { test as base, expect, type Page, type Route } from "@playwright/test";
 import type {
+  ProjectDiagnostics,
   ProjectResponse,
+  StylePreset,
   SubtitleDocument,
+  SubtitleExportRequest,
   TaskResponse,
   TranslationSettingsResponse
 } from "@diplomat/shared";
@@ -11,8 +14,28 @@ const timestamp = "2026-06-07T00:00:00+00:00";
 
 const corsHeaders = {
   "access-control-allow-headers": "content-type",
-  "access-control-allow-methods": "GET,POST,PUT,OPTIONS",
+  "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
   "access-control-allow-origin": "*"
+};
+
+const demoDiagnostics: ProjectDiagnostics = {
+  status: "translated",
+  warnings: [],
+  sourceVideoExists: true,
+  projectDirExists: true,
+  diskUsageBytes: 4096,
+  cacheUsageBytes: 0,
+  exportUsageBytes: 0,
+  exportCount: 0,
+  subtitleLineCount: 2,
+  translatedLineCount: 1,
+  activeTaskCount: 0,
+  failedTaskCount: 0,
+  latestTaskStatus: null,
+  exportsDir: "D:/Diplomat/projects/project-demo/exports",
+  cacheDir: "D:/Diplomat/projects/project-demo/cache",
+  logsDir: "D:/Diplomat/projects/project-demo/logs",
+  backupsDir: "D:/Diplomat/projects/project-demo/backups"
 };
 
 export const demoProject: ProjectResponse = {
@@ -25,7 +48,8 @@ export const demoProject: ProjectResponse = {
   targetLanguage: "en",
   createdAt: timestamp,
   updatedAt: "2026-06-07T00:01:00+00:00",
-  hasSubtitleDocument: true
+  hasSubtitleDocument: true,
+  diagnostics: demoDiagnostics
 };
 
 export const demoSubtitleDocument: SubtitleDocument = {
@@ -56,7 +80,10 @@ export const demoSubtitleDocument: SubtitleDocument = {
       marginV: 48,
       alignment: "center",
       bilingualLayout: "source-above-target",
-      lineSpacing: 1.15
+      lineSpacing: 1.15,
+      backgroundBar: false,
+      backgroundColor: "#000000cc",
+      safeAreaMargin: 32
     }
   ],
   lines: [
@@ -133,6 +160,8 @@ const translationSettings: TranslationSettingsResponse = {
 type WorkerState = {
   projects: ProjectResponse[];
   subtitleDocument: SubtitleDocument;
+  stylePresets: StylePreset[];
+  activeStylePresetId: string | null;
   tasks: Map<string, TaskResponse>;
 };
 
@@ -258,6 +287,97 @@ async function routeWorkerRequest(route: Route, state: WorkerState) {
     return;
   }
 
+  if (method === "GET" && path === "/projects/project-demo/style-presets") {
+    await fulfillJson(route, {
+      projectId: "project-demo",
+      activePresetId: state.activeStylePresetId,
+      presets: state.stylePresets
+    });
+    return;
+  }
+
+  if (method === "POST" && path === "/projects/project-demo/style-presets") {
+    const body = await readRequestJson<{ name?: string; style?: SubtitleDocument["styles"][number] }>(
+      route
+    );
+    const preset: StylePreset = {
+      id: `preset-${state.stylePresets.length + 1}`,
+      name: body?.name ?? "Preset",
+      style: body?.style ?? state.subtitleDocument.styles[0]!,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    state.stylePresets = [...state.stylePresets, preset];
+    await fulfillJson(route, preset, 201);
+    return;
+  }
+
+  const stylePresetMatch = path.match(/^\/projects\/project-demo\/style-presets\/([^/]+)(?:\/apply)?$/);
+  if (stylePresetMatch) {
+    const presetId = stylePresetMatch[1];
+    const preset = state.stylePresets.find((candidate) => candidate.id === presetId);
+    if (!preset) {
+      await fulfillJson(route, { detail: "Style preset not found" }, 404);
+      return;
+    }
+
+    if (method === "PATCH" && !path.endsWith("/apply")) {
+      const body = await readRequestJson<{ name?: string; style?: SubtitleDocument["styles"][number] }>(
+        route
+      );
+      const updatedPreset: StylePreset = {
+        ...preset,
+        name: body?.name ?? preset.name,
+        style: body?.style ?? preset.style,
+        updatedAt: "2026-06-07T00:02:00+00:00"
+      };
+      state.stylePresets = state.stylePresets.map((candidate) =>
+        candidate.id === presetId ? updatedPreset : candidate
+      );
+      await fulfillJson(route, updatedPreset);
+      return;
+    }
+
+    if (method === "DELETE" && !path.endsWith("/apply")) {
+      state.stylePresets = state.stylePresets.filter((candidate) => candidate.id !== presetId);
+      state.activeStylePresetId = state.stylePresets[0]?.id ?? null;
+      await fulfillJson(route, {
+        projectId: "project-demo",
+        activePresetId: state.activeStylePresetId,
+        presets: state.stylePresets
+      });
+      return;
+    }
+
+    if (method === "POST" && path.endsWith("/apply")) {
+      state.activeStylePresetId = preset.id;
+      state.subtitleDocument = {
+        ...state.subtitleDocument,
+        styles: [{ ...preset.style, fontSize: 44, primaryColor: "#FFEECC" }]
+      };
+      await fulfillJson(route, {
+        projectId: "project-demo",
+        activePresetId: preset.id,
+      style: state.subtitleDocument.styles[0]!
+      });
+      return;
+    }
+  }
+
+  if (method === "POST" && path === "/projects/project-demo/exports/subtitles") {
+    const body = await readRequestJson<SubtitleExportRequest>(route);
+    const mode = body?.mode ?? "bilingual";
+    const format = body?.format ?? "srt";
+    await fulfillJson(route, {
+      projectId: "project-demo",
+      exportPath: `D:/Diplomat/exports/project-demo.${mode}.${format}`,
+      format,
+      mode,
+      warnings: []
+    });
+    return;
+  }
+
   if (method === "POST" && path === "/projects/project-demo/exports/srt") {
     const body = await readRequestJson<{ mode?: "source" | "target" | "bilingual" }>(route);
     await fulfillJson(route, {
@@ -301,6 +421,16 @@ async function installWorkerMocks(page: Page): Promise<WorkerState> {
   const state: WorkerState = {
     projects: [demoProject],
     subtitleDocument: structuredClone(demoSubtitleDocument),
+    stylePresets: [
+      {
+        id: "preset-default",
+        name: "Default",
+        style: structuredClone(demoSubtitleDocument.styles[0]!),
+        createdAt: timestamp,
+        updatedAt: timestamp
+      }
+    ],
+    activeStylePresetId: "preset-default",
     tasks: new Map([[completedTask.taskId, completedTask]])
   };
 

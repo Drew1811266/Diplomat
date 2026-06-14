@@ -11,6 +11,13 @@ import {
   ProjectListResponseSchema,
   ProjectMaintenanceResponseSchema,
   ProjectResponseSchema,
+  StylePresetApplyResponseSchema,
+  StylePresetCreateRequestSchema,
+  StylePresetListResponseSchema,
+  StylePresetSchema,
+  StylePresetUpdateRequestSchema,
+  SubtitleExportRequestSchema,
+  SubtitleExportResponseSchema,
   SrtExportResponseSchema,
   SubtitleDraftResponseSchema,
   SubtitleDocumentSchema,
@@ -34,6 +41,13 @@ import {
   type ProjectListResponse,
   type ProjectMaintenanceResponse,
   type ProjectResponse,
+  type StylePreset,
+  type StylePresetApplyResponse,
+  type StylePresetCreateRequest,
+  type StylePresetListResponse,
+  type StylePresetUpdateRequest,
+  type SubtitleExportRequestInput,
+  type SubtitleExportResponse,
   type SrtExportMode,
   type SrtExportResponse,
   type SubtitleDraftResponse,
@@ -542,5 +556,95 @@ export async function exportSrt(
       body: JSON.stringify({ mode })
     },
     (payload) => SrtExportResponseSchema.parse(payload)
+  );
+}
+
+export async function exportSubtitles(
+  projectId: string,
+  input: SubtitleExportRequestInput,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<SubtitleExportResponse> {
+  const request = SubtitleExportRequestSchema.parse(input);
+
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/exports/subtitles`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    },
+    (payload) => SubtitleExportResponseSchema.parse(payload)
+  );
+}
+
+export async function listStylePresets(
+  projectId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<StylePresetListResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/style-presets`,
+    undefined,
+    (payload) => StylePresetListResponseSchema.parse(payload)
+  );
+}
+
+export async function createStylePreset(
+  projectId: string,
+  input: StylePresetCreateRequest,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<StylePreset> {
+  const request = StylePresetCreateRequestSchema.parse(input);
+
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/style-presets`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    },
+    (payload) => StylePresetSchema.parse(payload)
+  );
+}
+
+export async function updateStylePreset(
+  projectId: string,
+  presetId: string,
+  input: StylePresetUpdateRequest,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<StylePreset> {
+  const request = StylePresetUpdateRequestSchema.parse(input);
+
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/style-presets/${presetId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    },
+    (payload) => StylePresetSchema.parse(payload)
+  );
+}
+
+export async function deleteStylePreset(
+  projectId: string,
+  presetId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<StylePresetListResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/style-presets/${presetId}`,
+    { method: "DELETE" },
+    (payload) => StylePresetListResponseSchema.parse(payload)
+  );
+}
+
+export async function applyStylePreset(
+  projectId: string,
+  presetId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<StylePresetApplyResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/style-presets/${presetId}/apply`,
+    { method: "POST" },
+    (payload) => StylePresetApplyResponseSchema.parse(payload)
   );
 }

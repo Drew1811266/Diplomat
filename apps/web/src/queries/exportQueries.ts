@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { SrtExportMode } from "@diplomat/shared";
-import { exportSrt } from "../api";
+import type { SrtExportMode, SubtitleExportRequestInput } from "@diplomat/shared";
+import { exportSrt, exportSubtitles } from "../api";
 import { queryKeys } from "./queryKeys";
 
 export function useExportSrtMutation(projectId: string | null) {
@@ -15,6 +15,25 @@ export function useExportSrtMutation(projectId: string | null) {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+    }
+  });
+}
+
+export function useSubtitleExportMutation(projectId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: SubtitleExportRequestInput) => {
+      if (!projectId) {
+        throw new Error("Project id is required to export subtitles.");
+      }
+      return exportSubtitles(projectId, input);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+      if (projectId) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
+      }
     }
   });
 }

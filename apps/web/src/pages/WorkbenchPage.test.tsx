@@ -339,6 +339,40 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
       } as Response;
     }
 
+    if (url.endsWith("/projects/project-demo/style-presets") && init?.method === undefined) {
+      const style = currentDocument.styles[0] ?? analyzedDocumentFixture.styles[0]!;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          projectId: "project-demo",
+          activePresetId: "preset-default",
+          presets: [
+            {
+              id: "preset-default",
+              name: style.name,
+              style,
+              createdAt: "2026-06-14T00:00:00+00:00",
+              updatedAt: "2026-06-14T00:00:00+00:00"
+            }
+          ]
+        })
+      } as Response;
+    }
+
+    if (/\/projects\/project-demo\/style-presets\/[^/]+\/apply$/.test(url) && init?.method === "POST") {
+      const style = currentDocument.styles[0] ?? analyzedDocumentFixture.styles[0]!;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          projectId: "project-demo",
+          activePresetId: "preset-default",
+          style: { ...style, fontSize: 48, primaryColor: "#ffeecc" }
+        })
+      } as Response;
+    }
+
     if (url.endsWith("/projects/project-demo/analysis-jobs") && init?.method === "POST") {
       if (options.analysisError) {
         return errorResponse(options.analysisError);
@@ -387,18 +421,21 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
       } as Response;
     }
 
-    if (url.endsWith("/projects/project-demo/exports/srt") && init?.method === "POST") {
+    if (url.endsWith("/projects/project-demo/exports/subtitles") && init?.method === "POST") {
       if (options.exportError) {
         return errorResponse(options.exportError);
       }
+      const body = JSON.parse(String(init.body)) as { format: string; mode: string };
 
       return {
         ok: true,
         status: 200,
         json: async () => ({
           projectId: "project-demo",
-          exportPath: "D:/Diplomat/projects/project-demo/demo.srt",
-          mode: "bilingual"
+          exportPath: `D:/Diplomat/projects/project-demo/demo.${body.format}`,
+          format: body.format,
+          mode: body.mode,
+          warnings: []
         })
       } as Response;
     }
@@ -1042,7 +1079,16 @@ describe("WorkbenchPage", () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringMatching(/\/projects\/project-demo\/exports\/srt$/),
+        expect.stringMatching(/\/projects\/project-demo\/exports\/subtitles$/),
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"format":"srt"')
+        })
+      )
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/exports\/subtitles$/),
         expect.objectContaining({
           method: "POST",
           body: expect.stringContaining('"mode":"bilingual"')
@@ -1052,6 +1098,79 @@ describe("WorkbenchPage", () => {
     expect(
       await screen.findByText("SRT exported: D:/Diplomat/projects/project-demo/demo.srt")
     ).toBeInTheDocument();
+  });
+
+  it("exports the selected ASS format through the subtitle export route", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubActiveProjectFetch();
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    await user.selectOptions(
+      within(screen.getByLabelText("Inspector")).getByRole("combobox", { name: "Format" }),
+      "ass"
+    );
+    await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Export" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/exports\/subtitles$/),
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"format":"ass"')
+        })
+      )
+    );
+    expect(
+      await screen.findByText("ASS exported: D:/Diplomat/projects/project-demo/demo.ass")
+    ).toBeInTheDocument();
+  });
+
+  it("blocks export when timing validation has errors", async () => {
+    const user = userEvent.setup();
+    const overlappingDocument: SubtitleDocument = {
+      ...twoLineSubtitleDocument,
+      lines: [
+        { ...twoLineSubtitleDocument.lines[0]!, startMs: 1000, endMs: 2500 },
+        { ...twoLineSubtitleDocument.lines[1]!, startMs: 2000, endMs: 3200 }
+      ]
+    };
+    stubActiveProjectFetch({ subtitleDocuments: [overlappingDocument] });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("First subtitle text")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Export" }));
+
+    const inspector = screen.getByLabelText("Inspector");
+    expect(within(inspector).getByText("Fix timing errors before exporting.")).toBeInTheDocument();
+    expect(within(inspector).getByRole("button", { name: "Export" })).toBeDisabled();
+  });
+
+  it("applies style presets and toggles safe area preview", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubActiveProjectFetch();
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    await user.click(within(screen.getByLabelText("Inspector")).getByLabelText("Safe area"));
+    expect(screen.getByTestId("subtitle-safe-area")).toBeInTheDocument();
+
+    await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Apply preset" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/style-presets\/preset-default\/apply$/),
+        { method: "POST" }
+      )
+    );
   });
 
   it("starts analysis with an installed curated ASR model when one is selected", async () => {
