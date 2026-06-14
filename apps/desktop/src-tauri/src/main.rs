@@ -238,14 +238,6 @@ fn worker_environment(directories: &RuntimeDirectories) -> Vec<(String, String)>
     vec![("DIPLOMAT_DATA_DIR".to_string(), directories.data.clone())]
 }
 
-fn configured_tool_path(configured: Option<&str>, fallback: &str) -> String {
-    configured
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(fallback)
-        .to_string()
-}
-
 fn packaged_resource_candidate(name: &str) -> Option<PathBuf> {
     env::current_exe()
         .ok()
@@ -977,20 +969,6 @@ mod tests {
         assert_eq!(status.path, "ffprobe");
         assert_eq!(status.version, None);
         assert_eq!(status.message, "exit code 1");
-    }
-
-    #[test]
-    fn configured_tool_path_uses_environment_before_default() {
-        let path = configured_tool_path(Some("C:/Tools/ffmpeg.exe"), "ffmpeg");
-
-        assert_eq!(path, "C:/Tools/ffmpeg.exe");
-    }
-
-    #[test]
-    fn configured_tool_path_uses_default_when_environment_is_empty() {
-        let path = configured_tool_path(Some("  "), "ffmpeg");
-
-        assert_eq!(path, "ffmpeg");
     }
 
     #[test]
