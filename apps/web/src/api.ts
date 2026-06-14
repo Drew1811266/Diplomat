@@ -12,7 +12,11 @@ import {
   ProjectMaintenanceResponseSchema,
   ProjectResponseSchema,
   SrtExportResponseSchema,
+  SubtitleDraftResponseSchema,
   SubtitleDocumentSchema,
+  SubtitleSnapshotCreateRequestSchema,
+  SubtitleSnapshotListResponseSchema,
+  SubtitleSnapshotResponseSchema,
   TaskResponseSchema,
   TranslationJobRequestSchema,
   TranslationSettingsResponseSchema,
@@ -32,7 +36,11 @@ import {
   type ProjectResponse,
   type SrtExportMode,
   type SrtExportResponse,
+  type SubtitleDraftResponse,
   type SubtitleDocument,
+  type SubtitleSnapshotCreateRequest,
+  type SubtitleSnapshotListResponse,
+  type SubtitleSnapshotResponse,
   type TaskResponse,
   type TranslationJobRequestInput,
   type TranslationSettingsResponse,
@@ -422,6 +430,85 @@ export async function fetchSubtitleDocument(
   return requestJson(
     `${baseUrl}/projects/${projectId}/subtitle`,
     undefined,
+    (payload) => SubtitleDocumentSchema.parse(payload)
+  );
+}
+
+export async function fetchSubtitleDraft(
+  projectId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<SubtitleDraftResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/subtitle/draft`,
+    undefined,
+    (payload) => SubtitleDraftResponseSchema.parse(payload)
+  );
+}
+
+export async function saveSubtitleDraft(
+  projectId: string,
+  document: SubtitleDocument,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<SubtitleDraftResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/subtitle/draft`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document })
+    },
+    (payload) => SubtitleDraftResponseSchema.parse(payload)
+  );
+}
+
+export async function deleteSubtitleDraft(
+  projectId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<ProjectMaintenanceResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/subtitle/draft`,
+    { method: "DELETE" },
+    (payload) => ProjectMaintenanceResponseSchema.parse(payload)
+  );
+}
+
+export async function listSubtitleSnapshots(
+  projectId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<SubtitleSnapshotListResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/subtitle/snapshots`,
+    undefined,
+    (payload) => SubtitleSnapshotListResponseSchema.parse(payload)
+  );
+}
+
+export async function createSubtitleSnapshot(
+  projectId: string,
+  input: SubtitleSnapshotCreateRequest,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<SubtitleSnapshotResponse> {
+  const request = SubtitleSnapshotCreateRequestSchema.parse(input);
+
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/subtitle/snapshots`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    },
+    (payload) => SubtitleSnapshotResponseSchema.parse(payload)
+  );
+}
+
+export async function restoreSubtitleSnapshot(
+  projectId: string,
+  snapshotId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<SubtitleDocument> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/subtitle/snapshots/${snapshotId}/restore`,
+    { method: "POST" },
     (payload) => SubtitleDocumentSchema.parse(payload)
   );
 }

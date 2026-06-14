@@ -144,6 +144,41 @@ export const en = {
     resizeEnd: "Resize end for {{id}}",
     generateWaveform: "Generate waveform"
   },
+  editorCommands: {
+    toolbar: "Editor commands",
+    undo: "Undo",
+    redo: "Redo",
+    split: "Split line",
+    mergePrevious: "Merge previous",
+    mergeNext: "Merge next",
+    offsetMs: "Offset milliseconds",
+    offsetScope: "Offset scope",
+    applyOffset: "Apply offset",
+    shortcuts: "Keyboard shortcuts",
+    scopes: {
+      selected: "Selected",
+      all: "All",
+      afterPlayhead: "After playhead"
+    }
+  },
+  recovery: {
+    region: "Recovery",
+    autosavedDraft: "Autosaved draft",
+    draftMeta: "{{count}} lines · {{updatedAt}}",
+    snapshots: "Snapshots",
+    restoreDraft: "Restore draft",
+    discardDraft: "Discard draft",
+    createSnapshot: "Create snapshot",
+    restoreSnapshot: "Restore snapshot {{label}}",
+    manualSnapshotLabel: "Manual checkpoint",
+    batchTimingSnapshotLabel: "Before batch timing"
+  },
+  shortcuts: {
+    title: "Keyboard shortcuts",
+    split: "Split selected line",
+    undo: "Undo edit",
+    redo: "Redo edit"
+  },
   inspector: {
     line: "Line",
     analysis: "Analysis",

@@ -129,6 +129,23 @@ def test_analysis_job_completes_with_fake_asr(tmp_path: Path) -> None:
     assert runtime.store.load_subtitle_document(project_id).lines
 
 
+def test_analysis_job_snapshots_existing_stable_subtitle_before_overwrite(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    project_id = create_project(runtime, tmp_path)
+    manager = AnalysisJobManager(runtime, auto_start=False)
+    first_task = manager.create_analysis_job(project_id, AsrModelConfig(provider="fake"))
+    manager.run_pending_once()
+
+    second_task = manager.create_analysis_job(project_id, AsrModelConfig(provider="fake"))
+    snapshots = runtime.store.list_subtitle_snapshots(project_id)
+
+    assert first_task.task_id != second_task.task_id
+    assert len(snapshots) == 1
+    assert snapshots[0].reason == "analysis_overwrite"
+    assert snapshots[0].label == "Before analysis overwrite"
+    assert snapshots[0].document.lines
+
+
 def test_cancel_queued_analysis_job(tmp_path: Path) -> None:
     runtime = make_runtime(tmp_path)
     project_id = create_project(runtime, tmp_path)

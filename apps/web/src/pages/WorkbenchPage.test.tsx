@@ -2,7 +2,9 @@ import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import type {
   ModelCatalogResponse,
+  SubtitleDraftResponse,
   SubtitleDocument,
+  SubtitleSnapshotSummary,
   TaskResponse,
   WaveformResponse
 } from "@diplomat/shared";
@@ -39,6 +41,55 @@ const refreshedSubtitleDocument = {
       sourceText: "Server refreshed subtitle"
     }
   ]
+};
+
+const twoLineSubtitleDocument: SubtitleDocument = {
+  ...liveSubtitleDocument,
+  lines: [
+    {
+      ...liveSubtitleDocument.lines[0],
+      sourceText: "First subtitle text",
+      endMs: 1800,
+      words: [{ text: "First subtitle text", startMs: 1000, endMs: 1800, confidence: 0.95 }]
+    },
+    {
+      ...liveSubtitleDocument.lines[0],
+      id: "line-2",
+      startMs: 1900,
+      endMs: 3200,
+      sourceText: "Second subtitle text",
+      translatedText: "Second translation",
+      words: [{ text: "Second subtitle text", startMs: 1900, endMs: 3200, confidence: 0.93 }],
+      translationStatus: "translated",
+      translationOrigin: { provider: "fake", model: "fake-v1" }
+    }
+  ]
+};
+
+const serverDraftDocument: SubtitleDocument = {
+  ...liveSubtitleDocument,
+  lines: [
+    {
+      ...liveSubtitleDocument.lines[0],
+      sourceText: "Recovered server draft"
+    }
+  ]
+};
+
+const serverDraftFixture: SubtitleDraftResponse = {
+  projectId: "project-demo",
+  updatedAt: "2026-06-14T00:00:00+00:00",
+  lineCount: serverDraftDocument.lines.length,
+  document: serverDraftDocument
+};
+
+const manualSnapshotFixture: SubtitleSnapshotSummary = {
+  snapshotId: "snapshot-manual-1",
+  projectId: "project-demo",
+  reason: "manual",
+  label: "Manual checkpoint",
+  createdAt: "2026-06-14T00:01:00+00:00",
+  lineCount: liveSubtitleDocument.lines.length
 };
 
 const waveformFixture: WaveformResponse = {
@@ -95,6 +146,14 @@ function stubMatchMedia(matches: boolean) {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn()
   }));
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    }
+  );
 }
 
 type ActiveProjectFetchOptions = {
@@ -114,12 +173,18 @@ type ActiveProjectFetchOptions = {
   retryTask?: TaskResponse;
   taskResponses?: TaskResponse[];
   subtitleDocuments?: SubtitleDocument[];
+  draft?: SubtitleDraftResponse | null;
+  snapshots?: SubtitleSnapshotSummary[];
+  snapshotDocument?: SubtitleDocument;
   modelCatalog?: ModelCatalogResponse;
   waveform?: WaveformResponse | null;
 };
 
 function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
   let currentDocument: SubtitleDocument = options.subtitleDocuments?.[0] ?? liveSubtitleDocument;
+  let currentDraft: SubtitleDraftResponse | null = options.draft ?? null;
+  let currentSnapshots = [...(options.snapshots ?? [])];
+  let restoredSnapshotDocument = options.snapshotDocument ?? currentDocument;
   let subtitleGetCount = 0;
   let taskFetchCount = 0;
 
@@ -179,6 +244,94 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
 
       const body = JSON.parse(String(init.body)) as { document: typeof liveSubtitleDocument };
       currentDocument = body.document;
+      currentDraft = null;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => currentDocument
+      } as Response;
+    }
+
+    if (url.endsWith("/projects/project-demo/subtitle/draft") && init?.method === undefined) {
+      if (!currentDraft) {
+        return errorResponse({ status: 404, detail: "Draft missing" });
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => currentDraft
+      } as Response;
+    }
+
+    if (url.endsWith("/projects/project-demo/subtitle/draft") && init?.method === "PUT") {
+      const body = JSON.parse(String(init.body)) as { document: SubtitleDocument };
+      currentDraft = {
+        projectId: "project-demo",
+        updatedAt: "2026-06-14T00:02:00+00:00",
+        lineCount: body.document.lines.length,
+        document: body.document
+      };
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => currentDraft
+      } as Response;
+    }
+
+    if (url.endsWith("/projects/project-demo/subtitle/draft") && init?.method === "DELETE") {
+      currentDraft = null;
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          projectId: "project-demo",
+          action: "clear_draft",
+          filesAffected: 1,
+          bytesAffected: 128,
+          message: "Draft cleared"
+        })
+      } as Response;
+    }
+
+    if (url.endsWith("/projects/project-demo/subtitle/snapshots") && init?.method === undefined) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ projectId: "project-demo", snapshots: currentSnapshots })
+      } as Response;
+    }
+
+    if (url.endsWith("/projects/project-demo/subtitle/snapshots") && init?.method === "POST") {
+      const body = JSON.parse(String(init.body)) as {
+        reason: SubtitleSnapshotSummary["reason"];
+        label: string | null;
+        document: SubtitleDocument | null;
+      };
+      restoredSnapshotDocument = body.document ?? currentDocument;
+      const summary: SubtitleSnapshotSummary = {
+        snapshotId: `snapshot-${currentSnapshots.length + 1}`,
+        projectId: "project-demo",
+        reason: body.reason,
+        label: body.label,
+        createdAt: "2026-06-14T00:03:00+00:00",
+        lineCount: restoredSnapshotDocument.lines.length
+      };
+      currentSnapshots = [summary, ...currentSnapshots];
+
+      return {
+        ok: true,
+        status: 201,
+        json: async () => ({ ...summary, document: restoredSnapshotDocument })
+      } as Response;
+    }
+
+    if (/\/projects\/project-demo\/subtitle\/snapshots\/[^/]+\/restore$/.test(url) && init?.method === "POST") {
+      currentDocument = restoredSnapshotDocument;
+      currentDraft = null;
+
       return {
         ok: true,
         status: 200,
@@ -560,6 +713,223 @@ describe("WorkbenchPage", () => {
       }
     });
     expect(within(toolbar).getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("restores a server draft into the local editor", async () => {
+    const user = userEvent.setup();
+    stubActiveProjectFetch({ draft: serverDraftFixture });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("Autosaved draft")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Restore draft" }));
+    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+
+    expect(screen.getByLabelText("Source text")).toHaveValue("Recovered server draft");
+    expect(within(screen.getByRole("toolbar", { name: "Project tools" })).getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  it("autosaves local subtitle edits to the server draft endpoint", async () => {
+    const fetchMock = stubActiveProjectFetch();
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await screen.findByText("查询字幕文本");
+    fireEvent.click(screen.getByRole("button", { name: "Select line line-1" }));
+    fireEvent.change(screen.getByLabelText("Source text"), {
+      target: { value: "Autosaved source" }
+    });
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/subtitle\/draft$/),
+        expect.objectContaining({
+          method: "PUT",
+          body: expect.stringContaining("Autosaved source")
+        })
+      )
+    );
+  });
+
+  it("stable save persists the subtitle document and clears draft recovery state", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubActiveProjectFetch();
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await screen.findByText("查询字幕文本");
+    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    fireEvent.change(screen.getByLabelText("Source text"), {
+      target: { value: "Stable saved source" }
+    });
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/subtitle\/draft$/),
+        expect.objectContaining({ method: "PUT" })
+      )
+    );
+
+    const toolbar = screen.getByRole("toolbar", { name: "Project tools" });
+    await user.click(within(toolbar).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/subtitle$/),
+        expect.objectContaining({
+          method: "PUT",
+          body: expect.stringContaining("Stable saved source")
+        })
+      )
+    );
+    expect(within(toolbar).getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.queryByRole("region", { name: "Recovery" })).not.toBeInTheDocument();
+  });
+
+  it("undoes and redoes text edits from the editor command bar", async () => {
+    const user = userEvent.setup();
+    stubActiveProjectFetch();
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await screen.findByText("查询字幕文本");
+    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    fireEvent.change(screen.getByLabelText("Source text"), {
+      target: { value: "Undo target" }
+    });
+
+    expect(screen.getByLabelText("Source text")).toHaveValue("Undo target");
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByLabelText("Source text")).toHaveValue("查询字幕文本");
+    await user.click(screen.getByRole("button", { name: "Redo" }));
+    expect(screen.getByLabelText("Source text")).toHaveValue("Undo target");
+  });
+
+  it("splits the selected subtitle line from the command bar", async () => {
+    const user = userEvent.setup();
+    stubActiveProjectFetch();
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await screen.findByText("查询字幕文本");
+    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Split line" }));
+
+    expect(await screen.findByRole("button", { name: "Select line line-1-split-1" })).toBeInTheDocument();
+  });
+
+  it("merges the next subtitle line from the command bar", async () => {
+    const user = userEvent.setup();
+    stubActiveProjectFetch({ subtitleDocuments: [twoLineSubtitleDocument] });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("First subtitle text")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Merge next" }));
+
+    expect(screen.queryByRole("button", { name: "Select line line-2" })).not.toBeInTheDocument();
+  });
+
+  it("creates a batch timing snapshot before applying an offset", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubActiveProjectFetch();
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await screen.findByText("查询字幕文本");
+    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    const offsetInput = screen.getByRole("textbox", { name: "Offset milliseconds" });
+    await user.clear(offsetInput);
+    await user.type(offsetInput, "250");
+    await user.click(screen.getByRole("button", { name: "Apply offset" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/subtitle\/snapshots$/),
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"reason":"batch_timing"')
+        })
+      )
+    );
+    expect(screen.getByText("00:01.250")).toBeInTheDocument();
+  });
+
+  it("blocks export when a server draft has not been resolved", async () => {
+    const user = userEvent.setup();
+    stubActiveProjectFetch({ draft: serverDraftFixture });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("Autosaved draft")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Export" }));
+
+    const inspector = screen.getByLabelText("Inspector");
+    expect(within(inspector).getByRole("button", { name: "Export" })).toBeDisabled();
+    expect(within(inspector).getByText("Save subtitle edits before exporting.")).toBeInTheDocument();
+  });
+
+  it("restores subtitle snapshots from the recovery panel", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubActiveProjectFetch({
+      snapshots: [manualSnapshotFixture],
+      snapshotDocument: {
+        ...liveSubtitleDocument,
+        lines: [
+          {
+            ...liveSubtitleDocument.lines[0],
+            sourceText: "Restored snapshot source"
+          }
+        ]
+      }
+    });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("Snapshots")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Restore snapshot Manual checkpoint" }));
+    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/subtitle\/snapshots\/snapshot-manual-1\/restore$/),
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(screen.getByLabelText("Source text")).toHaveValue("Restored snapshot source");
+  });
+
+  it("uses editor shortcuts outside editable fields but ignores text fields", async () => {
+    stubActiveProjectFetch();
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await screen.findByText("查询字幕文本");
+    fireEvent.click(screen.getByRole("button", { name: "Select line line-1" }));
+    fireEvent.keyDown(screen.getByLabelText("Source text"), { key: "s", code: "KeyS" });
+    expect(screen.queryByRole("button", { name: "Select line line-1-split-1" })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "s", code: "KeyS" });
+    expect(await screen.findByRole("button", { name: "Select line line-1-split-1" })).toBeInTheDocument();
+  });
+
+  it("uses keyboard undo and redo outside editable fields", async () => {
+    stubActiveProjectFetch();
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await screen.findByText("查询字幕文本");
+    fireEvent.click(screen.getByRole("button", { name: "Select line line-1" }));
+    fireEvent.change(screen.getByLabelText("Source text"), {
+      target: { value: "Keyboard undo target" }
+    });
+
+    fireEvent.keyDown(document, { key: "z", code: "KeyZ", ctrlKey: true });
+    expect(screen.getByLabelText("Source text")).toHaveValue("查询字幕文本");
+
+    fireEvent.keyDown(document, { key: "y", code: "KeyY", ctrlKey: true });
+    expect(screen.getByLabelText("Source text")).toHaveValue("Keyboard undo target");
   });
 
   it("keeps the local draft when a background subtitle refetch returns newer data", async () => {

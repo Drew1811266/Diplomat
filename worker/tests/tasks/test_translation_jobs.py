@@ -215,6 +215,43 @@ def test_overwrite_all_replaces_existing_translation(tmp_path: Path) -> None:
     assert line.translation_status == "translated"
 
 
+def test_overwrite_all_snapshots_existing_stable_subtitle_before_translation(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    project_id = create_project_with_document(runtime, tmp_path)
+    manager = TranslationJobManager(runtime, auto_start=False)
+
+    task = manager.create_translation_job(
+        project_id,
+        source_language="en",
+        target_language="zh",
+        mode="overwrite_all",
+        provider_config=TranslationProviderConfig(provider="fake"),
+    )
+    snapshots = runtime.store.list_subtitle_snapshots(project_id)
+
+    assert task.type == "translation"
+    assert len(snapshots) == 1
+    assert snapshots[0].reason == "translation_overwrite"
+    assert snapshots[0].label == "Before translation overwrite"
+    assert snapshots[0].document.lines[0].source_text == "Hello world"
+
+
+def test_missing_only_translation_does_not_create_overwrite_snapshot(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    project_id = create_project_with_document(runtime, tmp_path)
+    manager = TranslationJobManager(runtime, auto_start=False)
+
+    manager.create_translation_job(
+        project_id,
+        source_language="en",
+        target_language="zh",
+        mode="missing_only",
+        provider_config=TranslationProviderConfig(provider="fake"),
+    )
+
+    assert runtime.store.list_subtitle_snapshots(project_id) == []
+
+
 def test_translation_job_completes_with_installed_curated_translation_model(tmp_path: Path) -> None:
     entry = make_entry()
     captured_configs: list[TranslationProviderConfig] = []

@@ -155,6 +155,12 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("POST", "/projects/{project_id}/cleanup/cache"),
         ("POST", "/projects/{project_id}/cleanup/exports"),
         ("GET", "/projects/{project_id}/media/source"),
+        ("GET", "/projects/{project_id}/subtitle/draft"),
+        ("PUT", "/projects/{project_id}/subtitle/draft"),
+        ("DELETE", "/projects/{project_id}/subtitle/draft"),
+        ("GET", "/projects/{project_id}/subtitle/snapshots"),
+        ("POST", "/projects/{project_id}/subtitle/snapshots"),
+        ("POST", "/projects/{project_id}/subtitle/snapshots/{snapshot_id}/restore"),
         ("GET", "/projects/{project_id}/translation-settings"),
         ("PUT", "/projects/{project_id}/translation-settings"),
         ("POST", "/projects/{project_id}/translation-jobs"),
@@ -380,6 +386,75 @@ def create_project_with_saved_subtitle(client: TestClient, tmp_path: Path) -> st
     response = client.put(f"/projects/{project_id}/subtitle", json={"document": document})
     assert response.status_code == 200
     return project_id
+
+
+def test_subtitle_draft_routes_round_trip(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    client = TestClient(app_module.create_app(runtime))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+    document = client.get(f"/projects/{project_id}/subtitle").json()
+    document["lines"][0]["sourceText"] = "Draft edit"
+
+    missing_response = client.get(f"/projects/{project_id}/subtitle/draft")
+    save_response = client.put(f"/projects/{project_id}/subtitle/draft", json={"document": document})
+    load_response = client.get(f"/projects/{project_id}/subtitle/draft")
+    project_response = client.get(f"/projects/{project_id}")
+    clear_response = client.delete(f"/projects/{project_id}/subtitle/draft")
+    missing_after_clear = client.get(f"/projects/{project_id}/subtitle/draft")
+
+    assert missing_response.status_code == 404
+    assert save_response.status_code == 200
+    assert save_response.json()["lineCount"] == 1
+    assert load_response.status_code == 200
+    assert load_response.json()["document"]["lines"][0]["sourceText"] == "Draft edit"
+    assert project_response.json()["diagnostics"]["status"] == "dirty_draft"
+    assert clear_response.status_code == 200
+    assert clear_response.json()["action"] == "clear_draft"
+    assert missing_after_clear.status_code == 404
+
+
+def test_stable_subtitle_save_clears_draft_route(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    client = TestClient(app_module.create_app(runtime))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+    document = client.get(f"/projects/{project_id}/subtitle").json()
+    document["lines"][0]["sourceText"] = "Draft edit"
+    draft_response = client.put(f"/projects/{project_id}/subtitle/draft", json={"document": document})
+
+    assert draft_response.status_code == 200
+
+    stable_response = client.put(f"/projects/{project_id}/subtitle", json={"document": document})
+    draft_after_save = client.get(f"/projects/{project_id}/subtitle/draft")
+
+    assert stable_response.status_code == 200
+    assert draft_after_save.status_code == 404
+
+
+def test_subtitle_snapshot_routes_create_list_and_restore(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    client = TestClient(app_module.create_app(runtime))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+    document = client.get(f"/projects/{project_id}/subtitle").json()
+    document["lines"][0]["sourceText"] = "Snapshot edit"
+
+    create_response = client.post(
+        f"/projects/{project_id}/subtitle/snapshots",
+        json={"reason": "manual", "label": "Manual checkpoint", "document": document},
+    )
+    list_response = client.get(f"/projects/{project_id}/subtitle/snapshots")
+    restore_response = client.post(
+        f"/projects/{project_id}/subtitle/snapshots/{create_response.json()['snapshotId']}/restore"
+    )
+    missing_restore = client.post(f"/projects/{project_id}/subtitle/snapshots/snapshot-missing/restore")
+
+    assert create_response.status_code == 201
+    assert create_response.json()["reason"] == "manual"
+    assert create_response.json()["document"]["lines"][0]["sourceText"] == "Snapshot edit"
+    assert list_response.status_code == 200
+    assert list_response.json()["snapshots"][0]["label"] == "Manual checkpoint"
+    assert restore_response.status_code == 200
+    assert restore_response.json()["lines"][0]["sourceText"] == "Snapshot edit"
+    assert missing_restore.status_code == 404
 
 
 def test_project_source_media_endpoint_returns_source_file(app_module, tmp_path: Path) -> None:

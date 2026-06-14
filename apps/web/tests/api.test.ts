@@ -5,13 +5,16 @@ import {
   cancelModelDownload,
   createAnalysisJob,
   createProject,
+  createSubtitleSnapshot,
   createTranslationJob,
   createWaveformJob,
+  deleteSubtitleDraft,
   deleteModel,
   downloadModel,
   exportSrt,
   fetchModel,
   fetchProject,
+  fetchSubtitleDraft,
   fetchSubtitleDocument,
   fetchTask,
   fetchWaveform,
@@ -23,6 +26,9 @@ import {
   retryTask,
   retryModelDownload,
   runProjectAnalysis,
+  listSubtitleSnapshots,
+  restoreSubtitleSnapshot,
+  saveSubtitleDraft,
   saveTranslationSettings,
   saveSubtitleDocument
 } from "../src/api";
@@ -592,6 +598,119 @@ describe("worker API helpers", () => {
     await expect(fetchSubtitleDocument("project-1", baseUrl)).resolves.toEqual(subtitleDocument);
 
     expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/subtitle`, undefined);
+  });
+
+  it("fetchSubtitleDraft gets and parses an autosaved draft", async () => {
+    const response = {
+      projectId: "project-1",
+      updatedAt: "2026-06-14T00:00:00+00:00",
+      lineCount: 1,
+      document: subtitleDocument
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(fetchSubtitleDraft("project-1", baseUrl)).resolves.toEqual(response);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${baseUrl}/projects/project-1/subtitle/draft`,
+      undefined
+    );
+  });
+
+  it("saveSubtitleDraft puts JSON to the draft URL", async () => {
+    const response = {
+      projectId: "project-1",
+      updatedAt: "2026-06-14T00:00:00+00:00",
+      lineCount: 1,
+      document: subtitleDocument
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(saveSubtitleDraft("project-1", subtitleDocument, baseUrl)).resolves.toEqual(
+      response
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/subtitle/draft`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document: subtitleDocument })
+    });
+  });
+
+  it("deleteSubtitleDraft deletes the draft URL", async () => {
+    const response = {
+      projectId: "project-1",
+      action: "clear_draft",
+      filesAffected: 1,
+      bytesAffected: 0,
+      message: "Subtitle draft cleared."
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(deleteSubtitleDraft("project-1", baseUrl)).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/subtitle/draft`, {
+      method: "DELETE"
+    });
+  });
+
+  it("creates, lists, and restores subtitle snapshots", async () => {
+    const snapshotSummary = {
+      snapshotId: "snapshot-20260614000000000000-abcd1234",
+      projectId: "project-1",
+      reason: "manual",
+      label: "Manual checkpoint",
+      createdAt: "2026-06-14T00:00:00+00:00",
+      lineCount: 1
+    };
+    const snapshotResponse = { ...snapshotSummary, document: subtitleDocument };
+    const fetchMock = stubJsonResponse(snapshotResponse);
+
+    await expect(
+      createSubtitleSnapshot(
+        "project-1",
+        { reason: "manual", label: "Manual checkpoint", document: subtitleDocument },
+        baseUrl
+      )
+    ).resolves.toEqual(snapshotResponse);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${baseUrl}/projects/project-1/subtitle/snapshots`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reason: "manual",
+          label: "Manual checkpoint",
+          document: subtitleDocument
+        })
+      }
+    );
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ projectId: "project-1", snapshots: [snapshotSummary] })
+    } as Response);
+    await expect(listSubtitleSnapshots("project-1", baseUrl)).resolves.toEqual({
+      projectId: "project-1",
+      snapshots: [snapshotSummary]
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${baseUrl}/projects/project-1/subtitle/snapshots`,
+      undefined
+    );
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => subtitleDocument
+    } as Response);
+    await expect(
+      restoreSubtitleSnapshot("project-1", snapshotSummary.snapshotId, baseUrl)
+    ).resolves.toEqual(subtitleDocument);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${baseUrl}/projects/project-1/subtitle/snapshots/${snapshotSummary.snapshotId}/restore`,
+      { method: "POST" }
+    );
   });
 
   it("saveSubtitleDocument puts JSON to the subtitle URL and parses the response", async () => {

@@ -26,7 +26,12 @@ from diplomat_worker.api.schemas import (
     ProjectWarningResponse,
     SrtExportRequest,
     SrtExportResponse,
+    SubtitleDraftResponse,
     SubtitleDocumentRequest,
+    SubtitleSnapshotCreateRequest,
+    SubtitleSnapshotListResponse,
+    SubtitleSnapshotResponse,
+    SubtitleSnapshotSummaryResponse,
     TranslationJobRequest,
     TranslationSettingsRequest,
     TranslationSettingsResponse,
@@ -47,6 +52,8 @@ from diplomat_worker.pipeline.core import CorePipelineInput, run_core_pipeline
 from diplomat_worker.schemas.subtitle import SubtitleDocument
 from diplomat_worker.schemas.task import TaskResponse
 from diplomat_worker.storage.project_store import ModelInstallationRecord
+from diplomat_worker.storage.project_store import SubtitleDraftRecord
+from diplomat_worker.storage.project_store import SubtitleSnapshotRecord
 from diplomat_worker.storage.project_store import TaskRecord
 from diplomat_worker.storage.project_store import StorageMigrationError
 from diplomat_worker.tasks.analysis import AnalysisJobManager
@@ -120,6 +127,40 @@ def task_response(task: TaskRecord) -> TaskResponse:
         error_code=task.error_code,
         error_message=task.error_message,
         diagnostic_log_path=task.diagnostic_log_path,
+    )
+
+
+def subtitle_draft_response(draft: SubtitleDraftRecord) -> SubtitleDraftResponse:
+    return SubtitleDraftResponse(
+        project_id=draft.project_id,
+        updated_at=draft.updated_at,
+        line_count=draft.line_count,
+        document=draft.document,
+    )
+
+
+def subtitle_snapshot_summary_response(
+    snapshot: SubtitleSnapshotRecord,
+) -> SubtitleSnapshotSummaryResponse:
+    return SubtitleSnapshotSummaryResponse(
+        snapshot_id=snapshot.snapshot_id,
+        project_id=snapshot.project_id,
+        reason=snapshot.reason,
+        label=snapshot.label,
+        created_at=snapshot.created_at,
+        line_count=snapshot.line_count,
+    )
+
+
+def subtitle_snapshot_response(snapshot: SubtitleSnapshotRecord) -> SubtitleSnapshotResponse:
+    return SubtitleSnapshotResponse(
+        snapshot_id=snapshot.snapshot_id,
+        project_id=snapshot.project_id,
+        reason=snapshot.reason,
+        label=snapshot.label,
+        created_at=snapshot.created_at,
+        line_count=snapshot.line_count,
+        document=snapshot.document,
     )
 
 
@@ -690,6 +731,103 @@ def create_app(
             raise HTTPException(status_code=404, detail="Task not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/projects/{project_id}/subtitle/draft", response_model=SubtitleDraftResponse)
+    def get_subtitle_draft(project_id: str) -> SubtitleDraftResponse:
+        active_runtime = get_runtime()
+        try:
+            return subtitle_draft_response(active_runtime.store.get_subtitle_draft_record(project_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Subtitle draft not found") from exc
+
+    @app.put("/projects/{project_id}/subtitle/draft", response_model=SubtitleDraftResponse)
+    def put_subtitle_draft(
+        project_id: str,
+        request: SubtitleDocumentRequest,
+    ) -> SubtitleDraftResponse:
+        active_runtime = get_runtime()
+        try:
+            return subtitle_draft_response(
+                active_runtime.store.save_subtitle_draft(project_id, request.document)
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/projects/{project_id}/subtitle/draft", response_model=ProjectMaintenanceResponse)
+    def delete_subtitle_draft(project_id: str) -> ProjectMaintenanceResponse:
+        active_runtime = get_runtime()
+        try:
+            active_runtime.store.delete_subtitle_draft(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Subtitle draft not found") from exc
+        return ProjectMaintenanceResponse(
+            project_id=project_id,
+            action="clear_draft",
+            files_affected=1,
+            bytes_affected=0,
+            message="Subtitle draft cleared.",
+        )
+
+    @app.get(
+        "/projects/{project_id}/subtitle/snapshots",
+        response_model=SubtitleSnapshotListResponse,
+    )
+    def list_subtitle_snapshots(project_id: str) -> SubtitleSnapshotListResponse:
+        active_runtime = get_runtime()
+        try:
+            snapshots = active_runtime.store.list_subtitle_snapshots(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        return SubtitleSnapshotListResponse(
+            project_id=project_id,
+            snapshots=[subtitle_snapshot_summary_response(snapshot) for snapshot in snapshots],
+        )
+
+    @app.post(
+        "/projects/{project_id}/subtitle/snapshots",
+        response_model=SubtitleSnapshotResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def create_subtitle_snapshot(
+        project_id: str,
+        request: SubtitleSnapshotCreateRequest,
+    ) -> SubtitleSnapshotResponse:
+        active_runtime = get_runtime()
+        try:
+            snapshot = active_runtime.store.create_subtitle_snapshot(
+                project_id,
+                reason=request.reason,
+                label=request.label,
+                document=request.document,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Subtitle document not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return subtitle_snapshot_response(snapshot)
+
+    @app.post(
+        "/projects/{project_id}/subtitle/snapshots/{snapshot_id}/restore",
+        response_model=SubtitleDocument,
+    )
+    def restore_subtitle_snapshot(project_id: str, snapshot_id: str) -> SubtitleDocument:
+        active_runtime = get_runtime()
+        try:
+            return active_runtime.store.restore_subtitle_snapshot(project_id, snapshot_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Subtitle snapshot not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/projects/{project_id}/subtitle", response_model=SubtitleDocument)
     def get_subtitle(project_id: str) -> SubtitleDocument:

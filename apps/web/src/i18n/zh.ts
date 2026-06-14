@@ -142,6 +142,41 @@ export const zh = {
     resizeEnd: "调整 {{id}} 结束时间",
     generateWaveform: "生成波形"
   },
+  editorCommands: {
+    toolbar: "编辑命令",
+    undo: "撤销",
+    redo: "重做",
+    split: "分割字幕",
+    mergePrevious: "合并上一条",
+    mergeNext: "合并下一条",
+    offsetMs: "偏移毫秒",
+    offsetScope: "偏移范围",
+    applyOffset: "应用偏移",
+    shortcuts: "键盘快捷键",
+    scopes: {
+      selected: "选中",
+      all: "全部",
+      afterPlayhead: "播放头之后"
+    }
+  },
+  recovery: {
+    region: "恢复",
+    autosavedDraft: "自动保存草稿",
+    draftMeta: "{{count}} 行 · {{updatedAt}}",
+    snapshots: "快照",
+    restoreDraft: "恢复草稿",
+    discardDraft: "丢弃草稿",
+    createSnapshot: "创建快照",
+    restoreSnapshot: "恢复快照 {{label}}",
+    manualSnapshotLabel: "手动检查点",
+    batchTimingSnapshotLabel: "批量校时前"
+  },
+  shortcuts: {
+    title: "键盘快捷键",
+    split: "分割选中字幕",
+    undo: "撤销编辑",
+    redo: "重做编辑"
+  },
   inspector: {
     line: "字幕行",
     analysis: "分析",

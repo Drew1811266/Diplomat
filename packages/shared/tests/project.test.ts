@@ -8,7 +8,11 @@ import {
   ProjectMaintenanceResponseSchema,
   ProjectResponseSchema,
   ProjectStatusSchema,
+  SubtitleDraftResponseSchema,
   SubtitleDocumentRequestSchema,
+  SubtitleSnapshotCreateRequestSchema,
+  SubtitleSnapshotListResponseSchema,
+  SubtitleSnapshotResponseSchema,
   WaveformResponseSchema
 } from "../src/project";
 
@@ -255,6 +259,18 @@ describe("Project management schemas", () => {
     expect(backup.bytesWritten).toBe(1024);
   });
 
+  it("accepts clear draft maintenance responses", () => {
+    const response = ProjectMaintenanceResponseSchema.parse({
+      projectId: "project-1",
+      action: "clear_draft",
+      filesAffected: 1,
+      bytesAffected: 0,
+      message: "Subtitle draft cleared."
+    });
+
+    expect(response.action).toBe("clear_draft");
+  });
+
   it("accepts an import request with a restore name", () => {
     const request = ProjectImportRequestSchema.parse({
       packagePath: "D:/backups/demo.diplomat-project.zip",
@@ -285,6 +301,65 @@ describe("SubtitleDocumentRequestSchema", () => {
     const request = SubtitleDocumentRequestSchema.parse({ document: validDocument });
 
     expect(request.document.projectId).toBe("project-1");
+  });
+});
+
+describe("Subtitle draft and snapshot schemas", () => {
+  it("accepts a subtitle draft response", () => {
+    const draft = SubtitleDraftResponseSchema.parse({
+      projectId: "project-1",
+      updatedAt: "2026-06-14T00:00:00+00:00",
+      lineCount: 1,
+      document: validDocument
+    });
+
+    expect(draft.projectId).toBe("project-1");
+    expect(draft.lineCount).toBe(1);
+    expect(draft.document.lines[0]?.sourceText).toBe("你好");
+  });
+
+  it("accepts snapshot create requests with working documents", () => {
+    const request = SubtitleSnapshotCreateRequestSchema.parse({
+      reason: "batch_timing",
+      label: "Before batch offset",
+      document: validDocument
+    });
+
+    expect(request.reason).toBe("batch_timing");
+    expect(request.label).toBe("Before batch offset");
+    expect(request.document?.projectId).toBe("project-1");
+  });
+
+  it("accepts snapshot summaries and full snapshot responses", () => {
+    const summary = {
+      snapshotId: "snapshot-20260614000000000000-abcd1234",
+      projectId: "project-1",
+      reason: "manual",
+      label: "Manual checkpoint",
+      createdAt: "2026-06-14T00:00:00+00:00",
+      lineCount: 1
+    };
+    const list = SubtitleSnapshotListResponseSchema.parse({
+      projectId: "project-1",
+      snapshots: [summary]
+    });
+    const response = SubtitleSnapshotResponseSchema.parse({
+      ...summary,
+      document: validDocument
+    });
+
+    expect(list.snapshots[0]?.snapshotId).toBe(summary.snapshotId);
+    expect(response.document.projectId).toBe("project-1");
+  });
+
+  it("rejects unsupported snapshot reasons", () => {
+    expect(() =>
+      SubtitleSnapshotCreateRequestSchema.parse({
+        reason: "unsafe_reason",
+        label: null,
+        document: validDocument
+      })
+    ).toThrow();
   });
 });
 

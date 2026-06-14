@@ -7,6 +7,9 @@ export const queryKeys = {
   projects: ["projects"] as const,
   project: (projectId: string) => ["projects", projectId] as const,
   subtitle: (projectId: string) => ["projects", projectId, "subtitle"] as const,
+  subtitleDraft: (projectId: string) => ["projects", projectId, "subtitle", "draft"] as const,
+  subtitleSnapshots: (projectId: string) =>
+    ["projects", projectId, "subtitle", "snapshots"] as const,
   waveform: (projectId: string) => ["projects", projectId, "waveform"] as const,
   translationSettings: (projectId: string) =>
     ["projects", projectId, "translation-settings"] as const,

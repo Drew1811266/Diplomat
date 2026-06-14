@@ -220,6 +220,83 @@ def test_project_store_diagnostics_track_translated_exported_failed_and_corrupte
     assert diagnostics.warnings[0].code == "subtitle_corrupted"
 
 
+def test_subtitle_draft_round_trips_and_marks_project_dirty(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    project = store.create_project(
+        name="Demo",
+        source_video_path=tmp_path / "demo.mp4",
+        duration_ms=1000,
+        source_language="zh",
+        target_language="en",
+    )
+    document = translated_document(project.project_id)
+
+    draft = store.save_subtitle_draft(project.project_id, document)
+    loaded = store.load_subtitle_draft(project.project_id)
+    diagnostics = store.project_diagnostics(store.get_project(project.project_id))
+
+    assert draft.project_id == project.project_id
+    assert draft.line_count == 1
+    assert loaded.lines[0].source_text == "你好"
+    assert diagnostics.status == "dirty_draft"
+
+    store.delete_subtitle_draft(project.project_id)
+
+    with pytest.raises(FileNotFoundError):
+        store.load_subtitle_draft(project.project_id)
+
+
+def test_stable_subtitle_save_clears_draft(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    project = store.create_project(
+        name="Demo",
+        source_video_path=tmp_path / "demo.mp4",
+        duration_ms=1000,
+        source_language="zh",
+        target_language="en",
+    )
+    document = translated_document(project.project_id)
+
+    store.save_subtitle_draft(project.project_id, document)
+    store.save_subtitle_document(project.project_id, document)
+
+    assert not (project.project_dir / "draft.diplomat.json").exists()
+    assert store.project_diagnostics(store.get_project(project.project_id)).status == "translated"
+
+
+def test_subtitle_snapshot_round_trips_and_restores(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    project = store.create_project(
+        name="Demo",
+        source_video_path=tmp_path / "demo.mp4",
+        duration_ms=1000,
+        source_language="zh",
+        target_language="en",
+    )
+    original = translated_document(project.project_id)
+    edited_line = original.lines[0].model_copy(update={"source_text": "修改"})
+    edited = original.model_copy(update={"lines": [edited_line]})
+    store.save_subtitle_document(project.project_id, original)
+
+    snapshot = store.create_subtitle_snapshot(
+        project.project_id,
+        reason="batch_timing",
+        label="Before batch offset",
+        document=edited,
+    )
+    summaries = store.list_subtitle_snapshots(project.project_id)
+    loaded = store.load_subtitle_snapshot(project.project_id, snapshot.snapshot_id)
+    restored = store.restore_subtitle_snapshot(project.project_id, snapshot.snapshot_id)
+
+    assert snapshot.snapshot_id.startswith("snapshot-")
+    assert summaries[0].snapshot_id == snapshot.snapshot_id
+    assert summaries[0].reason == "batch_timing"
+    assert summaries[0].label == "Before batch offset"
+    assert loaded.document.lines[0].source_text == "修改"
+    assert restored.lines[0].source_text == "修改"
+    assert store.load_subtitle_document(project.project_id).lines[0].source_text == "修改"
+
+
 def test_project_store_diagnostics_warn_when_source_video_is_missing(tmp_path: Path) -> None:
     store = ProjectStore(tmp_path / "diplomat.db")
     project = store.create_project(
@@ -327,7 +404,21 @@ def test_project_store_backup_and_import_round_trip(tmp_path: Path) -> None:
         source_language="zh",
         target_language="en",
     )
-    store.save_subtitle_document(project.project_id, translated_document(project.project_id))
+    document = translated_document(project.project_id)
+    draft_document = document.model_copy(
+        update={"lines": [document.lines[0].model_copy(update={"source_text": "Draft source"})]}
+    )
+    snapshot_document = document.model_copy(
+        update={"lines": [document.lines[0].model_copy(update={"source_text": "Snapshot source"})]}
+    )
+    store.save_subtitle_document(project.project_id, document)
+    store.save_subtitle_draft(project.project_id, draft_document)
+    snapshot = store.create_subtitle_snapshot(
+        project.project_id,
+        reason="manual",
+        label="Manual checkpoint",
+        document=snapshot_document,
+    )
     export_file = project.project_dir / "exports" / "subtitle.srt"
     export_file.parent.mkdir(exist_ok=True)
     export_file.write_text("subtitle", encoding="utf-8")
@@ -341,6 +432,11 @@ def test_project_store_backup_and_import_round_trip(tmp_path: Path) -> None:
     assert imported.project_id != project.project_id
     assert imported.source_video_path == source
     assert store.has_subtitle_document(imported.project_id) is True
+    assert store.load_subtitle_draft(imported.project_id).project_id == imported.project_id
+    imported_snapshots = store.list_subtitle_snapshots(imported.project_id)
+    assert len(imported_snapshots) == 1
+    assert imported_snapshots[0].snapshot_id == snapshot.snapshot_id
+    assert store.load_subtitle_snapshot(imported.project_id, snapshot.snapshot_id).project_id == imported.project_id
     assert (imported.project_dir / "exports" / "subtitle.srt").exists()
 
 
