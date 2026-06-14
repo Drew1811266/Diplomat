@@ -16,6 +16,7 @@ import {
   TaskResponseSchema,
   TranslationJobRequestSchema,
   TranslationSettingsResponseSchema,
+  WaveformResponseSchema,
   type AnalysisJobRequestInput,
   type AnalysisJobRequest,
   type AnalyzeProjectResponse,
@@ -34,7 +35,8 @@ import {
   type SubtitleDocument,
   type TaskResponse,
   type TranslationJobRequestInput,
-  type TranslationSettingsResponse
+  type TranslationSettingsResponse,
+  type WaveformResponse
 } from "@diplomat/shared";
 
 const DEFAULT_WORKER_BASE_URL = "http://127.0.0.1:8765";
@@ -301,6 +303,32 @@ export async function fetchTask(
   return requestJson(
     `${baseUrl}/tasks/${taskId}`,
     undefined,
+    (payload) => TaskResponseSchema.parse(payload)
+  );
+}
+
+export function projectMediaUrl(projectId: string, baseUrl = defaultWorkerBaseUrl()): string {
+  return `${baseUrl}/projects/${encodeURIComponent(projectId)}/media/source`;
+}
+
+export async function fetchWaveform(
+  projectId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<WaveformResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/waveform`,
+    undefined,
+    (payload) => WaveformResponseSchema.parse(payload)
+  );
+}
+
+export async function createWaveformJob(
+  projectId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<TaskResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/waveform-jobs`,
+    { method: "POST" },
     (payload) => TaskResponseSchema.parse(payload)
   );
 }

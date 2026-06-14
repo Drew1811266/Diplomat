@@ -72,6 +72,7 @@ describe("SubtitleGrid", () => {
       <SubtitleGrid
         lines={makeLines()}
         selectedLineId="line-2"
+        activeLineId="line-1"
         filter="all"
         onFilterChange={() => undefined}
         onSelectLine={onSelectLine}
@@ -89,6 +90,7 @@ describe("SubtitleGrid", () => {
     expect(screen.getByText("原始字幕文本")).toBeInTheDocument();
     expect(screen.getByText("Second subtitle line")).toBeInTheDocument();
     expect(screen.getByTestId("subtitle-row-line-2")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("subtitle-row-line-1")).toHaveAttribute("data-active", "true");
 
     await user.click(screen.getByRole("button", { name: "Select line line-1" }));
 
@@ -103,6 +105,7 @@ describe("SubtitleGrid", () => {
       <SubtitleGrid
         lines={makeLines()}
         selectedLineId={null}
+        activeLineId={null}
         filter="all"
         onFilterChange={onFilterChange}
         onSelectLine={() => undefined}
@@ -116,6 +119,7 @@ describe("SubtitleGrid", () => {
       <SubtitleGrid
         lines={makeLines()}
         selectedLineId={null}
+        activeLineId={null}
         filter="missing"
         onFilterChange={onFilterChange}
         onSelectLine={() => undefined}
@@ -126,5 +130,30 @@ describe("SubtitleGrid", () => {
     expect(screen.getByText("失败字幕")).toBeInTheDocument();
     expect(screen.queryByText("Second subtitle line")).not.toBeInTheDocument();
     expect(screen.getByText("2 rows")).toBeInTheDocument();
+  });
+
+  it("shows timing issue badges on affected rows", () => {
+    renderWithProviders(
+      <SubtitleGrid
+        lines={makeLines()}
+        selectedLineId={null}
+        activeLineId={null}
+        timingIssuesByLineId={{
+          "line-2": [
+            {
+              lineId: "line-2",
+              code: "overlap_previous",
+              severity: "error"
+            }
+          ]
+        }}
+        filter="all"
+        onFilterChange={() => undefined}
+        onSelectLine={() => undefined}
+      />
+    );
+
+    expect(screen.getByTestId("subtitle-row-line-2")).toHaveAttribute("data-has-issues", "true");
+    expect(screen.getByText("1 timing issue")).toBeInTheDocument();
   });
 });

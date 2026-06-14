@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   AnalysisJobRequestSchema,
+  TaskTypeSchema,
   TaskResponseSchema,
   TranslationJobRequestSchema,
   TranslationSettingsResponseSchema
 } from "../src/task";
 
 describe("TaskResponseSchema", () => {
+  it("accepts waveform tasks", () => {
+    expect(TaskTypeSchema.parse("waveform")).toBe("waveform");
+  });
+
   it("accepts a running analysis task", () => {
     const task = TaskResponseSchema.parse({
       taskId: "task-1",

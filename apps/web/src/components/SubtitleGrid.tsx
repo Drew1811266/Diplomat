@@ -2,12 +2,15 @@ import { Badge, Box, Button, Group, Table, Text } from "@mantine/core";
 import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { SubtitleLine, TranslationStatus } from "@diplomat/shared";
+import type { TimingIssue } from "../lib/timingValidation";
 
 export type SubtitleGridFilter = "all" | "missing";
 
 type SubtitleGridProps = {
   lines: SubtitleLine[];
   selectedLineId: string | null;
+  activeLineId?: string | null;
+  timingIssuesByLineId?: Record<string, TimingIssue[]>;
   filter: SubtitleGridFilter;
   onFilterChange: (filter: SubtitleGridFilter) => void;
   onSelectLine: (lineId: string) => void;
@@ -39,6 +42,8 @@ function isMissingTranslation(line: SubtitleLine) {
 export function SubtitleGrid({
   lines,
   selectedLineId,
+  activeLineId = null,
+  timingIssuesByLineId = {},
   filter,
   onFilterChange,
   onSelectLine
@@ -131,19 +136,28 @@ export function SubtitleGrid({
             <Table.Tbody>
               {visibleLines.map((line) => {
                 const selected = line.id === selectedLineId;
+                const active = line.id === activeLineId;
+                const timingIssues = timingIssuesByLineId[line.id] ?? [];
+                const hasIssues = timingIssues.length > 0;
 
                 return (
                   <Table.Tr
                     key={line.id}
                     data-testid={`subtitle-row-${line.id}`}
+                    data-active={active ? "true" : undefined}
+                    data-has-issues={hasIssues ? "true" : undefined}
                     aria-selected={selected}
                     tabIndex={0}
                     onClick={() => onSelectLine(line.id)}
                     onKeyDown={(event) => handleRowKeyDown(event, line.id)}
                     style={{
                       cursor: "pointer",
-                      background: selected ? "#ccfbf1" : undefined,
-                      boxShadow: selected ? "inset 3px 0 0 #0f766e" : undefined
+                      background: selected ? "#ccfbf1" : active ? "#ecfeff" : undefined,
+                      boxShadow: selected
+                        ? "inset 3px 0 0 #0f766e"
+                        : active
+                          ? "inset 3px 0 0 #14b8a6"
+                          : undefined
                     }}
                   >
                     <Table.Td>
@@ -175,9 +189,16 @@ export function SubtitleGrid({
                       </Badge>
                     </Table.Td>
                     <Table.Td>
-                      <Badge size="xs" variant="light" color={translationStatusColor[line.translationStatus]}>
-                        {t(`subtitleGrid.translationStatus.${line.translationStatus}`)}
-                      </Badge>
+                      <Group gap={4} wrap="wrap">
+                        <Badge size="xs" variant="light" color={translationStatusColor[line.translationStatus]}>
+                          {t(`subtitleGrid.translationStatus.${line.translationStatus}`)}
+                        </Badge>
+                        {hasIssues ? (
+                          <Badge size="xs" variant="light" color="red">
+                            {t("subtitleGrid.timingIssueCount", { count: timingIssues.length })}
+                          </Badge>
+                        ) : null}
+                      </Group>
                     </Table.Td>
                   </Table.Tr>
                 );

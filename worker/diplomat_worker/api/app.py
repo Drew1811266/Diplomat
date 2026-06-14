@@ -3,6 +3,7 @@ import os
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from diplomat_worker import __version__
 from diplomat_worker.api.runtime import WorkerRuntime, create_default_runtime
@@ -29,10 +30,13 @@ from diplomat_worker.api.schemas import (
     TranslationJobRequest,
     TranslationSettingsRequest,
     TranslationSettingsResponse,
+    WaveformPeakResponse,
+    WaveformResponse,
 )
 from diplomat_worker.asr.config import AsrModelConfig
 from diplomat_worker.asr.resolver import AsrConfigurationError
 from diplomat_worker.export.srt import write_srt_export
+from diplomat_worker.media.waveform import WaveformData, read_waveform_cache
 from diplomat_worker.models.manager import (
     ModelCatalogEntry as ModelCatalogEntryRecord,
     ModelDeleteResponse as ModelDeleteResult,
@@ -47,6 +51,7 @@ from diplomat_worker.storage.project_store import TaskRecord
 from diplomat_worker.storage.project_store import StorageMigrationError
 from diplomat_worker.tasks.analysis import AnalysisJobManager
 from diplomat_worker.tasks.translation import TranslationJobManager
+from diplomat_worker.tasks.waveform import WaveformJobManager
 from diplomat_worker.translation.config import TranslationProviderConfig
 from diplomat_worker.translation.resolver import TranslationConfigurationError
 
@@ -242,10 +247,30 @@ def translation_settings_response(settings) -> TranslationSettingsResponse:
     )
 
 
+def waveform_response(data: WaveformData) -> WaveformResponse:
+    return WaveformResponse(
+        project_id=data.project_id,
+        duration_ms=data.duration_ms,
+        sample_rate=data.sample_rate,
+        peak_count=len(data.peaks),
+        peaks=[
+            WaveformPeakResponse(
+                index=peak.index,
+                start_ms=peak.start_ms,
+                end_ms=peak.end_ms,
+                min=peak.min,
+                max=peak.max,
+            )
+            for peak in data.peaks
+        ],
+    )
+
+
 def create_app(
     runtime: WorkerRuntime | None = None,
     analysis_jobs: AnalysisJobManager | None = None,
     translation_jobs: TranslationJobManager | None = None,
+    waveform_jobs: WaveformJobManager | None = None,
     model_downloads: ModelDownloadManager | None = None,
 ) -> FastAPI:
     app = FastAPI(
@@ -265,6 +290,7 @@ def create_app(
     app.state.runtime = runtime
     app.state.analysis_jobs = analysis_jobs
     app.state.translation_jobs = translation_jobs
+    app.state.waveform_jobs = waveform_jobs
     app.state.model_downloads = model_downloads
 
     def get_runtime() -> WorkerRuntime:
@@ -292,6 +318,13 @@ def create_app(
         if active_jobs is None:
             active_jobs = TranslationJobManager(get_runtime())
             app.state.translation_jobs = active_jobs
+        return active_jobs
+
+    def get_waveform_jobs() -> WaveformJobManager:
+        active_jobs = app.state.waveform_jobs
+        if active_jobs is None:
+            active_jobs = WaveformJobManager(get_runtime())
+            app.state.waveform_jobs = active_jobs
         return active_jobs
 
     def get_model_downloads() -> ModelDownloadManager:
@@ -500,6 +533,39 @@ def create_app(
             raise HTTPException(status_code=409, detail=exc.message) from exc
         return task_response(task)
 
+    @app.get("/projects/{project_id}/media/source")
+    def get_source_media(project_id: str) -> FileResponse:
+        try:
+            project = get_runtime().store.get_project(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        if not project.source_video_path.exists():
+            raise HTTPException(status_code=404, detail="Source media not found")
+        return FileResponse(project.source_video_path)
+
+    @app.get("/projects/{project_id}/waveform", response_model=WaveformResponse)
+    def get_waveform(project_id: str) -> WaveformResponse:
+        try:
+            project = get_runtime().store.get_project(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        cache_path = project.project_dir / "cache" / "waveform.json"
+        if not cache_path.exists():
+            raise HTTPException(status_code=404, detail="Waveform not found")
+        return waveform_response(read_waveform_cache(cache_path))
+
+    @app.post(
+        "/projects/{project_id}/waveform-jobs",
+        response_model=TaskResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def create_waveform_job(project_id: str) -> TaskResponse:
+        try:
+            task = get_waveform_jobs().create_waveform_job(project_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        return task_response(task)
+
     @app.get("/projects/{project_id}/translation-settings", response_model=TranslationSettingsResponse)
     def get_translation_settings(project_id: str) -> TranslationSettingsResponse:
         try:
@@ -583,6 +649,8 @@ def create_app(
                 return task_response(get_analysis_jobs().cancel_task(task_id))
             if task.type == "translation":
                 return task_response(get_translation_jobs().cancel_task(task_id))
+            if task.type == "waveform":
+                return task_response(get_waveform_jobs().cancel_task(task_id))
             raise HTTPException(status_code=409, detail=f"Task type cannot be canceled: {task.type}")
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Task not found") from exc
@@ -613,6 +681,8 @@ def create_app(
                         mode=retry_request.mode if retry_request is not None else None,
                     )
                 )
+            if task.type == "waveform":
+                return task_response(get_waveform_jobs().retry_task(task_id))
             raise HTTPException(status_code=409, detail=f"Task type cannot be retried: {task.type}")
         except json.JSONDecodeError as exc:
             raise HTTPException(status_code=400, detail="Invalid JSON body") from exc

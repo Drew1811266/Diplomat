@@ -79,6 +79,7 @@ export const zh = {
     labels: {
       projectTools: "项目工具",
       videoPreview: "视频预览",
+      videoPreviewMedia: "视频预览媒体",
       inspector: "检查器",
       timeline: "时间线"
     },
@@ -114,6 +115,7 @@ export const zh = {
       status: "状态"
     },
     selectLine: "选择字幕 {{id}}",
+    timingIssueCount: "{{count}} 个时间问题",
     empty: "暂无字幕行",
     noFilterMatches: "当前筛选下没有字幕行。",
     noSourceText: "无源文",
@@ -130,6 +132,15 @@ export const zh = {
       edited: "已编辑",
       failed: "失败"
     }
+  },
+  timelineEditor: {
+    region: "时间线编辑器",
+    title: "时间线",
+    zoom: "缩放时间线",
+    blockLabel: "时间线字幕块 {{id}}",
+    resizeStart: "调整 {{id}} 开始时间",
+    resizeEnd: "调整 {{id}} 结束时间",
+    generateWaveform: "生成波形"
   },
   inspector: {
     line: "字幕行",

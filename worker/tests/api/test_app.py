@@ -20,11 +20,13 @@ from diplomat_worker.api.schemas import (
 from diplomat_worker.asr.config import AsrModelConfig
 from diplomat_worker.asr.fake import FakeTranscriber
 from diplomat_worker.media.ffmpeg import FfmpegCheck, VideoProbe
+from diplomat_worker.media.waveform import WaveformData, build_waveform_peaks, write_waveform_cache
 from diplomat_worker.models.manager import ModelDownloadManager
 from diplomat_worker.models.registry import ModelRegistryEntry
 from diplomat_worker.storage.project_store import ProjectStore
 from diplomat_worker.tasks.analysis import AnalysisJobManager
 from diplomat_worker.tasks.translation import TranslationJobManager
+from diplomat_worker.tasks.waveform import WaveformJobManager
 
 
 def make_test_runtime(
@@ -152,9 +154,12 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("POST", "/projects/{project_id}/backup"),
         ("POST", "/projects/{project_id}/cleanup/cache"),
         ("POST", "/projects/{project_id}/cleanup/exports"),
+        ("GET", "/projects/{project_id}/media/source"),
         ("GET", "/projects/{project_id}/translation-settings"),
         ("PUT", "/projects/{project_id}/translation-settings"),
         ("POST", "/projects/{project_id}/translation-jobs"),
+        ("GET", "/projects/{project_id}/waveform"),
+        ("POST", "/projects/{project_id}/waveform-jobs"),
         ("POST", "/projects/{project_id}/exports/srt"),
         ("GET", "/projects/{project_id}/subtitle"),
         ("PUT", "/projects/{project_id}/subtitle"),
@@ -375,6 +380,68 @@ def create_project_with_saved_subtitle(client: TestClient, tmp_path: Path) -> st
     response = client.put(f"/projects/{project_id}/subtitle", json={"document": document})
     assert response.status_code == 200
     return project_id
+
+
+def test_project_source_media_endpoint_returns_source_file(app_module, tmp_path: Path) -> None:
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+
+    response = client.get(f"/projects/{project_id}/media/source")
+
+    assert response.status_code == 200
+    assert response.content == b"fake-video"
+
+
+def test_project_source_media_endpoint_returns_not_found_for_missing_file(
+    app_module,
+    tmp_path: Path,
+) -> None:
+    client = TestClient(app_module.create_app(make_test_runtime(tmp_path)))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+    source_path = tmp_path / "source.mp4"
+    source_path.unlink()
+
+    response = client.get(f"/projects/{project_id}/media/source")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Source media not found"
+
+
+def test_waveform_endpoint_returns_cached_waveform(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    client = TestClient(app_module.create_app(runtime))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+    project = runtime.store.get_project(project_id)
+
+    missing_response = client.get(f"/projects/{project_id}/waveform")
+    write_waveform_cache(
+        project.project_dir / "cache" / "waveform.json",
+        WaveformData(
+            project_id=project_id,
+            duration_ms=1000,
+            sample_rate=8000,
+            peaks=build_waveform_peaks([0.0, 0.5, -0.5, 0.25], 1000, 2, 8000),
+        ),
+    )
+    cached_response = client.get(f"/projects/{project_id}/waveform")
+
+    assert missing_response.status_code == 404
+    assert cached_response.status_code == 200
+    assert cached_response.json()["projectId"] == project_id
+    assert cached_response.json()["peakCount"] == 2
+
+
+def test_waveform_job_endpoint_returns_task(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    manager = WaveformJobManager(runtime, auto_start=False)
+    client = TestClient(app_module.create_app(runtime, waveform_jobs=manager))
+    project_id = create_project_with_saved_subtitle(client, tmp_path)
+
+    response = client.post(f"/projects/{project_id}/waveform-jobs")
+
+    assert response.status_code == 202
+    assert response.json()["type"] == "waveform"
+    assert response.json()["status"] == "queued"
 
 
 def test_project_list_endpoint_returns_recent_projects(app_module, tmp_path: Path) -> None:

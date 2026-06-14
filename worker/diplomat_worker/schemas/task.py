@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 TaskStatus = Literal["queued", "running", "canceling", "canceled", "failed", "completed"]
-TaskType = Literal["analysis", "translation", "export"]
+TaskType = Literal["analysis", "translation", "waveform", "export"]
 
 TaskEventStatus = Literal["queued", "running", "paused", "failed", "completed", "canceled"]
 TaskEventType = Literal[

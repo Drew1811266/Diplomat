@@ -6,6 +6,7 @@ import {
   createAnalysisJob,
   createProject,
   createTranslationJob,
+  createWaveformJob,
   deleteModel,
   downloadModel,
   exportSrt,
@@ -13,10 +14,12 @@ import {
   fetchProject,
   fetchSubtitleDocument,
   fetchTask,
+  fetchWaveform,
   fetchWorkerHealth,
   fetchTranslationSettings,
   listProjects,
   listModels,
+  projectMediaUrl,
   retryTask,
   retryModelDownload,
   runProjectAnalysis,
@@ -349,6 +352,39 @@ describe("worker API helpers", () => {
 
     await expect(fetchTask("task-1", baseUrl)).resolves.toEqual(taskResponse);
     expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/tasks/task-1`, undefined);
+  });
+
+  it("builds project media URLs for worker-served source video", () => {
+    expect(projectMediaUrl("project-1", baseUrl)).toBe(
+      `${baseUrl}/projects/project-1/media/source`
+    );
+  });
+
+  it("fetchWaveform gets and parses cached waveform data", async () => {
+    const response = {
+      projectId: "project-1",
+      durationMs: 1000,
+      sampleRate: 8000,
+      peakCount: 2,
+      peaks: [
+        { index: 0, startMs: 0, endMs: 500, min: -0.25, max: 0.75 },
+        { index: 1, startMs: 500, endMs: 1000, min: -0.5, max: 0.5 }
+      ]
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(fetchWaveform("project-1", baseUrl)).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/waveform`, undefined);
+  });
+
+  it("createWaveformJob posts to the waveform job endpoint", async () => {
+    const response = { ...taskResponse, type: "waveform", status: "queued", progress: 0 };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(createWaveformJob("project-1", baseUrl)).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/waveform-jobs`, {
+      method: "POST"
+    });
   });
 
   it("fetchTranslationSettings gets settings", async () => {

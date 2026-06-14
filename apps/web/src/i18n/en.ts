@@ -81,6 +81,7 @@ export const en = {
     labels: {
       projectTools: "Project tools",
       videoPreview: "Video preview",
+      videoPreviewMedia: "Video preview media",
       inspector: "Inspector",
       timeline: "Timeline"
     },
@@ -116,6 +117,7 @@ export const en = {
       status: "Status"
     },
     selectLine: "Select line {{id}}",
+    timingIssueCount: "{{count}} timing issue",
     empty: "No subtitle rows",
     noFilterMatches: "No subtitle rows match the current filter.",
     noSourceText: "No source text",
@@ -132,6 +134,15 @@ export const en = {
       edited: "Edited",
       failed: "Failed"
     }
+  },
+  timelineEditor: {
+    region: "Timeline editor",
+    title: "Timeline",
+    zoom: "Zoom timeline",
+    blockLabel: "Timeline block {{id}}",
+    resizeStart: "Resize start for {{id}}",
+    resizeEnd: "Resize end for {{id}}",
+    generateWaveform: "Generate waveform"
   },
   inspector: {
     line: "Line",
