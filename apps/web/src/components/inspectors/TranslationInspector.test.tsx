@@ -1,8 +1,9 @@
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { TranslationJobRequest } from "@diplomat/shared";
+import type { ModelCatalogEntry, TranslationJobRequest } from "@diplomat/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "../../test/render";
+import { modelCatalogFixture } from "../../test/fixtures";
 import { TranslationInspector } from "./TranslationInspector";
 
 const translationConfig: TranslationJobRequest = {
@@ -12,6 +13,22 @@ const translationConfig: TranslationJobRequest = {
   mode: "missing_only",
   endpoint: null,
   apiKeyEnv: null
+};
+
+const installedTranslationModel: ModelCatalogEntry = {
+  ...modelCatalogFixture.models.find((model) => model.modelId === "translation.qwen3.4b")!,
+  installation: {
+    ...modelCatalogFixture.models.find((model) => model.modelId === "translation.qwen3.4b")!
+      .installation,
+    status: "installed",
+    installedPath: "D:/Diplomat/models/qwen3-4b",
+    downloadedBytes: 2_500_000_000,
+    installedAt: "2026-06-14T00:05:00+00:00"
+  },
+  availability: {
+    usable: true,
+    reason: null
+  }
 };
 
 function stubMatchMedia(matches: boolean) {
@@ -176,5 +193,55 @@ describe("TranslationInspector", () => {
 
     expect(onStart).not.toHaveBeenCalled();
     expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it("shows curated translation models and blocks unavailable selections", () => {
+    const onSelectedModelChange = vi.fn();
+
+    renderWithProviders(
+      <TranslationInspector
+        config={translationConfig}
+        busy={false}
+        modelCatalog={modelCatalogFixture.models}
+        selectedModelId="translation.opus-mt.zh-en"
+        onSelectedModelChange={onSelectedModelChange}
+        onConfigChange={() => undefined}
+        onStart={() => undefined}
+        onCancel={() => undefined}
+        onRetry={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("combobox", { name: "Translation model" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "OPUS-MT Chinese to English" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Install this translation model before starting translation.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Translation model" }), {
+      target: { value: "translation.qwen3.4b" }
+    });
+
+    expect(onSelectedModelChange).toHaveBeenCalledWith("translation.qwen3.4b");
+  });
+
+  it("blocks installed local translation models until the 0.25 runtime stage", () => {
+    renderWithProviders(
+      <TranslationInspector
+        config={translationConfig}
+        busy={false}
+        modelCatalog={[installedTranslationModel]}
+        selectedModelId="translation.qwen3.4b"
+        onSelectedModelChange={() => undefined}
+        onConfigChange={() => undefined}
+        onStart={() => undefined}
+        onCancel={() => undefined}
+        onRetry={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("Local translation model execution lands in 0.25.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
   });
 });

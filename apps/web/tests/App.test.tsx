@@ -3,7 +3,11 @@ import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { useUiStore } from "../src/state/uiStore";
-import { analyzedDocumentFixture, projectFixture } from "../src/test/fixtures";
+import {
+  analyzedDocumentFixture,
+  modelCatalogFixture,
+  projectFixture
+} from "../src/test/fixtures";
 import { renderWithProviders } from "../src/test/render";
 
 function jsonResponse(payload: unknown): Response {
@@ -43,6 +47,9 @@ function stubStartupFetch() {
       }
       if (url.endsWith("/projects")) {
         return jsonResponse({ projects: [projectFixture] });
+      }
+      if (url.endsWith("/models")) {
+        return jsonResponse(modelCatalogFixture);
       }
       if (url.endsWith("/projects/project-demo")) {
         return jsonResponse(projectFixture);
@@ -97,6 +104,9 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Workbench" }));
     expect(await screen.findByRole("main", { name: "Workbench" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Models" }));
+    expect(await screen.findByRole("main", { name: "Models" })).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
     expect(await screen.findByRole("main", { name: "Tasks" })).toBeVisible();

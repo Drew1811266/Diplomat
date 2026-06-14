@@ -1,6 +1,7 @@
 import { ActionIcon, Stack, Tooltip } from "@mantine/core";
 import {
   IconChecklist,
+  IconDatabase,
   IconFolder,
   IconLayoutDashboard,
   IconSettings
@@ -16,6 +17,7 @@ type AppRailProps = {
 const navItems = [
   { page: "projects", icon: IconFolder, key: "nav.projects" },
   { page: "workbench", icon: IconLayoutDashboard, key: "nav.workbench" },
+  { page: "models", icon: IconDatabase, key: "nav.models" },
   { page: "tasks", icon: IconChecklist, key: "nav.tasks" },
   { page: "settings", icon: IconSettings, key: "nav.settings" }
 ] as const;

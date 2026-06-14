@@ -6,6 +6,7 @@ export const en = {
   nav: {
     projects: "Projects",
     workbench: "Workbench",
+    models: "Models",
     tasks: "Tasks",
     settings: "Settings"
   },
@@ -142,7 +143,10 @@ export const en = {
     exportDisabledUnsaved: "Save subtitle edits before exporting.",
     exportDisabledTaskActive: "Wait for analysis or translation to finish.",
     exportDisabledDataError: "Resolve project or subtitle errors before exporting.",
-    exportResult: "SRT exported: {{exportPath}}"
+    exportResult: "SRT exported: {{exportPath}}",
+    selectModel: "Select model",
+    translationModelUnavailable: "Install this translation model before starting translation.",
+    localTranslationPending: "Local translation model execution lands in 0.25."
   },
   fields: {
     projectName: "Project name",
@@ -155,6 +159,8 @@ export const en = {
     translatedText: "Translated text",
     provider: "Provider",
     model: "Model",
+    installedAsrModel: "Installed ASR model",
+    translationModel: "Translation model",
     device: "Device",
     computeType: "Compute type",
     initialPrompt: "Initial prompt",
@@ -211,6 +217,56 @@ export const en = {
     defaultSourceLanguage: "Default source language",
     defaultTargetLanguage: "Default target language",
     defaultExportMode: "Default export mode"
+  },
+  models: {
+    title: "Models",
+    subtitle: "Curated open-source ASR and translation models.",
+    taskFilter: "Model task filter",
+    loading: "Loading models...",
+    updating: "Updating model state...",
+    catalogCount: "{{count}} curated models",
+    catalog: "Model Catalog",
+    noModels: "No models match the current filter.",
+    license: "License",
+    filters: {
+      all: "All",
+      asr: "ASR",
+      translation: "Translation"
+    },
+    tasks: {
+      asr: "ASR",
+      translation: "Translation"
+    },
+    tiers: {
+      light: "Light",
+      high_quality: "High quality"
+    },
+    statuses: {
+      not_installed: "Not installed",
+      queued: "Queued",
+      downloading: "Downloading",
+      verifying: "Verifying",
+      installed: "Installed",
+      failed: "Failed",
+      canceled: "Canceled"
+    },
+    actions: {
+      installModel: "Install {{name}}",
+      cancelModel: "Cancel {{name}}",
+      retryModel: "Retry {{name}}",
+      deleteModel: "Delete {{name}}"
+    },
+    table: {
+      model: "Model",
+      task: "Task",
+      runtime: "Runtime",
+      languages: "Languages",
+      size: "Size",
+      license: "License",
+      status: "Status",
+      hardware: "Hardware",
+      actions: "Model actions"
+    }
   },
   tasks: {
     title: "Tasks",

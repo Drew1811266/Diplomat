@@ -1,10 +1,11 @@
 import { Button, Group, NativeSelect, Stack, TextInput } from "@mantine/core";
-import type { AnalysisJobRequest } from "@diplomat/shared";
+import type { AnalysisJobRequest, ModelCatalogEntry } from "@diplomat/shared";
 import { useTranslation } from "react-i18next";
 
 type AnalysisInspectorProps = {
   config: AnalysisJobRequest;
   busy: boolean;
+  modelCatalog?: ModelCatalogEntry[];
   canCancel?: boolean;
   canRetry?: boolean;
   onConfigChange: (config: AnalysisJobRequest) => void;
@@ -20,6 +21,7 @@ const computeTypes: AnalysisJobRequest["computeType"][] = ["int8", "float16", "f
 export function AnalysisInspector({
   config,
   busy,
+  modelCatalog = [],
   canCancel = true,
   canRetry = true,
   onConfigChange,
@@ -28,12 +30,37 @@ export function AnalysisInspector({
   onRetry
 }: AnalysisInspectorProps) {
   const { t } = useTranslation();
+  const installedAsrModels = modelCatalog.filter(
+    (model) =>
+      model.task === "asr" &&
+      model.installation.status === "installed" &&
+      model.availability.usable &&
+      Boolean(model.installation.installedPath)
+  );
+  const installedAsrModelPath = installedAsrModels.some(
+    (model) => model.installation.installedPath === config.modelNameOrPath
+  )
+    ? config.modelNameOrPath ?? ""
+    : "";
 
   function updateConfig<Key extends keyof AnalysisJobRequest>(
     key: Key,
     value: AnalysisJobRequest[Key]
   ) {
     onConfigChange({ ...config, [key]: value });
+  }
+
+  function selectInstalledModel(installedPath: string) {
+    if (!installedPath) {
+      onConfigChange({ ...config, modelNameOrPath: null });
+      return;
+    }
+
+    onConfigChange({
+      ...config,
+      provider: "faster-whisper",
+      modelNameOrPath: installedPath
+    });
   }
 
   return (
@@ -48,12 +75,28 @@ export function AnalysisInspector({
         }
       />
 
-      <TextInput
-        label={t("fields.model")}
-        value={config.modelNameOrPath ?? ""}
-        disabled={busy}
-        onChange={(event) => updateConfig("modelNameOrPath", event.currentTarget.value || null)}
-      />
+      {installedAsrModels.length > 0 ? (
+        <NativeSelect
+          label={t("fields.installedAsrModel")}
+          value={installedAsrModelPath}
+          data={[
+            { value: "", label: t("inspector.selectModel") },
+            ...installedAsrModels.map((model) => ({
+              value: model.installation.installedPath ?? "",
+              label: model.name
+            }))
+          ]}
+          disabled={busy}
+          onChange={(event) => selectInstalledModel(event.currentTarget.value)}
+        />
+      ) : (
+        <TextInput
+          label={t("fields.model")}
+          value={config.modelNameOrPath ?? ""}
+          disabled={busy}
+          onChange={(event) => updateConfig("modelNameOrPath", event.currentTarget.value || null)}
+        />
+      )}
 
       <TextInput
         label={t("fields.sourceLanguage")}

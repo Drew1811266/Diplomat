@@ -9,7 +9,7 @@ from pathlib import Path
 
 from diplomat_worker.schemas.subtitle import SubtitleDocument
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class StorageMigrationError(RuntimeError):
@@ -102,6 +102,20 @@ class ProjectBackupResult:
     message: str
 
 
+@dataclass(frozen=True)
+class ModelInstallationRecord:
+    model_id: str
+    status: str
+    installed_path: Path | None
+    downloaded_bytes: int
+    total_bytes: int
+    checksum: str
+    error_message: str | None
+    created_at: str
+    updated_at: str
+    installed_at: str | None
+
+
 class ProjectStore:
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
@@ -123,6 +137,7 @@ class ProjectStore:
                 self._create_projects_table(connection)
             self._ensure_tasks_table(connection)
             self._ensure_translation_settings_table(connection)
+            self._ensure_model_installations_table(connection)
             self._set_schema_version(connection)
             connection.commit()
 
@@ -208,6 +223,24 @@ class ProjectStore:
                 api_key_env TEXT,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(project_id) REFERENCES projects(project_id)
+            )
+            """
+        )
+
+    def _ensure_model_installations_table(self, connection: sqlite3.Connection) -> None:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS model_installations (
+                model_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                installed_path TEXT,
+                downloaded_bytes INTEGER NOT NULL,
+                total_bytes INTEGER NOT NULL,
+                checksum TEXT NOT NULL,
+                error_message TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                installed_at TEXT
             )
             """
         )
@@ -633,6 +666,158 @@ class ProjectStore:
 
         return self.get_project(project.project_id)
 
+    def models_root(self) -> Path:
+        root = self.root_dir / "models"
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+
+    def safe_model_dir(self, model_id: str) -> Path:
+        if not model_id.strip():
+            raise ValueError("model_id is required")
+        return self.models_root() / self._safe_filename(model_id)
+
+    def get_model_installation(
+        self,
+        model_id: str,
+        checksum: str,
+        total_bytes: int,
+    ) -> ModelInstallationRecord:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    model_id,
+                    status,
+                    installed_path,
+                    downloaded_bytes,
+                    total_bytes,
+                    checksum,
+                    error_message,
+                    created_at,
+                    updated_at,
+                    installed_at
+                FROM model_installations
+                WHERE model_id = ?
+                """,
+                (model_id,),
+            ).fetchone()
+        if row is not None:
+            return self._model_installation_from_row(row)
+        now = self._utc_now()
+        return ModelInstallationRecord(
+            model_id=model_id,
+            status="not_installed",
+            installed_path=None,
+            downloaded_bytes=0,
+            total_bytes=total_bytes,
+            checksum=checksum,
+            error_message=None,
+            created_at=now,
+            updated_at=now,
+            installed_at=None,
+        )
+
+    def list_model_installations(self) -> list[ModelInstallationRecord]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    model_id,
+                    status,
+                    installed_path,
+                    downloaded_bytes,
+                    total_bytes,
+                    checksum,
+                    error_message,
+                    created_at,
+                    updated_at,
+                    installed_at
+                FROM model_installations
+                ORDER BY updated_at DESC, model_id ASC
+                """
+            ).fetchall()
+        return [self._model_installation_from_row(row) for row in rows]
+
+    def upsert_model_installation(
+        self,
+        model_id: str,
+        status: str,
+        installed_path: Path | None,
+        downloaded_bytes: int,
+        total_bytes: int,
+        checksum: str,
+        error_message: str | None = None,
+        installed: bool = False,
+    ) -> ModelInstallationRecord:
+        if downloaded_bytes < 0 or total_bytes < 0:
+            raise ValueError("model byte counts must be nonnegative")
+        if installed_path is not None:
+            self._assert_safe_model_path(installed_path)
+        now = self._utc_now()
+        existing = self.get_model_installation(model_id, checksum=checksum, total_bytes=total_bytes)
+        installed_at = now if installed else (existing.installed_at if status == "installed" else None)
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO model_installations (
+                    model_id,
+                    status,
+                    installed_path,
+                    downloaded_bytes,
+                    total_bytes,
+                    checksum,
+                    error_message,
+                    created_at,
+                    updated_at,
+                    installed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(model_id) DO UPDATE SET
+                    status = excluded.status,
+                    installed_path = excluded.installed_path,
+                    downloaded_bytes = excluded.downloaded_bytes,
+                    total_bytes = excluded.total_bytes,
+                    checksum = excluded.checksum,
+                    error_message = excluded.error_message,
+                    updated_at = excluded.updated_at,
+                    installed_at = excluded.installed_at
+                """,
+                (
+                    model_id,
+                    status,
+                    str(installed_path) if installed_path is not None else None,
+                    downloaded_bytes,
+                    total_bytes,
+                    checksum,
+                    error_message,
+                    existing.created_at,
+                    now,
+                    installed_at,
+                ),
+            )
+            connection.commit()
+        return self.get_model_installation(model_id, checksum=checksum, total_bytes=total_bytes)
+
+    def delete_model_installation(self, model_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM model_installations WHERE model_id = ?", (model_id,))
+            connection.commit()
+
+    def delete_model_files(self, model_id: str, checksum: str, total_bytes: int) -> tuple[int, int]:
+        installation = self.get_model_installation(model_id, checksum=checksum, total_bytes=total_bytes)
+        path = installation.installed_path or self.safe_model_dir(model_id)
+        if not path.exists():
+            return 0, 0
+        self._assert_safe_model_path(path)
+        if path.resolve() == self.models_root().resolve():
+            raise ValueError(f"Refusing unsafe model directory deletion: {path}")
+        files_affected, bytes_affected = self._directory_file_stats(path)
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+        return files_affected, bytes_affected
+
     def _record_from_row(self, row: sqlite3.Row) -> ProjectRecord:
         return ProjectRecord(
             project_id=row["project_id"],
@@ -763,6 +948,21 @@ class ProjectStore:
             endpoint=row["endpoint"],
             api_key_env=row["api_key_env"],
             updated_at=row["updated_at"],
+        )
+
+    def _model_installation_from_row(self, row: sqlite3.Row) -> ModelInstallationRecord:
+        installed_path = row["installed_path"]
+        return ModelInstallationRecord(
+            model_id=row["model_id"],
+            status=row["status"],
+            installed_path=Path(installed_path) if installed_path else None,
+            downloaded_bytes=row["downloaded_bytes"],
+            total_bytes=row["total_bytes"],
+            checksum=row["checksum"],
+            error_message=row["error_message"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            installed_at=row["installed_at"],
         )
 
     def touch_project(self, project_id: str) -> None:
@@ -992,6 +1192,14 @@ class ProjectStore:
         resolved_path = path.resolve()
         if not self._is_relative_to(resolved_path, resolved_root):
             raise ValueError(f"Refusing unsafe project child path: {path}")
+
+    def _assert_safe_model_path(self, path: Path) -> None:
+        resolved_root = self.models_root().resolve()
+        resolved_path = path.resolve()
+        if not self._is_relative_to(resolved_path, resolved_root):
+            raise ValueError(f"Refusing unsafe model path: {path}")
+        if resolved_path == resolved_root:
+            raise ValueError(f"Refusing unsafe model path: {path}")
 
     def _is_relative_to(self, path: Path, root: Path) -> bool:
         try:

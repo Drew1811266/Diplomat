@@ -2,6 +2,10 @@ import {
   AnalysisJobRequestSchema,
   AnalyzeProjectResponseSchema,
   CreateProjectRequestSchema,
+  ModelCatalogEntrySchema,
+  ModelCatalogResponseSchema,
+  ModelDeleteResponseSchema,
+  ModelDownloadResponseSchema,
   ProjectBackupResponseSchema,
   ProjectImportRequestSchema,
   ProjectListResponseSchema,
@@ -16,6 +20,10 @@ import {
   type AnalysisJobRequest,
   type AnalyzeProjectResponse,
   type CreateProjectRequest,
+  type ModelCatalogEntry,
+  type ModelCatalogResponse,
+  type ModelDeleteResponse,
+  type ModelDownloadResponse,
   type ProjectBackupResponse,
   type ProjectImportRequest,
   type ProjectListResponse,
@@ -118,6 +126,69 @@ export async function listProjects(baseUrl = defaultWorkerBaseUrl()): Promise<Pr
     `${baseUrl}/projects`,
     undefined,
     (payload) => ProjectListResponseSchema.parse(payload)
+  );
+}
+
+export async function listModels(baseUrl = defaultWorkerBaseUrl()): Promise<ModelCatalogResponse> {
+  return requestJson(
+    `${baseUrl}/models`,
+    undefined,
+    (payload) => ModelCatalogResponseSchema.parse(payload)
+  );
+}
+
+export async function fetchModel(
+  modelId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<ModelCatalogEntry> {
+  return requestJson(
+    `${baseUrl}/models/${modelId}`,
+    undefined,
+    (payload) => ModelCatalogEntrySchema.parse(payload)
+  );
+}
+
+export async function downloadModel(
+  modelId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<ModelDownloadResponse> {
+  return requestJson(
+    `${baseUrl}/models/${modelId}/download`,
+    { method: "POST" },
+    (payload) => ModelDownloadResponseSchema.parse(payload)
+  );
+}
+
+export async function cancelModelDownload(
+  modelId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<ModelDownloadResponse> {
+  return requestJson(
+    `${baseUrl}/models/${modelId}/cancel`,
+    { method: "POST" },
+    (payload) => ModelDownloadResponseSchema.parse(payload)
+  );
+}
+
+export async function retryModelDownload(
+  modelId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<ModelDownloadResponse> {
+  return requestJson(
+    `${baseUrl}/models/${modelId}/retry`,
+    { method: "POST" },
+    (payload) => ModelDownloadResponseSchema.parse(payload)
+  );
+}
+
+export async function deleteModel(
+  modelId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<ModelDeleteResponse> {
+  return requestJson(
+    `${baseUrl}/models/${modelId}`,
+    { method: "DELETE" },
+    (payload) => ModelDeleteResponseSchema.parse(payload)
   );
 }
 

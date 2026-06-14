@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -7,6 +7,7 @@ from diplomat_worker.asr.base import Transcriber
 from diplomat_worker.asr.config import AsrModelConfig, create_transcriber
 from diplomat_worker.asr.fake import FakeTranscriber
 from diplomat_worker.media.ffmpeg import FfmpegCheck, VideoProbe, probe_video
+from diplomat_worker.models.registry import ModelRegistryEntry, built_in_model_registry
 from diplomat_worker.storage.project_store import ProjectStore
 from diplomat_worker.translation.base import TranslationProvider
 from diplomat_worker.translation.config import TranslationProviderConfig, create_translation_provider
@@ -48,6 +49,7 @@ class WorkerRuntime:
     ffmpeg_check_fn: FfmpegCheckFn = FfmpegCheck.for_source
     transcriber_factory: TranscriberFactory = create_transcriber
     translation_provider_factory: TranslationProviderFactory = create_translation_provider
+    model_registry: list[ModelRegistryEntry] | None = field(default_factory=built_in_model_registry)
 
 
 def create_default_runtime() -> WorkerRuntime:

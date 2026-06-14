@@ -22,6 +22,7 @@ import { TimelineStrip } from "../components/TimelineStrip";
 import { TopToolbar } from "../components/TopToolbar";
 import { VideoPreviewPanel } from "../components/VideoPreviewPanel";
 import { useExportSrtMutation } from "../queries/exportQueries";
+import { useModelsQuery } from "../queries/modelQueries";
 import { useProjectQuery } from "../queries/projectQueries";
 import {
   useSaveSubtitleDocumentMutation,
@@ -109,6 +110,7 @@ export function WorkbenchPage() {
   const setSelectedLineId = useUiStore((state) => state.setSelectedLineId);
   const project = useProjectQuery(activeProjectId);
   const subtitle = useSubtitleDocumentQuery(activeProjectId);
+  const models = useModelsQuery(Boolean(activeProjectId));
   const saveSubtitle = useSaveSubtitleDocumentMutation(activeProjectId);
   const createAnalysisJob = useCreateAnalysisJobMutation(activeProjectId);
   const createTranslationJob = useCreateTranslationJobMutation(activeProjectId);
@@ -119,6 +121,7 @@ export function WorkbenchPage() {
   const [subtitleFilter, setSubtitleFilter] = useState<SubtitleGridFilter>("all");
   const [analysisConfig, setAnalysisConfig] = useState(defaultAnalysisConfig);
   const [translationConfig, setTranslationConfig] = useState(defaultTranslationConfig);
+  const [selectedTranslationModelId, setSelectedTranslationModelId] = useState<string | null>(null);
   const [exportMode, setExportMode] = useState<SrtExportMode>("bilingual");
   const [exportResult, setExportResult] = useState<SrtExportResponse | null>(null);
   const [latestTask, setLatestTask] = useState<TaskResponse | null>(null);
@@ -128,6 +131,7 @@ export function WorkbenchPage() {
   const polledTask = task.data;
   const subtitleDocument = draftDocument ?? subtitle.data ?? null;
   const subtitleLines = subtitleDocument?.lines ?? emptySubtitleLines;
+  const modelCatalog = models.data?.models ?? [];
   const hasUnsavedChanges = Boolean(draftDocument);
   const layout = isNarrow ? "stacked" : "split";
   const hasSubtitleRows = subtitleLines.length > 0;
@@ -194,6 +198,7 @@ export function WorkbenchPage() {
     setLatestTask(null);
     setLatestTaskId(null);
     refetchedTaskId.current = null;
+    setSelectedTranslationModelId(null);
   }, [activeProjectId]);
 
   useEffect(() => {
@@ -338,6 +343,7 @@ export function WorkbenchPage() {
           <AnalysisInspector
             config={analysisConfig}
             busy={!activeProjectId || taskActive}
+            modelCatalog={modelCatalog}
             canCancel={canCancelTask}
             canRetry={canRetryAnalysisTask}
             onConfigChange={setAnalysisConfig}
@@ -356,8 +362,11 @@ export function WorkbenchPage() {
           <TranslationInspector
             config={translationConfig}
             busy={!activeProjectId || taskActive}
+            modelCatalog={modelCatalog}
+            selectedModelId={selectedTranslationModelId}
             canCancel={canCancelTask}
             canRetry={canRetryTranslationTask}
+            onSelectedModelChange={setSelectedTranslationModelId}
             onConfigChange={setTranslationConfig}
             onStart={() => void handleStartTranslation()}
             onCancel={() => void handleCancelTask()}

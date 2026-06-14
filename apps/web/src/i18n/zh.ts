@@ -6,6 +6,7 @@ export const zh = {
   nav: {
     projects: "项目",
     workbench: "工作台",
+    models: "模型",
     tasks: "任务",
     settings: "设置"
   },
@@ -140,7 +141,10 @@ export const zh = {
     exportDisabledUnsaved: "请先保存字幕修改再导出。",
     exportDisabledTaskActive: "请等待分析或翻译任务完成。",
     exportDisabledDataError: "请先解决项目或字幕错误再导出。",
-    exportResult: "SRT 已导出：{{exportPath}}"
+    exportResult: "SRT 已导出：{{exportPath}}",
+    selectModel: "选择模型",
+    translationModelUnavailable: "请先安装这个翻译模型再开始翻译。",
+    localTranslationPending: "本地翻译模型执行将在 0.25 实现。"
   },
   fields: {
     projectName: "项目名称",
@@ -153,6 +157,8 @@ export const zh = {
     translatedText: "译文",
     provider: "提供方",
     model: "模型",
+    installedAsrModel: "已安装 ASR 模型",
+    translationModel: "翻译模型",
     device: "设备",
     computeType: "计算类型",
     initialPrompt: "初始提示词",
@@ -209,6 +215,56 @@ export const zh = {
     defaultSourceLanguage: "默认源语言",
     defaultTargetLanguage: "默认目标语言",
     defaultExportMode: "默认导出模式"
+  },
+  models: {
+    title: "模型",
+    subtitle: "内置开源 ASR 与翻译模型。",
+    taskFilter: "模型任务筛选",
+    loading: "正在加载模型...",
+    updating: "正在更新模型状态...",
+    catalogCount: "{{count}} 个内置模型",
+    catalog: "模型目录",
+    noModels: "当前筛选下没有模型。",
+    license: "许可证",
+    filters: {
+      all: "全部",
+      asr: "ASR",
+      translation: "翻译"
+    },
+    tasks: {
+      asr: "ASR",
+      translation: "翻译"
+    },
+    tiers: {
+      light: "轻量",
+      high_quality: "高质量"
+    },
+    statuses: {
+      not_installed: "未安装",
+      queued: "排队中",
+      downloading: "下载中",
+      verifying: "校验中",
+      installed: "已安装",
+      failed: "失败",
+      canceled: "已取消"
+    },
+    actions: {
+      installModel: "安装 {{name}}",
+      cancelModel: "取消 {{name}}",
+      retryModel: "重试 {{name}}",
+      deleteModel: "删除 {{name}}"
+    },
+    table: {
+      model: "模型",
+      task: "任务",
+      runtime: "运行时",
+      languages: "语言",
+      size: "大小",
+      license: "许可证",
+      status: "状态",
+      hardware: "硬件",
+      actions: "模型操作"
+    }
   },
   tasks: {
     title: "任务",

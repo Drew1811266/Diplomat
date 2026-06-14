@@ -1,4 +1,5 @@
 import importlib
+import hashlib
 import time
 from pathlib import Path
 
@@ -18,12 +19,17 @@ from diplomat_worker.api.schemas import (
 )
 from diplomat_worker.asr.fake import FakeTranscriber
 from diplomat_worker.media.ffmpeg import FfmpegCheck, VideoProbe
+from diplomat_worker.models.manager import ModelDownloadManager
+from diplomat_worker.models.registry import ModelRegistryEntry
 from diplomat_worker.storage.project_store import ProjectStore
 from diplomat_worker.tasks.analysis import AnalysisJobManager
 from diplomat_worker.tasks.translation import TranslationJobManager
 
 
-def make_test_runtime(tmp_path: Path) -> WorkerRuntime:
+def make_test_runtime(
+    tmp_path: Path,
+    model_registry: list[ModelRegistryEntry] | None = None,
+) -> WorkerRuntime:
     return WorkerRuntime(
         store=ProjectStore(tmp_path / "diplomat.db"),
         transcriber=FakeTranscriber(language="zh"),
@@ -34,6 +40,7 @@ def make_test_runtime(tmp_path: Path) -> WorkerRuntime:
             video_codec="h264",
         ),
         extract_audio_fn=lambda source, target: target.write_bytes(b"fake-audio") or target,
+        model_registry=model_registry,
     )
 
 
@@ -128,6 +135,12 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
 
     assert routes == {
         ("GET", "/health"),
+        ("GET", "/models"),
+        ("GET", "/models/{model_id}"),
+        ("POST", "/models/{model_id}/download"),
+        ("POST", "/models/{model_id}/cancel"),
+        ("POST", "/models/{model_id}/retry"),
+        ("DELETE", "/models/{model_id}"),
         ("GET", "/projects"),
         ("POST", "/projects"),
         ("POST", "/projects/import"),
@@ -149,6 +162,78 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("POST", "/tasks/{task_id}/retry"),
     }
     assert calls == []
+
+
+def make_model_entry(tmp_path: Path, content: bytes = b"api model") -> ModelRegistryEntry:
+    source_path = tmp_path / "api-model.bin"
+    source_path.write_bytes(content)
+    checksum = hashlib.sha256(content).hexdigest()
+    return ModelRegistryEntry(
+        model_id="api-asr-light",
+        name="API ASR Light",
+        task="asr",
+        tier="light",
+        runtime="faster-whisper",
+        provider="faster-whisper",
+        version="test",
+        languages=["zh", "en"],
+        language_pairs=[],
+        model_size_bytes=len(content),
+        download_size_bytes=len(content),
+        disk_requirement_bytes=len(content),
+        recommended_hardware="test hardware",
+        license_name="MIT",
+        license_url="https://example.invalid/license",
+        source_url=str(source_path),
+        checksum_algorithm="sha256",
+        checksum=checksum,
+        terms_summary="API fixture model.",
+    )
+
+
+def test_model_catalog_download_and_delete_routes(app_module, tmp_path: Path) -> None:
+    entry = make_model_entry(tmp_path)
+    runtime = make_test_runtime(tmp_path, model_registry=[entry])
+    model_manager = ModelDownloadManager(runtime.store, registry=[entry], auto_start=False)
+    client = TestClient(app_module.create_app(runtime, model_downloads=model_manager))
+
+    list_response = client.get("/models")
+    download_response = client.post("/models/api-asr-light/download")
+    model_manager.run_pending_once()
+    installed_response = client.get("/models/api-asr-light")
+    delete_response = client.delete("/models/api-asr-light")
+
+    assert list_response.status_code == 200
+    listed = list_response.json()["models"][0]
+    assert listed["modelId"] == "api-asr-light"
+    assert listed["installation"]["status"] == "not_installed"
+    assert listed["availability"]["usable"] is False
+    assert download_response.status_code == 202
+    assert download_response.json()["status"] == "queued"
+    installed = installed_response.json()
+    assert installed["installation"]["status"] == "installed"
+    assert installed["availability"]["usable"] is True
+    assert delete_response.status_code == 200
+    assert delete_response.json()["filesDeleted"] == 1
+
+
+def test_model_cancel_retry_and_unknown_routes(app_module, tmp_path: Path) -> None:
+    entry = make_model_entry(tmp_path)
+    runtime = make_test_runtime(tmp_path, model_registry=[entry])
+    model_manager = ModelDownloadManager(runtime.store, registry=[entry], auto_start=False)
+    client = TestClient(app_module.create_app(runtime, model_downloads=model_manager))
+
+    client.post("/models/api-asr-light/download")
+    cancel_response = client.post("/models/api-asr-light/cancel")
+    retry_response = client.post("/models/api-asr-light/retry")
+    missing_response = client.get("/models/missing-model")
+
+    assert cancel_response.status_code == 200
+    assert cancel_response.json()["status"] == "canceled"
+    assert retry_response.status_code == 202
+    assert retry_response.json()["status"] == "queued"
+    assert missing_response.status_code == 404
+    assert missing_response.json()["detail"] == "Model not found"
 
 
 def test_project_list_includes_diagnostics(app_module, tmp_path: Path) -> None:
