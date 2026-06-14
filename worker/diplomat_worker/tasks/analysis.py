@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from diplomat_worker.asr.base import AsrCanceled
 from diplomat_worker.asr.config import AsrModelConfig
+from diplomat_worker.asr.resolver import AsrConfigurationError, resolve_asr_model_config
 from diplomat_worker.pipeline.core import CorePipelineInput, run_core_pipeline
 from diplomat_worker.storage.project_store import TaskRecord
 
@@ -35,7 +36,8 @@ class AnalysisJobManager:
         self._lock = Lock()
 
     def create_analysis_job(self, project_id: str, config: AsrModelConfig) -> TaskRecord:
-        self.runtime.store.get_project(project_id)
+        project = self.runtime.store.get_project(project_id)
+        self._resolve_config(config, project.source_language)
         task = self.runtime.store.create_task(
             project_id=project_id,
             task_type="analysis",
@@ -147,7 +149,8 @@ class AnalysisJobManager:
                 return
 
             config = AsrModelConfig.from_request_payload(task.request_payload)
-            transcriber = self.runtime.transcriber_factory(config, project.source_language)
+            resolved_config = self._resolve_config(config, project.source_language)
+            transcriber = self.runtime.transcriber_factory(resolved_config, project.source_language)
             result = run_core_pipeline(
                 CorePipelineInput(
                     project_id=project.project_id,
@@ -195,6 +198,17 @@ class AnalysisJobManager:
                 error_message=str(exc),
                 diagnostic_log_path=str(diagnostic_path),
             )
+        except AsrConfigurationError as exc:
+            log(exc.message)
+            self.runtime.store.update_task(
+                task_id,
+                status="failed",
+                message=exc.message,
+                completed=True,
+                error_code=exc.code,
+                error_message=exc.message,
+                diagnostic_log_path=str(diagnostic_path),
+            )
         except Exception as exc:
             log(traceback.format_exc())
             self.runtime.store.update_task(
@@ -209,3 +223,12 @@ class AnalysisJobManager:
         finally:
             with self._lock:
                 self._cancel_tokens.pop(task_id, None)
+
+    def _resolve_config(self, config: AsrModelConfig, fallback_language: str) -> AsrModelConfig:
+        return resolve_asr_model_config(
+            config,
+            store=self.runtime.store,
+            registry=self.runtime.model_registry or [],
+            fallback_language=fallback_language,
+            allow_unmanaged_models=self.runtime.allow_unmanaged_asr_models,
+        )

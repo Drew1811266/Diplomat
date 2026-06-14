@@ -192,6 +192,22 @@ def make_model_entry(tmp_path: Path, content: bytes = b"api model") -> ModelRegi
     )
 
 
+def install_model_entry(store: ProjectStore, entry: ModelRegistryEntry) -> Path:
+    installed_path = store.safe_model_dir(entry.model_id)
+    installed_path.mkdir(parents=True, exist_ok=True)
+    (installed_path / "model.bin").write_bytes(b"api model")
+    store.upsert_model_installation(
+        model_id=entry.model_id,
+        status="installed",
+        installed_path=installed_path,
+        downloaded_bytes=entry.download_size_bytes,
+        total_bytes=entry.download_size_bytes,
+        checksum=entry.checksum,
+        installed=True,
+    )
+    return installed_path
+
+
 def test_model_catalog_download_and_delete_routes(app_module, tmp_path: Path) -> None:
     entry = make_model_entry(tmp_path)
     runtime = make_test_runtime(tmp_path, model_registry=[entry])
@@ -546,6 +562,66 @@ def test_create_analysis_job_returns_accepted_task(app_module, tmp_path: Path) -
     assert task_response.json()["taskId"] == payload["taskId"]
 
 
+def test_create_analysis_job_accepts_installed_curated_asr_model(app_module, tmp_path: Path) -> None:
+    entry = make_model_entry(tmp_path)
+    runtime = make_test_runtime(tmp_path, model_registry=[entry])
+    install_model_entry(runtime.store, entry)
+    manager = AnalysisJobManager(runtime, auto_start=False)
+    client = TestClient(app_module.create_app(runtime, analysis_jobs=manager))
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    project_id = client.post(
+        "/projects",
+        json={
+            "name": "Episode 1",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "zh",
+            "targetLanguage": "en",
+        },
+    ).json()["projectId"]
+
+    response = client.post(
+        f"/projects/{project_id}/analysis-jobs",
+        json={"provider": "faster-whisper", "modelId": entry.model_id},
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "queued"
+    assert runtime.store.get_task(payload["taskId"]).request_payload == {
+        "provider": "faster-whisper",
+        "modelId": entry.model_id,
+        "device": "cpu",
+        "computeType": "int8",
+    }
+
+
+def test_create_analysis_job_rejects_uninstalled_curated_asr_model(app_module, tmp_path: Path) -> None:
+    entry = make_model_entry(tmp_path)
+    runtime = make_test_runtime(tmp_path, model_registry=[entry])
+    manager = AnalysisJobManager(runtime, auto_start=False)
+    client = TestClient(app_module.create_app(runtime, analysis_jobs=manager))
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    project_id = client.post(
+        "/projects",
+        json={
+            "name": "Episode 1",
+            "sourceVideoPath": str(source_video),
+            "sourceLanguage": "zh",
+            "targetLanguage": "en",
+        },
+    ).json()["projectId"]
+
+    response = client.post(
+        f"/projects/{project_id}/analysis-jobs",
+        json={"provider": "faster-whisper", "modelId": entry.model_id},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Install API ASR Light from Models before starting transcription."
+
+
 def test_cancel_analysis_job_returns_canceled_task(app_module, tmp_path: Path) -> None:
     runtime = make_test_runtime(tmp_path)
     manager = AnalysisJobManager(runtime, auto_start=False)
@@ -608,7 +684,9 @@ def test_retry_failed_analysis_job_returns_new_task(app_module, tmp_path: Path) 
 
 
 def test_retry_failed_analysis_job_accepts_replacement_config(app_module, tmp_path: Path) -> None:
-    runtime = make_test_runtime(tmp_path)
+    entry = make_model_entry(tmp_path)
+    runtime = make_test_runtime(tmp_path, model_registry=[entry])
+    install_model_entry(runtime.store, entry)
     runtime = WorkerRuntime(
         store=runtime.store,
         transcriber=runtime.transcriber,
@@ -619,6 +697,7 @@ def test_retry_failed_analysis_job_accepts_replacement_config(app_module, tmp_pa
             "FFMPEG_NOT_FOUND",
             "FFmpeg executable not found: ffmpeg",
         ),
+        model_registry=[entry],
     )
     manager = AnalysisJobManager(runtime, auto_start=False)
     client = TestClient(app_module.create_app(runtime, analysis_jobs=manager))
@@ -640,7 +719,7 @@ def test_retry_failed_analysis_job_accepts_replacement_config(app_module, tmp_pa
         f"/tasks/{task_id}/retry",
         json={
             "provider": "faster-whisper",
-            "modelNameOrPath": "tiny",
+            "modelId": entry.model_id,
             "device": "cpu",
             "computeType": "int8",
             "sourceLanguage": "en",
@@ -651,7 +730,7 @@ def test_retry_failed_analysis_job_accepts_replacement_config(app_module, tmp_pa
     assert retry_response.status_code == 202
     assert runtime.store.get_task(retry_task_id).request_payload == {
         "provider": "faster-whisper",
-        "modelNameOrPath": "tiny",
+        "modelId": entry.model_id,
         "device": "cpu",
         "computeType": "int8",
         "sourceLanguage": "en",

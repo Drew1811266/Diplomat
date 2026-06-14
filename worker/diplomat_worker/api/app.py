@@ -31,6 +31,7 @@ from diplomat_worker.api.schemas import (
     TranslationSettingsResponse,
 )
 from diplomat_worker.asr.config import AsrModelConfig
+from diplomat_worker.asr.resolver import AsrConfigurationError
 from diplomat_worker.export.srt import write_srt_export
 from diplomat_worker.models.manager import (
     ModelCatalogEntry as ModelCatalogEntryRecord,
@@ -486,6 +487,8 @@ def create_app(
             task = get_analysis_jobs().create_analysis_job(project_id, analysis_config_from_request(request))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
+        except AsrConfigurationError as exc:
+            raise HTTPException(status_code=409, detail=exc.message) from exc
         return task_response(task)
 
     @app.get("/projects/{project_id}/translation-settings", response_model=TranslationSettingsResponse)
