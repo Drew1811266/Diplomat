@@ -95,6 +95,75 @@ class ProjectImportRequest(CamelModel):
     restore_name: str | None = Field(default=None, alias="restoreName", min_length=1)
 
 
+class ModelInstallationResponse(CamelModel):
+    model_id: str = Field(alias="modelId")
+    status: Literal[
+        "not_installed",
+        "queued",
+        "downloading",
+        "verifying",
+        "installed",
+        "failed",
+        "canceled",
+    ]
+    installed_path: str | None = Field(default=None, alias="installedPath")
+    downloaded_bytes: int = Field(alias="downloadedBytes", ge=0)
+    total_bytes: int = Field(alias="totalBytes", ge=0)
+    checksum: str
+    error_message: str | None = Field(default=None, alias="errorMessage")
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
+    installed_at: str | None = Field(default=None, alias="installedAt")
+
+
+class ModelAvailabilityResponse(CamelModel):
+    usable: bool
+    reason: str | None = None
+
+
+class ModelCatalogEntryResponse(CamelModel):
+    model_id: str = Field(alias="modelId")
+    name: str
+    task: Literal["asr", "translation"]
+    tier: Literal["light", "high_quality"]
+    runtime: Literal["faster-whisper", "ct2-marian", "local-llm"]
+    provider: str
+    version: str
+    languages: list[str]
+    language_pairs: list[tuple[str, str]] = Field(alias="languagePairs")
+    model_size_bytes: int = Field(alias="modelSizeBytes", ge=0)
+    download_size_bytes: int = Field(alias="downloadSizeBytes", ge=0)
+    disk_requirement_bytes: int = Field(alias="diskRequirementBytes", ge=0)
+    recommended_hardware: str = Field(alias="recommendedHardware")
+    license_name: str = Field(alias="licenseName")
+    license_url: str = Field(alias="licenseUrl")
+    source_url: str = Field(alias="sourceUrl")
+    checksum_algorithm: Literal["sha256"] = Field(alias="checksumAlgorithm")
+    checksum: str
+    terms_summary: str = Field(alias="termsSummary")
+    installation: ModelInstallationResponse
+    availability: ModelAvailabilityResponse
+
+
+class ModelCatalogResponse(CamelModel):
+    models: list[ModelCatalogEntryResponse]
+
+
+class ModelDownloadResponse(CamelModel):
+    model_id: str = Field(alias="modelId")
+    status: Literal["queued", "downloading", "verifying", "installed", "failed", "canceled"]
+    downloaded_bytes: int = Field(alias="downloadedBytes", ge=0)
+    total_bytes: int = Field(alias="totalBytes", ge=0)
+    message: str
+
+
+class ModelDeleteResponse(CamelModel):
+    model_id: str = Field(alias="modelId")
+    files_deleted: int = Field(alias="filesDeleted", ge=0)
+    bytes_deleted: int = Field(alias="bytesDeleted", ge=0)
+    message: str
+
+
 class AnalysisJobRequest(CamelModel):
     provider: Literal["fake", "faster-whisper"] = "fake"
     model_name_or_path: str | None = Field(default=None, alias="modelNameOrPath")

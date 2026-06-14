@@ -10,6 +10,12 @@ from diplomat_worker.api.schemas import (
     AnalyzeProjectResponse,
     AnalysisJobRequest,
     CreateProjectRequest,
+    ModelCatalogEntryResponse,
+    ModelCatalogResponse,
+    ModelAvailabilityResponse,
+    ModelDeleteResponse,
+    ModelDownloadResponse,
+    ModelInstallationResponse,
     ProjectListResponse,
     ProjectBackupResponse,
     ProjectDiagnosticsResponse,
@@ -26,9 +32,16 @@ from diplomat_worker.api.schemas import (
 )
 from diplomat_worker.asr.config import AsrModelConfig
 from diplomat_worker.export.srt import write_srt_export
+from diplomat_worker.models.manager import (
+    ModelCatalogEntry as ModelCatalogEntryRecord,
+    ModelDeleteResponse as ModelDeleteResult,
+    ModelDownloadManager,
+    ModelDownloadResponse as ModelDownloadResult,
+)
 from diplomat_worker.pipeline.core import CorePipelineInput, run_core_pipeline
 from diplomat_worker.schemas.subtitle import SubtitleDocument
 from diplomat_worker.schemas.task import TaskResponse
+from diplomat_worker.storage.project_store import ModelInstallationRecord
 from diplomat_worker.storage.project_store import TaskRecord
 from diplomat_worker.storage.project_store import StorageMigrationError
 from diplomat_worker.tasks.analysis import AnalysisJobManager
@@ -122,6 +135,70 @@ def backup_response(result) -> ProjectBackupResponse:
     )
 
 
+def model_installation_response(record: ModelInstallationRecord) -> ModelInstallationResponse:
+    return ModelInstallationResponse(
+        model_id=record.model_id,
+        status=record.status,
+        installed_path=str(record.installed_path) if record.installed_path is not None else None,
+        downloaded_bytes=record.downloaded_bytes,
+        total_bytes=record.total_bytes,
+        checksum=record.checksum,
+        error_message=record.error_message,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+        installed_at=record.installed_at,
+    )
+
+
+def model_catalog_entry_response(entry: ModelCatalogEntryRecord) -> ModelCatalogEntryResponse:
+    registry = entry.registry
+    return ModelCatalogEntryResponse(
+        model_id=registry.model_id,
+        name=registry.name,
+        task=registry.task,
+        tier=registry.tier,
+        runtime=registry.runtime,
+        provider=registry.provider,
+        version=registry.version,
+        languages=registry.languages,
+        language_pairs=registry.language_pairs,
+        model_size_bytes=registry.model_size_bytes,
+        download_size_bytes=registry.download_size_bytes,
+        disk_requirement_bytes=registry.disk_requirement_bytes,
+        recommended_hardware=registry.recommended_hardware,
+        license_name=registry.license_name,
+        license_url=registry.license_url,
+        source_url=registry.source_url,
+        checksum_algorithm=registry.checksum_algorithm,
+        checksum=registry.checksum,
+        terms_summary=registry.terms_summary,
+        installation=model_installation_response(entry.installation),
+        availability=ModelAvailabilityResponse(
+            usable=entry.availability.usable,
+            reason=entry.availability.reason,
+        ),
+    )
+
+
+def model_download_response(result: ModelDownloadResult) -> ModelDownloadResponse:
+    return ModelDownloadResponse(
+        model_id=result.model_id,
+        status=result.status,
+        downloaded_bytes=result.downloaded_bytes,
+        total_bytes=result.total_bytes,
+        message=result.message,
+    )
+
+
+def model_delete_response(result: ModelDeleteResult) -> ModelDeleteResponse:
+    return ModelDeleteResponse(
+        model_id=result.model_id,
+        files_deleted=result.files_deleted,
+        bytes_deleted=result.bytes_deleted,
+        message=result.message,
+    )
+
+
 def analysis_config_from_request(request: AnalysisJobRequest) -> AsrModelConfig:
     return AsrModelConfig(
         provider=request.provider,
@@ -158,6 +235,7 @@ def create_app(
     runtime: WorkerRuntime | None = None,
     analysis_jobs: AnalysisJobManager | None = None,
     translation_jobs: TranslationJobManager | None = None,
+    model_downloads: ModelDownloadManager | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Diplomat Worker",
@@ -176,6 +254,7 @@ def create_app(
     app.state.runtime = runtime
     app.state.analysis_jobs = analysis_jobs
     app.state.translation_jobs = translation_jobs
+    app.state.model_downloads = model_downloads
 
     def get_runtime() -> WorkerRuntime:
         active_runtime = app.state.runtime
@@ -204,9 +283,78 @@ def create_app(
             app.state.translation_jobs = active_jobs
         return active_jobs
 
+    def get_model_downloads() -> ModelDownloadManager:
+        active_downloads = app.state.model_downloads
+        if active_downloads is None:
+            active_runtime = get_runtime()
+            active_downloads = ModelDownloadManager(
+                active_runtime.store,
+                registry=active_runtime.model_registry,
+            )
+            app.state.model_downloads = active_downloads
+        return active_downloads
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"name": "diplomat-worker", "status": "ok", "version": __version__}
+
+    @app.get("/models", response_model=ModelCatalogResponse)
+    def list_models() -> ModelCatalogResponse:
+        return ModelCatalogResponse(
+            models=[
+                model_catalog_entry_response(entry)
+                for entry in get_model_downloads().list_catalog()
+            ]
+        )
+
+    @app.get("/models/{model_id}", response_model=ModelCatalogEntryResponse)
+    def get_model(model_id: str) -> ModelCatalogEntryResponse:
+        try:
+            return model_catalog_entry_response(get_model_downloads().get_catalog_entry(model_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Model not found") from exc
+
+    @app.post(
+        "/models/{model_id}/download",
+        response_model=ModelDownloadResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def download_model(model_id: str) -> ModelDownloadResponse:
+        try:
+            return model_download_response(get_model_downloads().start_download(model_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Model not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/models/{model_id}/cancel", response_model=ModelDownloadResponse)
+    def cancel_model_download(model_id: str) -> ModelDownloadResponse:
+        try:
+            return model_download_response(get_model_downloads().cancel_download(model_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Model not found") from exc
+
+    @app.post(
+        "/models/{model_id}/retry",
+        response_model=ModelDownloadResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def retry_model_download(model_id: str) -> ModelDownloadResponse:
+        try:
+            return model_download_response(get_model_downloads().retry_download(model_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Model not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.delete("/models/{model_id}", response_model=ModelDeleteResponse)
+    def delete_model(model_id: str) -> ModelDeleteResponse:
+        try:
+            return model_delete_response(get_model_downloads().delete_model(model_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Model not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/projects", response_model=ProjectListResponse)
     def list_projects() -> ProjectListResponse:
