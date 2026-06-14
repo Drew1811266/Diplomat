@@ -310,6 +310,24 @@ Manual verification for 0.21:
 11. Confirm the project is stored under the 0.21 data directory.
 12. Stop Worker from the desktop app.
 
+### Focused Verification Commands
+
+```powershell
+corepack pnpm --dir apps/desktop test
+corepack pnpm --dir apps/web exec vitest run src/pages/SettingsPage.test.tsx src/i18n/i18n.test.ts
+corepack pnpm --dir apps/web typecheck
+```
+
+### Stage Gate Evidence To Capture
+
+The 0.21 stage gate review must record:
+
+- `runtime_status` JSON from a desktop development run.
+- Worker log paths under `%LOCALAPPDATA%\Diplomat\logs`.
+- FFmpeg and FFprobe status shown in Settings.
+- Whether FFmpeg and FFprobe were found through `PATH` or environment variables.
+- Project creation storage path after Worker starts from the desktop shell.
+
 ## Acceptance Criteria
 
 0.21 is complete when:
