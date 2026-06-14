@@ -133,6 +133,14 @@ export const zh = {
       failed: "失败"
     }
   },
+  timelineEditor: {
+    region: "时间线编辑器",
+    title: "时间线",
+    zoom: "缩放时间线",
+    blockLabel: "时间线字幕块 {{id}}",
+    resizeStart: "调整 {{id}} 开始时间",
+    resizeEnd: "调整 {{id}} 结束时间"
+  },
   inspector: {
     line: "字幕行",
     analysis: "分析",

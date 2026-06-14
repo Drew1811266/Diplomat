@@ -135,6 +135,14 @@ export const en = {
       failed: "Failed"
     }
   },
+  timelineEditor: {
+    region: "Timeline editor",
+    title: "Timeline",
+    zoom: "Zoom timeline",
+    blockLabel: "Timeline block {{id}}",
+    resizeStart: "Resize start for {{id}}",
+    resizeEnd: "Resize end for {{id}}"
+  },
   inspector: {
     line: "Line",
     analysis: "Analysis",
