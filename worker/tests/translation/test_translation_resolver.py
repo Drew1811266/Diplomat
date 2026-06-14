@@ -85,7 +85,7 @@ def assert_translation_error(code: str, func) -> None:
     assert exc_info.value.message
 
 
-def test_resolver_requires_model_id_for_formal_ct2_marian(tmp_path: Path) -> None:
+def test_translation_resolver_requires_model_id_for_formal_ct2_marian(tmp_path: Path) -> None:
     assert_translation_error(
         "TRANSLATION_MODEL_REQUIRED",
         lambda: resolve(

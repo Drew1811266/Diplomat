@@ -23,7 +23,7 @@
 - Modify `worker/diplomat_worker/api/schemas.py`: add local translation request/settings fields.
 - Modify `worker/diplomat_worker/api/app.py`: translate API requests and catch translation configuration errors.
 - Modify `worker/diplomat_worker/storage/project_store.py`: persist and migrate translation model settings.
-- Create `worker/tests/translation/test_resolver.py`: resolver compatibility tests.
+- Create `worker/tests/translation/test_translation_resolver.py`: resolver compatibility tests.
 - Create `worker/tests/translation/test_ct2_marian.py`: mocked CTranslate2/SentencePiece tests.
 - Create `worker/tests/translation/test_local_llm.py`: mocked Transformers local LLM tests.
 - Modify `worker/tests/tasks/test_translation_jobs.py`: local model job tests and failure/retry behavior.
@@ -206,7 +206,7 @@ git commit -m "feat(shared): add local translation contract"
 
 **Files:**
 - Create: `worker/diplomat_worker/translation/resolver.py`
-- Test: `worker/tests/translation/test_resolver.py`
+- Test: `worker/tests/translation/test_translation_resolver.py`
 
 - [ ] **Step 1: Write failing resolver tests**
 
@@ -226,7 +226,7 @@ Create tests for:
 Run:
 
 ```powershell
-python -m pytest worker/tests/translation/test_resolver.py -q
+python -m pytest worker/tests/translation/test_translation_resolver.py -q
 ```
 
 Expected: fail because the resolver does not exist.
@@ -265,7 +265,7 @@ Return a copied config with fallback languages filled and `model_name_or_path` s
 - [ ] **Step 4: Run resolver tests**
 
 ```powershell
-python -m pytest worker/tests/translation/test_resolver.py -q
+python -m pytest worker/tests/translation/test_translation_resolver.py -q
 ```
 
 Expected: pass.
