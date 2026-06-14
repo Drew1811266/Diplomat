@@ -28,7 +28,12 @@ class FasterWhisperTranscriber:
         progress_callback: ProgressCallback | None = None,
         cancel_token: CancelToken | None = None,
     ) -> AsrResult:
-        from faster_whisper import WhisperModel
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError as exc:
+            raise RuntimeError(
+                "faster-whisper is not installed. Install the Worker ASR extras before running local ASR."
+            ) from exc
 
         if cancel_token is not None and cancel_token.is_cancel_requested():
             raise AsrCanceled("Analysis canceled")
