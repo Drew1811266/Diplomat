@@ -39,7 +39,7 @@ Accept or reject the full 0.35 release based on real packaged-desktop, long-vide
 - Full repository verification passes.
 - GitHub `main` contains the accepted 0.35 release state.
 
-## Verification Commands
+## Automated Verification Commands
 
 ```powershell
 .\scripts\check.ps1
@@ -47,14 +47,36 @@ node .\scripts\verify-version.mjs
 node .\scripts\verify-release-assets.mjs
 ```
 
-Opt-in release verification:
+## Opt-In Release Evidence Commands
 
 ```powershell
-.\scripts\verify-0.35-installer.ps1
-.\scripts\verify-0.35-long-video.ps1 -Duration OneHour
-.\scripts\verify-0.35-long-video.ps1 -Duration ThreeHour
-.\scripts\verify-0.35-crash-resume.ps1
+.\scripts\verify-0.35-installer.ps1 `
+  -InstallerPath .\src-tauri\target\release\bundle\nsis\Diplomat_0.35.0_x64-setup.exe `
+  -AppLaunched `
+  -WorkerReachable
+
+.\scripts\verify-0.35-long-video.ps1 `
+  -Duration OneHour `
+  -MediaPath D:\acceptance\one-hour.mp4 `
+  -SubtitlePath D:\acceptance\one-hour.srt `
+  -BenchmarkPath .dev\benchmarks\benchmark-one-hour.json `
+  -BurnInExportPath D:\acceptance\one-hour-burnin.mp4
+
+.\scripts\verify-0.35-long-video.ps1 `
+  -Duration ThreeHour `
+  -MediaPath D:\acceptance\three-hour.mp4 `
+  -SubtitlePath D:\acceptance\three-hour.srt `
+  -BenchmarkPath .dev\benchmarks\benchmark-three-hour.json `
+  -TranslationCompleted
+
+.\scripts\verify-0.35-crash-resume.ps1 `
+  -ProjectDir D:\Diplomat\projects\acceptance-three-hour `
+  -TaskType translation `
+  -CompletedBeforeInterrupt `
+  -CompletedAfterRetry
 ```
+
+Each opt-in script writes a JSON evidence report to `.dev\release-evidence` by default. A public 0.35 release must attach or archive the generated evidence files with the final stage gate review.
 
 ## Stage Gate
 
