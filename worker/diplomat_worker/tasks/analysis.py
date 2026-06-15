@@ -35,7 +35,12 @@ class AnalysisJobManager:
         self._cancel_tokens: dict[str, ThreadCancelToken] = {}
         self._lock = Lock()
 
-    def create_analysis_job(self, project_id: str, config: AsrModelConfig) -> TaskRecord:
+    def create_analysis_job(
+        self,
+        project_id: str,
+        config: AsrModelConfig,
+        resume_from_task_id: str | None = None,
+    ) -> TaskRecord:
         project = self.runtime.store.get_project(project_id)
         self._resolve_config(config, project.source_language)
         if self.runtime.store.has_subtitle_document(project_id):
@@ -44,11 +49,14 @@ class AnalysisJobManager:
                 reason="analysis_overwrite",
                 label="Before analysis overwrite",
             )
+        request_payload = config.to_request_payload()
+        if resume_from_task_id is not None:
+            request_payload = {**request_payload, "resumeTaskId": resume_from_task_id}
         task = self.runtime.store.create_task(
             project_id=project_id,
             task_type="analysis",
             message="Queued analysis",
-            request_payload=config.to_request_payload(),
+            request_payload=request_payload,
         )
         token = ThreadCancelToken()
         with self._lock:
@@ -89,9 +97,11 @@ class AnalysisJobManager:
         task = self.runtime.store.get_task(task_id)
         if task.status not in {"failed", "canceled"}:
             raise ValueError("Only failed or canceled tasks can be retried")
+        retry_config = config or AsrModelConfig.from_request_payload(task.request_payload)
         return self.create_analysis_job(
             task.project_id,
-            config or AsrModelConfig.from_request_payload(task.request_payload),
+            retry_config,
+            resume_from_task_id=task.task_id,
         )
 
     def run_pending_once(self) -> None:
@@ -155,6 +165,7 @@ class AnalysisJobManager:
                 return
 
             config = AsrModelConfig.from_request_payload(task.request_payload)
+            resume_from_task_id = task.request_payload.get("resumeTaskId")
             resolved_config = self._resolve_config(config, project.source_language)
             transcriber = self.runtime.transcriber_factory(resolved_config, project.source_language)
             result = run_core_pipeline(
@@ -166,6 +177,8 @@ class AnalysisJobManager:
                     duration_ms=project.duration_ms,
                     source_language=project.source_language,
                     target_language=project.target_language,
+                    task_id=task.task_id,
+                    resume_from_task_id=resume_from_task_id,
                 ),
                 transcriber=transcriber,
                 extract_audio_fn=self.runtime.extract_audio_fn,
