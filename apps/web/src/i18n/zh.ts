@@ -117,6 +117,7 @@ export const zh = {
     },
     selectLine: "选择字幕 {{id}}",
     timingIssueCount: "{{count}} 个时间问题",
+    translationQualityIssueCount: "{{count}} 个质量问题",
     empty: "暂无字幕行",
     noFilterMatches: "当前筛选下没有字幕行。",
     noSourceText: "无源文",
@@ -198,7 +199,9 @@ export const zh = {
     translationPairUnsupported: "所选翻译模型不支持当前语言方向。",
     translationModelUnavailable: "请先安装这个翻译模型再开始翻译。",
     localTranslationPending: "本地翻译模型执行将在 0.25 实现。",
-    runtimeProfile: "{{device}} · {{computeType}} · 批量 {{batchSize}}"
+    runtimeProfile: "{{device}} · {{computeType}} · 批量 {{batchSize}}",
+    emptyGlossary: "暂无术语",
+    translationQualityIssues: "质量检查"
   },
   fields: {
     projectName: "项目名称",
@@ -217,6 +220,9 @@ export const zh = {
     computeType: "计算类型",
     initialPrompt: "初始提示词",
     translationMode: "翻译模式",
+    glossary: "术语表",
+    sourceTerm: "源术语",
+    targetTerm: "目标术语",
     endpoint: "服务地址",
     apiKeyEnv: "API key 环境变量",
     exportMode: "导出模式",
@@ -288,7 +294,9 @@ export const zh = {
     retry: "重试",
     open: "打开",
     save: "保存",
-    close: "关闭"
+    close: "关闭",
+    addTerm: "添加术语",
+    removeTerm: "删除术语"
   },
   settings: {
     title: "设置",

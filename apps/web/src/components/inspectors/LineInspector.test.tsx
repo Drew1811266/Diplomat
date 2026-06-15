@@ -11,7 +11,8 @@ const selectedLine: SubtitleLine = {
   ...analyzedDocumentFixture.lines[0]!,
   translatedText: "Old translation",
   translationStatus: "failed",
-  translationError: "Provider timeout"
+  translationError: "Provider timeout",
+  translationQualityIssues: []
 };
 
 function stubMatchMedia(matches: boolean) {
@@ -101,5 +102,31 @@ describe("LineInspector", () => {
     expect(screen.getByLabelText("Source text")).toBeDisabled();
     expect(screen.getByLabelText("Translated text")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("shows translation quality issues for the selected line", () => {
+    renderWithProviders(
+      <LineInspector
+        line={{
+          ...selectedLine,
+          translationQualityIssues: [
+            {
+              code: "glossary_term_missing",
+              severity: "warning",
+              message: 'Expected translation for "GPU" to include "Graphics processor".',
+              termId: "term-1"
+            }
+          ]
+        }}
+        busy={false}
+        onChangeLine={() => undefined}
+        onSave={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("Quality checks")).toBeInTheDocument();
+    expect(
+      screen.getByText('Expected translation for "GPU" to include "Graphics processor".')
+    ).toBeInTheDocument();
   });
 });

@@ -27,7 +27,8 @@ function makeLines(): SubtitleLine[] {
       translatedText: "",
       reviewStatus: "draft",
       translationStatus: "not_requested",
-      translationError: null
+      translationError: null,
+      translationQualityIssues: []
     },
     {
       ...baseLine,
@@ -38,7 +39,8 @@ function makeLines(): SubtitleLine[] {
       translatedText: "Second subtitle line",
       reviewStatus: "reviewed",
       translationStatus: "translated",
-      translationError: null
+      translationError: null,
+      translationQualityIssues: []
     },
     {
       ...baseLine,
@@ -49,7 +51,8 @@ function makeLines(): SubtitleLine[] {
       translatedText: "Failed candidate",
       reviewStatus: "draft",
       translationStatus: "failed",
-      translationError: "Provider timeout"
+      translationError: "Provider timeout",
+      translationQualityIssues: []
     }
   ];
 }
@@ -155,5 +158,34 @@ describe("SubtitleGrid", () => {
 
     expect(screen.getByTestId("subtitle-row-line-2")).toHaveAttribute("data-has-issues", "true");
     expect(screen.getByText("1 timing issue")).toBeInTheDocument();
+  });
+
+  it("shows translation quality issue badges on affected rows", () => {
+    const lines = makeLines();
+    lines[1] = {
+      ...lines[1]!,
+      translationQualityIssues: [
+        {
+          code: "glossary_term_missing",
+          severity: "warning",
+          message: 'Expected translation for "GPU" to include "Graphics processor".',
+          termId: "term-1"
+        }
+      ]
+    };
+
+    renderWithProviders(
+      <SubtitleGrid
+        lines={lines}
+        selectedLineId={null}
+        activeLineId={null}
+        filter="all"
+        onFilterChange={() => undefined}
+        onSelectLine={() => undefined}
+      />
+    );
+
+    expect(screen.getByTestId("subtitle-row-line-2")).toHaveAttribute("data-has-issues", "true");
+    expect(screen.getByText("1 quality issue")).toBeInTheDocument();
   });
 });

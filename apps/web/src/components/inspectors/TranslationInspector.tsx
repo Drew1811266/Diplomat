@@ -1,5 +1,15 @@
-import { Button, Group, NativeSelect, Stack, Text, TextInput } from "@mantine/core";
+import {
+  ActionIcon,
+  Button,
+  Group,
+  NativeSelect,
+  Stack,
+  Text,
+  TextInput,
+  Tooltip
+} from "@mantine/core";
 import type { ModelCatalogEntry, TranslationJobRequest } from "@diplomat/shared";
+import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 
 type TranslationInspectorProps = {
@@ -26,6 +36,7 @@ const translationProviders: TranslationJobRequest["provider"][] = [
 const translationModes: TranslationJobRequest["mode"][] = ["missing_only", "overwrite_all"];
 const devices: TranslationJobRequest["device"][] = ["cpu", "cuda"];
 const computeTypes: TranslationJobRequest["computeType"][] = ["int8", "float16", "float32"];
+type TranslationGlossaryEntry = TranslationJobRequest["glossary"][number];
 
 function getLanguageError(value: string, requiredMessage: string, lengthMessage: string) {
   if (value.length === 0) {
@@ -45,6 +56,19 @@ function selectedProfile(model: ModelCatalogEntry | null, device: string, comput
       (profile) => profile.device === device && profile.computeType === computeType
     ) ?? null
   );
+}
+
+function nextGlossaryId(
+  glossary: TranslationGlossaryEntry[],
+  sourceLanguage: string,
+  targetLanguage: string
+) {
+  const prefix = `${sourceLanguage}-${targetLanguage}-term`;
+  let index = glossary.length + 1;
+  while (glossary.some((entry) => entry.id === `${prefix}-${index}`)) {
+    index += 1;
+  }
+  return `${prefix}-${index}`;
 }
 
 export function TranslationInspector({
@@ -95,7 +119,11 @@ export function TranslationInspector({
     : !selectedModel || !selectedModelSupportsPair;
   const runtimeProfile = selectedProfile(selectedModel, config.device, config.computeType);
   const profileBlocksStart = Boolean(runtimeProfile && !runtimeProfile.available);
-  const canUseConfig = !hasLanguageErrors && !hasModelBlock && !profileBlocksStart;
+  const hasGlossaryErrors = config.glossary.some(
+    (entry) => !entry.sourceText.trim() || !entry.targetText.trim()
+  );
+  const canUseConfig =
+    !hasLanguageErrors && !hasModelBlock && !profileBlocksStart && !hasGlossaryErrors;
   const canStart = !busy && canUseConfig;
 
   function updateConfig<Key extends keyof TranslationJobRequest>(
@@ -103,6 +131,55 @@ export function TranslationInspector({
     value: TranslationJobRequest[Key]
   ) {
     onConfigChange({ ...config, [key]: value });
+  }
+
+  function updateSourceLanguage(value: string) {
+    onConfigChange({
+      ...config,
+      sourceLanguage: value,
+      glossary: config.glossary.map((entry) => ({ ...entry, sourceLanguage: value }))
+    });
+  }
+
+  function updateTargetLanguage(value: string) {
+    onConfigChange({
+      ...config,
+      targetLanguage: value,
+      glossary: config.glossary.map((entry) => ({ ...entry, targetLanguage: value }))
+    });
+  }
+
+  function addGlossaryEntry() {
+    onConfigChange({
+      ...config,
+      glossary: [
+        ...config.glossary,
+        {
+          id: nextGlossaryId(config.glossary, config.sourceLanguage, config.targetLanguage),
+          sourceText: "",
+          targetText: "",
+          sourceLanguage: config.sourceLanguage,
+          targetLanguage: config.targetLanguage,
+          caseSensitive: false
+        }
+      ]
+    });
+  }
+
+  function updateGlossaryEntry(index: number, patch: Partial<TranslationGlossaryEntry>) {
+    onConfigChange({
+      ...config,
+      glossary: config.glossary.map((entry, currentIndex) =>
+        currentIndex === index ? { ...entry, ...patch } : entry
+      )
+    });
+  }
+
+  function removeGlossaryEntry(index: number) {
+    onConfigChange({
+      ...config,
+      glossary: config.glossary.filter((_, currentIndex) => currentIndex !== index)
+    });
   }
 
   function handleStart() {
@@ -138,7 +215,12 @@ export function TranslationInspector({
       modelId,
       modelNameOrPath: null,
       sourceLanguage,
-      targetLanguage
+      targetLanguage,
+      glossary: config.glossary.map((entry) => ({
+        ...entry,
+        sourceLanguage,
+        targetLanguage
+      }))
     });
   }
 
@@ -196,14 +278,14 @@ export function TranslationInspector({
           value={config.sourceLanguage}
           error={sourceLanguageError}
           disabled={busy}
-          onChange={(event) => updateConfig("sourceLanguage", event.currentTarget.value)}
+          onChange={(event) => updateSourceLanguage(event.currentTarget.value)}
         />
         <TextInput
           label={t("fields.targetLanguage")}
           value={config.targetLanguage}
           error={targetLanguageError}
           disabled={busy}
-          onChange={(event) => updateConfig("targetLanguage", event.currentTarget.value)}
+          onChange={(event) => updateTargetLanguage(event.currentTarget.value)}
         />
       </Group>
 
@@ -219,6 +301,76 @@ export function TranslationInspector({
           updateConfig("mode", event.currentTarget.value as TranslationJobRequest["mode"])
         }
       />
+
+      <Stack gap={6}>
+        <Group justify="space-between" gap="xs" wrap="nowrap">
+          <Text size="sm" fw={700} c="#0f172a">
+            {t("fields.glossary")}
+          </Text>
+          <Button
+            type="button"
+            size="compact-xs"
+            variant="light"
+            color="teal"
+            leftSection={<IconPlus size={14} aria-hidden />}
+            onClick={addGlossaryEntry}
+            disabled={busy || hasLanguageErrors}
+          >
+            {t("actions.addTerm")}
+          </Button>
+        </Group>
+        {config.glossary.length ? (
+          config.glossary.map((entry, index) => (
+            <Group key={entry.id} gap="xs" align="flex-start" wrap="nowrap">
+              <TextInput
+                label={t("fields.sourceTerm")}
+                value={entry.sourceText}
+                error={
+                  entry.sourceText.trim()
+                    ? null
+                    : t("validation.requiredField", { field: t("fields.sourceTerm") })
+                }
+                disabled={busy}
+                style={{ flex: 1 }}
+                onChange={(event) =>
+                  updateGlossaryEntry(index, { sourceText: event.currentTarget.value })
+                }
+              />
+              <TextInput
+                label={t("fields.targetTerm")}
+                value={entry.targetText}
+                error={
+                  entry.targetText.trim()
+                    ? null
+                    : t("validation.requiredField", { field: t("fields.targetTerm") })
+                }
+                disabled={busy}
+                style={{ flex: 1 }}
+                onChange={(event) =>
+                  updateGlossaryEntry(index, { targetText: event.currentTarget.value })
+                }
+              />
+              <Tooltip label={t("actions.removeTerm")}>
+                <ActionIcon
+                  type="button"
+                  aria-label={t("actions.removeTerm")}
+                  variant="light"
+                  color="red"
+                  mt={24}
+                  disabled={busy}
+                  onClick={() => removeGlossaryEntry(index)}
+                >
+                  <IconTrash size={16} aria-hidden />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+          ))
+        ) : (
+          <Text size="xs" c="dimmed">
+            {t("inspector.emptyGlossary")}
+          </Text>
+        )}
+      </Stack>
 
       <Group grow gap="xs" align="flex-start">
         <NativeSelect

@@ -128,6 +128,7 @@ const subtitleDocument: SubtitleDocument = {
       translationStatus: "not_requested",
       translationOrigin: null,
       translationError: null,
+      translationQualityIssues: [],
       notes: ""
     }
   ]
@@ -482,6 +483,7 @@ describe("worker API helpers", () => {
       batchSize: 8,
       endpoint: null,
       apiKeyEnv: null,
+      glossary: [],
       updatedAt: "2026-06-07T00:00:00+00:00"
     };
     const fetchMock = stubJsonResponse(response);
@@ -507,6 +509,7 @@ describe("worker API helpers", () => {
       batchSize: 8,
       endpoint: null,
       apiKeyEnv: null,
+      glossary: [],
       updatedAt: "2026-06-07T00:00:00+00:00"
     };
     const fetchMock = stubJsonResponse(response);
@@ -540,7 +543,8 @@ describe("worker API helpers", () => {
         computeType: "float16",
         batchSize: 8,
         endpoint: null,
-        apiKeyEnv: null
+        apiKeyEnv: null,
+        glossary: []
       })
     });
   });
@@ -571,7 +575,8 @@ describe("worker API helpers", () => {
         computeType: "int8",
         batchSize: 8,
         endpoint: null,
-        apiKeyEnv: null
+        apiKeyEnv: null,
+        glossary: []
       })
     });
   });
@@ -667,7 +672,8 @@ describe("worker API helpers", () => {
         computeType: "float16",
         batchSize: 8,
         endpoint: null,
-        apiKeyEnv: null
+        apiKeyEnv: null,
+        glossary: []
       })
     });
   });

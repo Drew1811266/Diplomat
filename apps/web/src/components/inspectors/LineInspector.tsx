@@ -36,6 +36,19 @@ export function LineInspector({ line, busy, onChangeLine, onSave }: LineInspecto
         </Badge>
       </Group>
 
+      {line.translationQualityIssues.length ? (
+        <Stack gap={4}>
+          <Text size="xs" fw={800} c="orange">
+            {t("inspector.translationQualityIssues")}
+          </Text>
+          {line.translationQualityIssues.map((issue, index) => (
+            <Text key={`${issue.code}-${issue.termId ?? index}`} size="xs" c="#92400e">
+              {issue.message}
+            </Text>
+          ))}
+        </Stack>
+      ) : null}
+
       <Group grow gap="xs" align="flex-start">
         <NumberInput
           label={t("fields.startMs")}
