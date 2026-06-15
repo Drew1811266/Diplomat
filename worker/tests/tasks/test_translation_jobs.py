@@ -34,6 +34,28 @@ class OutOfMemoryTranslationProvider:
         raise RuntimeError("CUDA out of memory while allocating")
 
 
+class BatchRecordingTranslationProvider:
+    provider = "ct2-marian"
+
+    def __init__(self) -> None:
+        self.batch_requests: list[list[TranslationRequest]] = []
+
+    def translate(self, request: TranslationRequest, cancel_token=None) -> TranslationResult:
+        raise AssertionError("translate should not be used when translate_batch is available")
+
+    def translate_batch(self, requests: list[TranslationRequest], cancel_token=None) -> list[TranslationResult]:
+        self.batch_requests.append(requests)
+        return [
+            TranslationResult(
+                line_id=request.line_id,
+                translated_text=f"[batch {request.target_language}] {request.source_text}",
+                provider=self.provider,
+                model="batch-model",
+            )
+            for request in requests
+        ]
+
+
 def make_entry(model_id: str = "translation.fixture.en-zh") -> ModelRegistryEntry:
     return ModelRegistryEntry(
         model_id=model_id,
@@ -126,6 +148,30 @@ def create_project_with_document(runtime: WorkerRuntime, tmp_path: Path) -> str:
     return project.project_id
 
 
+def add_second_line(runtime: WorkerRuntime, project_id: str) -> None:
+    document = runtime.store.load_subtitle_document(project_id)
+    runtime.store.save_subtitle_document(
+        project_id,
+        document.model_copy(
+            update={
+                "lines": [
+                    *document.lines,
+                    document.lines[0].model_copy(
+                        update={
+                            "id": "line-2",
+                            "start_ms": 1000,
+                            "end_ms": 2000,
+                            "source_text": "Second line",
+                            "translated_text": "",
+                            "translation_status": "not_requested",
+                        }
+                    ),
+                ]
+            }
+        ),
+    )
+
+
 def test_translation_job_updates_missing_translations(tmp_path: Path) -> None:
     runtime = make_runtime(tmp_path)
     project_id = create_project_with_document(runtime, tmp_path)
@@ -173,6 +219,37 @@ def test_translation_job_maps_runtime_out_of_memory_error(tmp_path: Path) -> Non
     assert failed.error_code == "RUNTIME_OUT_OF_MEMORY"
     assert failed.error_message is not None
     assert "lighter model" in failed.error_message
+
+
+def test_translation_job_uses_batch_provider_when_available(tmp_path: Path) -> None:
+    provider = BatchRecordingTranslationProvider()
+    runtime = make_runtime(
+        tmp_path,
+        translation_provider_factory=lambda config: provider,
+    )
+    project_id = create_project_with_document(runtime, tmp_path)
+    add_second_line(runtime, project_id)
+    manager = TranslationJobManager(runtime, auto_start=False)
+
+    task = manager.create_translation_job(
+        project_id,
+        source_language="en",
+        target_language="zh",
+        mode="missing_only",
+        provider_config=TranslationProviderConfig(provider="fake", batch_size=2),
+    )
+    manager.run_pending_once()
+
+    completed = runtime.store.get_task(task.task_id)
+    document = runtime.store.load_subtitle_document(project_id)
+    assert completed.status == "completed"
+    assert [[request.line_id for request in batch] for batch in provider.batch_requests] == [
+        ["line-1", "line-2"]
+    ]
+    assert [line.translated_text for line in document.lines] == [
+        "[batch zh] Hello world",
+        "[batch zh] Second line",
+    ]
 
 
 def test_missing_only_preserves_edited_translation(tmp_path: Path) -> None:
@@ -322,6 +399,7 @@ def test_translation_job_completes_with_installed_curated_translation_model(tmp_
         "modelId": entry.model_id,
         "device": "cpu",
         "computeType": "int8",
+        "batchSize": 8,
     }
     assert captured_configs[0].model_name_or_path == str(installed_path)
     assert captured_configs[0].model_id == entry.model_id
@@ -439,4 +517,5 @@ def test_retry_failed_translation_job_preserves_local_model_config(tmp_path: Pat
         "modelId": entry.model_id,
         "device": "cuda",
         "computeType": "float16",
+        "batchSize": 8,
     }

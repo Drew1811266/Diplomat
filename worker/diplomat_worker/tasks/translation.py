@@ -171,37 +171,52 @@ class TranslationJobManager:
                 return
 
             translated_lines: dict[str, SubtitleLine] = {}
-            for index, line in enumerate(selected_lines):
+            batch_size = max(1, resolved_config.batch_size)
+            processed_count = 0
+            selected_by_id = {line.id: line for line in selected_lines}
+            for batch_start in range(0, len(selected_lines), batch_size):
                 if token.is_cancel_requested():
                     raise TranslationCanceled("Translation canceled")
 
-                result = provider.translate(
+                batch_lines = selected_lines[batch_start:batch_start + batch_size]
+                requests = [
                     TranslationRequest(
                         line_id=line.id,
                         source_text=line.source_text,
                         source_language=source_language,
                         target_language=target_language,
-                    ),
-                    cancel_token=token,
-                )
-                translated_lines[line.id] = line.model_copy(
-                    update={
-                        "target_language": target_language,
-                        "translated_text": result.translated_text,
-                        "translation_status": "translated",
-                        "translation_origin": TranslationOrigin(
-                            provider=result.provider,
-                            model=result.model,
-                        ),
-                        "translation_error": None,
-                    }
-                )
-                progress = 0.05 + ((index + 1) / len(selected_lines)) * 0.9
+                    )
+                    for line in batch_lines
+                ]
+                if hasattr(provider, "translate_batch"):
+                    results = provider.translate_batch(requests, cancel_token=token)
+                else:
+                    results = [
+                        provider.translate(request, cancel_token=token)
+                        for request in requests
+                    ]
+
+                for result in results:
+                    line = selected_by_id[result.line_id]
+                    translated_lines[line.id] = line.model_copy(
+                        update={
+                            "target_language": target_language,
+                            "translated_text": result.translated_text,
+                            "translation_status": "translated",
+                            "translation_origin": TranslationOrigin(
+                                provider=result.provider,
+                                model=result.model,
+                            ),
+                            "translation_error": None,
+                        }
+                    )
+                processed_count += len(results)
+                progress = 0.05 + (processed_count / len(selected_lines)) * 0.9
                 self.runtime.store.update_task(
                     task_id,
                     status="running",
                     progress=progress,
-                    message=f"Translated {index + 1} of {len(selected_lines)} lines",
+                    message=f"Translated {processed_count} of {len(selected_lines)} lines",
                     diagnostic_log_path=str(diagnostic_path),
                 )
 

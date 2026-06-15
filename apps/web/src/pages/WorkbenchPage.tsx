@@ -99,6 +99,7 @@ const defaultTranslationConfig: TranslationJobRequest = {
   mode: "missing_only",
   device: "cuda",
   computeType: "float16",
+  batchSize: 8,
   endpoint: null,
   apiKeyEnv: null
 };

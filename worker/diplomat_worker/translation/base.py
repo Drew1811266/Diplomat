@@ -31,3 +31,12 @@ class TranslationProvider(Protocol):
         cancel_token: CancelToken | None = None,
     ) -> TranslationResult:
         raise NotImplementedError
+
+
+class BatchTranslationProvider(Protocol):
+    def translate_batch(
+        self,
+        requests: list[TranslationRequest],
+        cancel_token: CancelToken | None = None,
+    ) -> list[TranslationResult]:
+        raise NotImplementedError

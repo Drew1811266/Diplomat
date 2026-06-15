@@ -104,7 +104,8 @@ describe("TranslationJobRequestSchema", () => {
       device: "cpu",
       computeType: "int8",
       endpoint: null,
-      apiKeyEnv: null
+      apiKeyEnv: null,
+      batchSize: 8
     });
   });
 
@@ -116,7 +117,8 @@ describe("TranslationJobRequestSchema", () => {
       targetLanguage: "en",
       mode: "missing_only",
       device: "cuda",
-      computeType: "float16"
+      computeType: "float16",
+      batchSize: 16
     });
 
     expect(request).toMatchObject({
@@ -126,7 +128,8 @@ describe("TranslationJobRequestSchema", () => {
       sourceLanguage: "zh",
       targetLanguage: "en",
       device: "cuda",
-      computeType: "float16"
+      computeType: "float16",
+      batchSize: 16
     });
   });
 });
@@ -145,6 +148,7 @@ describe("TranslationSettingsResponseSchema", () => {
       computeType: "int8",
       endpoint: null,
       apiKeyEnv: null,
+      batchSize: 8,
       updatedAt: "2026-06-07T00:00:00+00:00"
     });
 

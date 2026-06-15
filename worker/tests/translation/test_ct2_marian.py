@@ -21,7 +21,7 @@ class FakeTranslator:
 
     def translate_batch(self, batches):
         self.translate_calls.append(batches)
-        return [SimpleNamespace(hypotheses=[["Hello", "world"]])]
+        return [SimpleNamespace(hypotheses=[["Hello", "world"]]) for _batch in batches]
 
 
 class FakeSentencePieceProcessor:
@@ -86,6 +86,29 @@ def test_ct2_marian_provider_translates_with_sentencepiece_and_ctranslate2(
     assert result.translated_text == "Hello world"
     assert result.provider == "ct2-marian"
     assert result.model == "translation.opus-mt.zh-en"
+
+
+def test_ct2_marian_provider_translates_batch(monkeypatch, tmp_path: Path) -> None:
+    install_fake_ct2_modules(monkeypatch)
+    model_path = tmp_path / "translation-model"
+    model_path.mkdir()
+    (model_path / "source.spm").write_bytes(b"source tokenizer")
+    (model_path / "target.spm").write_bytes(b"target tokenizer")
+    provider = CTranslate2MarianProvider(
+        model_path=str(model_path),
+        model_label="translation.opus",
+    )
+
+    results = provider.translate_batch(
+        [
+            TranslationRequest("line-1", "你好", "zh", "en"),
+            TranslationRequest("line-2", "世界", "zh", "en"),
+        ]
+    )
+
+    translator = FakeTranslator.instances[0]
+    assert translator.translate_calls == [[["▁你好"], ["▁世界"]]]
+    assert [result.line_id for result in results] == ["line-1", "line-2"]
 
 
 def test_ct2_marian_provider_stops_before_loading_when_canceled(tmp_path: Path) -> None:

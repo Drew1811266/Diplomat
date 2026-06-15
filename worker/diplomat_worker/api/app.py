@@ -343,6 +343,7 @@ def translation_config_from_request(request: TranslationSettingsRequest) -> Tran
         model_name_or_path=request.model_name_or_path,
         device=request.device,
         compute_type=request.compute_type,
+        batch_size=request.batch_size,
         endpoint=request.endpoint,
         api_key_env=request.api_key_env,
     )

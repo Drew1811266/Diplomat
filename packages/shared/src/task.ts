@@ -38,6 +38,7 @@ export const TranslationJobRequestSchema = z.object({
   mode: TranslationModeSchema.default("missing_only"),
   device: z.string().min(1).default("cpu"),
   computeType: z.string().min(1).default("int8"),
+  batchSize: z.number().int().positive().default(8),
   endpoint: z.string().nullable().default(null),
   apiKeyEnv: z.string().nullable().default(null)
 });

@@ -1085,6 +1085,7 @@ def test_create_translation_job_returns_accepted_task(app_module, tmp_path: Path
             "sourceLanguage": "en",
             "targetLanguage": "zh",
             "mode": "missing_only",
+            "batchSize": 4,
         },
     )
 
@@ -1094,6 +1095,7 @@ def test_create_translation_job_returns_accepted_task(app_module, tmp_path: Path
     assert payload["type"] == "translation"
     assert payload["status"] == "queued"
     assert payload["progress"] == 0
+    assert runtime.store.get_task(payload["taskId"]).request_payload["batchSize"] == 4
 
 
 def test_create_translation_job_rejects_uninstalled_curated_translation_model(
