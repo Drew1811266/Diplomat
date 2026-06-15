@@ -17,7 +17,7 @@ This stage does not add a second LLM judge or automatic semantic rewriting. It b
 - Audit translated subtitle lines against glossary entries after translation.
 - Store line-level translation quality issues in the subtitle document.
 - Show quality issue counts in the subtitle grid and issue details in the line inspector.
-- Add a simple translation inspector glossary editor using one `source => target` entry per line.
+- Add a compact translation inspector glossary editor using source-term and target-term fields.
 - Keep the implementation local and deterministic so it works without network access or extra model downloads.
 
 ## Out Of Scope
