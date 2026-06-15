@@ -479,6 +479,7 @@ describe("worker API helpers", () => {
       mode: "missing_only",
       device: "cpu",
       computeType: "int8",
+      batchSize: 8,
       endpoint: null,
       apiKeyEnv: null,
       updatedAt: "2026-06-07T00:00:00+00:00"
@@ -503,6 +504,7 @@ describe("worker API helpers", () => {
       mode: "missing_only",
       device: "cuda",
       computeType: "float16",
+      batchSize: 8,
       endpoint: null,
       apiKeyEnv: null,
       updatedAt: "2026-06-07T00:00:00+00:00"
@@ -536,6 +538,7 @@ describe("worker API helpers", () => {
         mode: "missing_only",
         device: "cuda",
         computeType: "float16",
+        batchSize: 8,
         endpoint: null,
         apiKeyEnv: null
       })
@@ -566,6 +569,7 @@ describe("worker API helpers", () => {
         mode: "missing_only",
         device: "cpu",
         computeType: "int8",
+        batchSize: 8,
         endpoint: null,
         apiKeyEnv: null
       })
@@ -661,6 +665,7 @@ describe("worker API helpers", () => {
         mode: "overwrite_all",
         device: "cuda",
         computeType: "float16",
+        batchSize: 8,
         endpoint: null,
         apiKeyEnv: null
       })
