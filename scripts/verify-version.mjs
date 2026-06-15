@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
-const expectedVersion = "0.32.0";
+const expectedVersion = "0.33.0";
 
 function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(root, relativePath), "utf8"));
@@ -47,8 +47,8 @@ const checks = [
 ];
 
 const failures = checks.filter(([, actual]) => actual !== expectedVersion);
-if (!readText("README.md").includes("Current project version: **0.32.0**")) {
-  failures.push(["README.md", "missing 0.32.0 version line"]);
+if (!readText("README.md").includes("Current project version: **0.33.0**")) {
+  failures.push(["README.md", "missing 0.33.0 version line"]);
 }
 
 if (failures.length > 0) {
