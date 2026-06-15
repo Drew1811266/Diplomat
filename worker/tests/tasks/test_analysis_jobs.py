@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from diplomat_worker.api.runtime import WorkerRuntime
-from diplomat_worker.asr.base import AsrResult, AsrSegment
+from diplomat_worker.asr.base import AsrCanceled, AsrResult, AsrSegment
 from diplomat_worker.asr.config import AsrModelConfig
 from diplomat_worker.asr.fake import FakeTranscriber
 from diplomat_worker.asr.resolver import AsrConfigurationError
@@ -36,6 +36,18 @@ class RecordingTranscriber:
                 )
             ],
         )
+
+
+class CancelAfterOneChunkTranscriber(FakeTranscriber):
+    def __init__(self) -> None:
+        super().__init__(language="zh")
+        self.calls = 0
+
+    def transcribe(self, audio_path, chunks, progress_callback=None, cancel_token=None):
+        self.calls += 1
+        if self.calls > 1:
+            raise AsrCanceled("Analysis canceled")
+        return super().transcribe(audio_path, chunks, progress_callback, cancel_token)
 
 
 def make_entry(model_id: str = "asr.fixture.small") -> ModelRegistryEntry:
@@ -109,6 +121,16 @@ def create_project(runtime: WorkerRuntime, tmp_path: Path) -> str:
         name="Demo",
         source_video_path=tmp_path / "demo.mp4",
         duration_ms=10_000,
+        source_language="zh",
+        target_language="en",
+    ).project_id
+
+
+def create_long_project(runtime: WorkerRuntime, tmp_path: Path) -> str:
+    return runtime.store.create_project(
+        name="Long Demo",
+        source_video_path=tmp_path / "long-demo.mp4",
+        duration_ms=65_000,
         source_language="zh",
         target_language="en",
     ).project_id
@@ -192,7 +214,35 @@ def test_retry_failed_analysis_job_creates_new_task(tmp_path: Path) -> None:
     assert retry.task_id != task.task_id
     assert retry.project_id == project_id
     assert retry.status == "queued"
-    assert retry.request_payload == {"provider": "fake"}
+    assert retry.request_payload == {"provider": "fake", "resumeTaskId": task.task_id}
+
+
+def test_retry_canceled_analysis_reuses_completed_chunk_outputs(tmp_path: Path) -> None:
+    transcribers: list[FakeTranscriber] = []
+
+    def factory(config: AsrModelConfig, fallback_language: str):
+        transcriber = CancelAfterOneChunkTranscriber() if not transcribers else FakeTranscriber(language="zh")
+        transcribers.append(transcriber)
+        return transcriber
+
+    runtime = make_runtime(tmp_path, transcriber_factory=factory)
+    project_id = create_long_project(runtime, tmp_path)
+    manager = AnalysisJobManager(runtime, auto_start=False)
+    first_task = manager.create_analysis_job(project_id, AsrModelConfig(provider="fake"))
+    manager.run_pending_once()
+
+    assert runtime.store.get_task(first_task.task_id).status == "canceled"
+
+    retry = manager.retry_task(first_task.task_id)
+    manager.run_pending_once()
+
+    project = runtime.store.get_project(project_id)
+    first_chunk = project.project_dir / "cache" / "asr" / first_task.task_id / "chunks" / "chunk-000001.json"
+    retry_chunk = project.project_dir / "cache" / "asr" / retry.task_id / "chunks" / "chunk-000001.json"
+    assert runtime.store.get_task(retry.task_id).status == "completed"
+    assert retry.request_payload == {"provider": "fake", "resumeTaskId": first_task.task_id}
+    assert first_chunk.exists()
+    assert retry_chunk.exists()
 
 
 def test_retry_failed_analysis_job_can_replace_request_payload(tmp_path: Path) -> None:
@@ -233,6 +283,7 @@ def test_retry_failed_analysis_job_can_replace_request_payload(tmp_path: Path) -
         "device": "cpu",
         "computeType": "int8",
         "sourceLanguage": "en",
+        "resumeTaskId": task.task_id,
     }
     assert captured_configs == []
 

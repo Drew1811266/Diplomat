@@ -76,6 +76,8 @@ def test_faster_whisper_transcriber_converts_segments_and_words(monkeypatch, tmp
             {
                 "language": "zh",
                 "word_timestamps": True,
+                "condition_on_previous_text": False,
+                "clip_timestamps": [0.0, 2.0],
                 "initial_prompt": "Use subtitle punctuation",
             },
         )
@@ -90,6 +92,24 @@ def test_faster_whisper_transcriber_converts_segments_and_words(monkeypatch, tmp
     assert result.segments[0].words[0].confidence == 0.91
     assert progress[0] == (0.05, "Loading faster-whisper model")
     assert progress[-1] == (1.0, "Faster-whisper transcription completed")
+
+
+def test_faster_whisper_transcriber_clips_single_chunk(monkeypatch, tmp_path: Path) -> None:
+    install_fake_faster_whisper(monkeypatch)
+    audio_path = tmp_path / "audio.wav"
+    audio_path.write_bytes(b"audio")
+    transcriber = FasterWhisperTranscriber(model_name="small", language="zh")
+
+    result = transcriber.transcribe(
+        audio_path=audio_path,
+        chunks=[AudioChunk(index=2, start_ms=60_000, end_ms=90_000)],
+    )
+
+    model = FakeWhisperModel.instances[0]
+    assert model.transcribe_calls[0][1]["clip_timestamps"] == [60.0, 90.0]
+    assert model.transcribe_calls[0][1]["condition_on_previous_text"] is False
+    assert result.segments[0].start_ms == 60_250
+    assert result.segments[0].end_ms == 61_750
 
 
 def test_faster_whisper_transcriber_stops_before_loading_when_canceled(tmp_path: Path) -> None:

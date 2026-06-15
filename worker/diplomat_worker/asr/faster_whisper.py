@@ -4,6 +4,16 @@ from diplomat_worker.asr.base import AsrCanceled, AsrResult, AsrSegment, AsrWord
 from diplomat_worker.media.audio import AudioChunk
 
 
+def _normalize_timestamp_ms(value_seconds: float, chunk: AudioChunk | None) -> int:
+    value_ms = int(value_seconds * 1000)
+    if chunk is None or chunk.start_ms == 0:
+        return value_ms
+    chunk_duration_ms = chunk.end_ms - chunk.start_ms
+    if value_ms <= chunk_duration_ms + 1000:
+        return value_ms + chunk.start_ms
+    return value_ms
+
+
 class FasterWhisperTranscriber:
     def __init__(
         self,
@@ -41,10 +51,17 @@ class FasterWhisperTranscriber:
             progress_callback(0.05, "Loading faster-whisper model")
 
         model = WhisperModel(self.model_name, device=self.device, compute_type=self.compute_type)
+        active_chunk = chunks[0] if len(chunks) == 1 else None
         transcribe_kwargs = {
             "language": self.language,
             "word_timestamps": True,
+            "condition_on_previous_text": False,
         }
+        if active_chunk is not None:
+            transcribe_kwargs["clip_timestamps"] = [
+                active_chunk.start_ms / 1000,
+                active_chunk.end_ms / 1000,
+            ]
         if self.initial_prompt:
             transcribe_kwargs["initial_prompt"] = self.initial_prompt
         if progress_callback is not None:
@@ -60,8 +77,8 @@ class FasterWhisperTranscriber:
             words = [
                 AsrWord(
                     text=word.word,
-                    start_ms=int(word.start * 1000),
-                    end_ms=int(word.end * 1000),
+                    start_ms=_normalize_timestamp_ms(word.start, active_chunk),
+                    end_ms=_normalize_timestamp_ms(word.end, active_chunk),
                     confidence=getattr(word, "probability", None),
                 )
                 for word in (segment.words or [])
@@ -69,8 +86,8 @@ class FasterWhisperTranscriber:
             segments.append(
                 AsrSegment(
                     id=f"segment-{index}",
-                    start_ms=int(segment.start * 1000),
-                    end_ms=int(segment.end * 1000),
+                    start_ms=_normalize_timestamp_ms(segment.start, active_chunk),
+                    end_ms=_normalize_timestamp_ms(segment.end, active_chunk),
                     text=segment.text.strip(),
                     words=words,
                 )
