@@ -1041,6 +1041,7 @@ def test_retry_failed_analysis_job_accepts_replacement_config(app_module, tmp_pa
         "device": "cpu",
         "computeType": "int8",
         "sourceLanguage": "en",
+        "resumeTaskId": task_id,
     }
 
 
