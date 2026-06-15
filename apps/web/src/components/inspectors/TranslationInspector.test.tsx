@@ -13,8 +13,8 @@ const translationConfig: TranslationJobRequest = {
   sourceLanguage: "zh",
   targetLanguage: "en",
   mode: "missing_only",
-  device: "cuda",
-  computeType: "float16",
+  device: "cpu",
+  computeType: "int8",
   batchSize: 8,
   endpoint: null,
   apiKeyEnv: null
@@ -122,6 +122,22 @@ describe("TranslationInspector", () => {
     expect(onStart).toHaveBeenCalledTimes(1);
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the selected translation runtime profile batch size", () => {
+    renderWithProviders(
+      <TranslationInspector
+        config={{ ...configuredTranslationConfig, device: "cpu", computeType: "int8" }}
+        busy={false}
+        modelCatalog={[installedTranslationModel]}
+        onConfigChange={() => undefined}
+        onStart={() => undefined}
+        onCancel={() => undefined}
+        onRetry={() => undefined}
+      />
+    );
+
+    expect(screen.getByText(/Batch size 8/)).toBeVisible();
   });
 
   it("disables form fields and start while busy", () => {

@@ -39,6 +39,14 @@ function getLanguageError(value: string, requiredMessage: string, lengthMessage:
   return null;
 }
 
+function selectedProfile(model: ModelCatalogEntry | null, device: string, computeType: string) {
+  return (
+    model?.runtimeProfiles.find(
+      (profile) => profile.device === device && profile.computeType === computeType
+    ) ?? null
+  );
+}
+
 export function TranslationInspector({
   config,
   busy,
@@ -85,7 +93,9 @@ export function TranslationInspector({
   const hasModelBlock = allowDevelopmentControls
     ? false
     : !selectedModel || !selectedModelSupportsPair;
-  const canUseConfig = !hasLanguageErrors && !hasModelBlock;
+  const runtimeProfile = selectedProfile(selectedModel, config.device, config.computeType);
+  const profileBlocksStart = Boolean(runtimeProfile && !runtimeProfile.available);
+  const canUseConfig = !hasLanguageErrors && !hasModelBlock && !profileBlocksStart;
   const canStart = !busy && canUseConfig;
 
   function updateConfig<Key extends keyof TranslationJobRequest>(
@@ -226,6 +236,17 @@ export function TranslationInspector({
           onChange={(event) => updateConfig("computeType", event.currentTarget.value)}
         />
       </Group>
+      {runtimeProfile ? (
+        <Text size="xs" c={runtimeProfile.available ? "dimmed" : "orange"}>
+          {runtimeProfile.available
+            ? t("inspector.runtimeProfile", {
+                device: runtimeProfile.device,
+                computeType: runtimeProfile.computeType,
+                batchSize: runtimeProfile.batchSize
+              })
+            : (runtimeProfile.reason ?? runtimeProfile.notes)}
+        </Text>
+      ) : null}
 
       {allowDevelopmentControls ? (
         <>

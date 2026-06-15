@@ -19,6 +19,14 @@ const analysisProviders: AnalysisJobRequest["provider"][] = ["fake", "faster-whi
 const devices: AnalysisJobRequest["device"][] = ["cpu", "cuda"];
 const computeTypes: AnalysisJobRequest["computeType"][] = ["int8", "float16", "float32"];
 
+function selectedProfile(model: ModelCatalogEntry | null, device: string, computeType: string) {
+  return (
+    model?.runtimeProfiles.find(
+      (profile) => profile.device === device && profile.computeType === computeType
+    ) ?? null
+  );
+}
+
 export function AnalysisInspector({
   config,
   busy,
@@ -44,7 +52,13 @@ export function AnalysisInspector({
   )
     ? config.modelId ?? ""
     : "";
-  const canStart = allowDevelopmentControls ? !busy : !busy && Boolean(installedAsrModelId);
+  const selectedAsrModel =
+    installedAsrModels.find((model) => model.modelId === installedAsrModelId) ?? null;
+  const runtimeProfile = selectedProfile(selectedAsrModel, config.device, config.computeType);
+  const profileBlocksStart = Boolean(runtimeProfile && !runtimeProfile.available);
+  const canStart = allowDevelopmentControls
+    ? !busy
+    : !busy && Boolean(installedAsrModelId) && !profileBlocksStart;
 
   function updateConfig<Key extends keyof AnalysisJobRequest>(
     key: Key,
@@ -139,6 +153,17 @@ export function AnalysisInspector({
           onChange={(event) => updateConfig("computeType", event.currentTarget.value)}
         />
       </Group>
+      {runtimeProfile ? (
+        <Text size="xs" c={runtimeProfile.available ? "dimmed" : "orange"}>
+          {runtimeProfile.available
+            ? t("inspector.runtimeProfile", {
+                device: runtimeProfile.device,
+                computeType: runtimeProfile.computeType,
+                batchSize: runtimeProfile.batchSize
+              })
+            : (runtimeProfile.reason ?? runtimeProfile.notes)}
+        </Text>
+      ) : null}
 
       <TextInput
         label={t("fields.initialPrompt")}

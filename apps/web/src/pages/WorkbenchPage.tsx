@@ -84,8 +84,8 @@ const defaultAnalysisConfig: AnalysisJobRequest = {
   provider: "faster-whisper",
   modelId: null,
   modelNameOrPath: null,
-  device: "cuda",
-  computeType: "float16",
+  device: "cpu",
+  computeType: "int8",
   sourceLanguage: null,
   initialPrompt: null
 };
@@ -97,8 +97,8 @@ const defaultTranslationConfig: TranslationJobRequest = {
   sourceLanguage: "zh",
   targetLanguage: "en",
   mode: "missing_only",
-  device: "cuda",
-  computeType: "float16",
+  device: "cpu",
+  computeType: "int8",
   batchSize: 8,
   endpoint: null,
   apiKeyEnv: null
