@@ -17,11 +17,12 @@ class TranslationProviderConfig:
     model_name_or_path: str | None = None
     device: str = "cpu"
     compute_type: str = "int8"
+    batch_size: int = 8
     endpoint: str | None = None
     api_key_env: str | None = None
 
-    def to_request_payload(self) -> dict[str, str]:
-        payload = {"provider": self.provider}
+    def to_request_payload(self) -> dict[str, str | int]:
+        payload: dict[str, str | int] = {"provider": self.provider}
         if self.model_id:
             payload["modelId"] = self.model_id
         if self.model_name_or_path:
@@ -30,6 +31,8 @@ class TranslationProviderConfig:
             payload["device"] = self.device
         if self.provider != "fake" or self.compute_type != "int8":
             payload["computeType"] = self.compute_type
+        if self.provider in {"ct2-marian", "local-llm"} or self.batch_size != 8:
+            payload["batchSize"] = self.batch_size
         if self.endpoint:
             payload["endpoint"] = self.endpoint
         if self.api_key_env:
@@ -44,6 +47,7 @@ class TranslationProviderConfig:
             model_name_or_path=payload.get("modelNameOrPath") or payload.get("model_name_or_path"),
             device=payload.get("device", "cpu"),
             compute_type=payload.get("computeType") or payload.get("compute_type", "int8"),
+            batch_size=int(payload.get("batchSize") or payload.get("batch_size", 8)),
             endpoint=payload.get("endpoint"),
             api_key_env=payload.get("apiKeyEnv") or payload.get("api_key_env"),
         )

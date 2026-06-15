@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from diplomat_worker.schemas.subtitle import SubtitleDocument, SubtitleLine, TranslationOrigin
 from diplomat_worker.storage.project_store import TaskRecord
 from diplomat_worker.tasks.analysis import ThreadCancelToken
+from diplomat_worker.tasks.errors import classify_runtime_error
 from diplomat_worker.translation.base import (
     TranslationCanceled,
     TranslationRequest,
@@ -170,37 +171,52 @@ class TranslationJobManager:
                 return
 
             translated_lines: dict[str, SubtitleLine] = {}
-            for index, line in enumerate(selected_lines):
+            batch_size = max(1, resolved_config.batch_size)
+            processed_count = 0
+            selected_by_id = {line.id: line for line in selected_lines}
+            for batch_start in range(0, len(selected_lines), batch_size):
                 if token.is_cancel_requested():
                     raise TranslationCanceled("Translation canceled")
 
-                result = provider.translate(
+                batch_lines = selected_lines[batch_start:batch_start + batch_size]
+                requests = [
                     TranslationRequest(
                         line_id=line.id,
                         source_text=line.source_text,
                         source_language=source_language,
                         target_language=target_language,
-                    ),
-                    cancel_token=token,
-                )
-                translated_lines[line.id] = line.model_copy(
-                    update={
-                        "target_language": target_language,
-                        "translated_text": result.translated_text,
-                        "translation_status": "translated",
-                        "translation_origin": TranslationOrigin(
-                            provider=result.provider,
-                            model=result.model,
-                        ),
-                        "translation_error": None,
-                    }
-                )
-                progress = 0.05 + ((index + 1) / len(selected_lines)) * 0.9
+                    )
+                    for line in batch_lines
+                ]
+                if hasattr(provider, "translate_batch"):
+                    results = provider.translate_batch(requests, cancel_token=token)
+                else:
+                    results = [
+                        provider.translate(request, cancel_token=token)
+                        for request in requests
+                    ]
+
+                for result in results:
+                    line = selected_by_id[result.line_id]
+                    translated_lines[line.id] = line.model_copy(
+                        update={
+                            "target_language": target_language,
+                            "translated_text": result.translated_text,
+                            "translation_status": "translated",
+                            "translation_origin": TranslationOrigin(
+                                provider=result.provider,
+                                model=result.model,
+                            ),
+                            "translation_error": None,
+                        }
+                    )
+                processed_count += len(results)
+                progress = 0.05 + (processed_count / len(selected_lines)) * 0.9
                 self.runtime.store.update_task(
                     task_id,
                     status="running",
                     progress=progress,
-                    message=f"Translated {index + 1} of {len(selected_lines)} lines",
+                    message=f"Translated {processed_count} of {len(selected_lines)} lines",
                     diagnostic_log_path=str(diagnostic_path),
                 )
 
@@ -244,14 +260,17 @@ class TranslationJobManager:
             )
         except Exception as exc:
             log(traceback.format_exc())
-            self._mark_first_failed_line(task, str(exc))
+            error_code, error_message = classify_runtime_error(exc)
+            if error_code == "RUNTIME_FAILED":
+                error_code = "TRANSLATION_FAILED"
+            self._mark_first_failed_line(task, error_message)
             self.runtime.store.update_task(
                 task_id,
                 status="failed",
-                message="Translation failed",
+                message=error_message,
                 completed=True,
-                error_code="TRANSLATION_FAILED",
-                error_message=str(exc),
+                error_code=error_code,
+                error_message=error_message,
                 diagnostic_log_path=str(diagnostic_path),
             )
         finally:
@@ -271,6 +290,7 @@ class TranslationJobManager:
             fallback_source_language=source_language,
             fallback_target_language=target_language,
             allow_unmanaged_models=self.runtime.allow_unmanaged_translation_models,
+            runtime_capabilities=self.runtime.runtime_capabilities,
         )
 
     def _select_lines(self, lines: list[SubtitleLine], mode: str) -> list[SubtitleLine]:

@@ -50,6 +50,11 @@ class CancelAfterOneChunkTranscriber(FakeTranscriber):
         return super().transcribe(audio_path, chunks, progress_callback, cancel_token)
 
 
+class OutOfMemoryTranscriber:
+    def transcribe(self, audio_path, chunks, progress_callback=None, cancel_token=None):
+        raise RuntimeError("CUDA out of memory while allocating")
+
+
 def make_entry(model_id: str = "asr.fixture.small") -> ModelRegistryEntry:
     return ModelRegistryEntry(
         model_id=model_id,
@@ -197,6 +202,24 @@ def test_analysis_job_fails_with_missing_ffmpeg(tmp_path: Path) -> None:
     assert failed.error_message == "FFmpeg executable not found: ffmpeg"
     assert failed.diagnostic_log_path is not None
     assert Path(failed.diagnostic_log_path).exists()
+
+
+def test_analysis_job_maps_runtime_out_of_memory_error(tmp_path: Path) -> None:
+    runtime = make_runtime(
+        tmp_path,
+        transcriber_factory=lambda config, fallback_language: OutOfMemoryTranscriber(),
+    )
+    project_id = create_project(runtime, tmp_path)
+    manager = AnalysisJobManager(runtime, auto_start=False)
+
+    task = manager.create_analysis_job(project_id, AsrModelConfig(provider="fake"))
+    manager.run_pending_once()
+
+    failed = runtime.store.get_task(task.task_id)
+    assert failed.status == "failed"
+    assert failed.error_code == "RUNTIME_OUT_OF_MEMORY"
+    assert failed.error_message is not None
+    assert "lighter model" in failed.error_message
 
 
 def test_retry_failed_analysis_job_creates_new_task(tmp_path: Path) -> None:

@@ -210,4 +210,27 @@ describe("AnalysisInspector", () => {
     expect(screen.getByText("Install an ASR model from Models before starting local transcription.")).toBeVisible();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
   });
+
+  it("blocks formal ASR start when the selected runtime profile is unavailable", () => {
+    renderWithProviders(
+      <AnalysisInspector
+        config={{
+          ...analysisConfig,
+          provider: "faster-whisper",
+          modelId: "asr.faster-whisper.medium",
+          device: "cuda",
+          computeType: "float16"
+        }}
+        busy={false}
+        modelCatalog={modelCatalogFixture.models}
+        onConfigChange={() => undefined}
+        onStart={() => undefined}
+        onCancel={() => undefined}
+        onRetry={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("CUDA is not available in this Worker runtime.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+  });
 });

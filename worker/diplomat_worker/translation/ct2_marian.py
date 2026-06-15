@@ -35,24 +35,37 @@ class CTranslate2MarianProvider:
         request: TranslationRequest,
         cancel_token: CancelToken | None = None,
     ) -> TranslationResult:
+        return self.translate_batch([request], cancel_token=cancel_token)[0]
+
+    def translate_batch(
+        self,
+        requests: list[TranslationRequest],
+        cancel_token: CancelToken | None = None,
+    ) -> list[TranslationResult]:
         self._raise_if_canceled(cancel_token)
         translator, source_tokenizer, target_tokenizer = self._load_runtime()
         self._raise_if_canceled(cancel_token)
 
-        source_tokens = source_tokenizer.EncodeAsPieces(request.source_text)
-        results = translator.translate_batch([source_tokens])
-        try:
-            target_tokens = results[0].hypotheses[0]
-        except (IndexError, AttributeError) as exc:
-            raise RuntimeError("CTranslate2 Marian returned no translation hypotheses") from exc
-
-        translated_text = target_tokenizer.DecodePieces(target_tokens).strip()
-        return TranslationResult(
-            line_id=request.line_id,
-            translated_text=translated_text,
-            provider=self.provider,
-            model=self.model_label or self.model_path,
-        )
+        source_batches = [
+            source_tokenizer.EncodeAsPieces(request.source_text)
+            for request in requests
+        ]
+        raw_results = translator.translate_batch(source_batches)
+        translated: list[TranslationResult] = []
+        for request, raw_result in zip(requests, raw_results, strict=True):
+            try:
+                target_tokens = raw_result.hypotheses[0]
+            except (IndexError, AttributeError) as exc:
+                raise RuntimeError("CTranslate2 Marian returned no translation hypotheses") from exc
+            translated.append(
+                TranslationResult(
+                    line_id=request.line_id,
+                    translated_text=target_tokenizer.DecodePieces(target_tokens).strip(),
+                    provider=self.provider,
+                    model=self.model_label or self.model_path,
+                )
+            )
+        return translated
 
     def _load_runtime(self):
         if self._translator is not None:

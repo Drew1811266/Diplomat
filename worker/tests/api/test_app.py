@@ -275,6 +275,8 @@ def test_model_catalog_download_and_delete_routes(app_module, tmp_path: Path) ->
     assert listed["modelId"] == "api-asr-light"
     assert listed["installation"]["status"] == "not_installed"
     assert listed["availability"]["usable"] is False
+    assert listed["runtimeProfiles"][0]["profileId"] == "api-asr-light:cpu:int8"
+    assert listed["runtimeProfiles"][0]["batchSize"] == 1
     assert download_response.status_code == 202
     assert download_response.json()["status"] == "queued"
     installed = installed_response.json()
@@ -1083,6 +1085,7 @@ def test_create_translation_job_returns_accepted_task(app_module, tmp_path: Path
             "sourceLanguage": "en",
             "targetLanguage": "zh",
             "mode": "missing_only",
+            "batchSize": 4,
         },
     )
 
@@ -1092,6 +1095,7 @@ def test_create_translation_job_returns_accepted_task(app_module, tmp_path: Path
     assert payload["type"] == "translation"
     assert payload["status"] == "queued"
     assert payload["progress"] == 0
+    assert runtime.store.get_task(payload["taskId"]).request_payload["batchSize"] == 4
 
 
 def test_create_translation_job_rejects_uninstalled_curated_translation_model(

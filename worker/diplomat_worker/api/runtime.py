@@ -8,6 +8,7 @@ from diplomat_worker.asr.config import AsrModelConfig, create_transcriber
 from diplomat_worker.asr.fake import FakeTranscriber
 from diplomat_worker.media.ffmpeg import FfmpegCheck, VideoProbe, probe_video
 from diplomat_worker.media.waveform import WaveformData, generate_waveform_data
+from diplomat_worker.models.capabilities import RuntimeCapabilities, detect_runtime_capabilities
 from diplomat_worker.models.registry import ModelRegistryEntry, built_in_model_registry
 from diplomat_worker.storage.project_store import ProjectStore
 from diplomat_worker.translation.base import TranslationProvider
@@ -53,6 +54,7 @@ class WorkerRuntime:
     translation_provider_factory: TranslationProviderFactory = create_translation_provider
     waveform_generator: WaveformGenerator = generate_waveform_data
     model_registry: list[ModelRegistryEntry] | None = field(default_factory=built_in_model_registry)
+    runtime_capabilities: RuntimeCapabilities = field(default_factory=detect_runtime_capabilities)
     allow_unmanaged_asr_models: bool = False
     allow_unmanaged_translation_models: bool = False
 

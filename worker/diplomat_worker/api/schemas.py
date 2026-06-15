@@ -137,6 +137,19 @@ class ModelAvailabilityResponse(CamelModel):
     reason: str | None = None
 
 
+class ModelRuntimeProfileResponse(CamelModel):
+    profile_id: str = Field(alias="profileId")
+    task: Literal["asr", "translation"]
+    provider: str
+    device: str
+    compute_type: str = Field(alias="computeType")
+    batch_size: int = Field(alias="batchSize", ge=1)
+    recommended: bool
+    available: bool
+    reason: str | None = None
+    notes: str
+
+
 class ModelCatalogEntryResponse(CamelModel):
     model_id: str = Field(alias="modelId")
     name: str
@@ -159,6 +172,7 @@ class ModelCatalogEntryResponse(CamelModel):
     terms_summary: str = Field(alias="termsSummary")
     installation: ModelInstallationResponse
     availability: ModelAvailabilityResponse
+    runtime_profiles: list[ModelRuntimeProfileResponse] = Field(alias="runtimeProfiles")
 
 
 class ModelCatalogResponse(CamelModel):
@@ -199,6 +213,7 @@ class TranslationSettingsRequest(CamelModel):
     mode: Literal["missing_only", "overwrite_all"] = "missing_only"
     device: str = "cpu"
     compute_type: str = Field(default="int8", alias="computeType")
+    batch_size: int = Field(default=8, alias="batchSize", ge=1)
     endpoint: str | None = None
     api_key_env: str | None = Field(default=None, alias="apiKeyEnv")
 

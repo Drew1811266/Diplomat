@@ -9,6 +9,7 @@ from diplomat_worker.models.manager import (
     hf_manifest_checksum,
     parse_hf_snapshot_source_url,
 )
+from diplomat_worker.models.capabilities import RuntimeCapabilities
 from diplomat_worker.models.registry import ModelRegistryEntry
 from diplomat_worker.storage.project_store import ProjectStore
 
@@ -97,6 +98,28 @@ def test_model_download_installs_verified_local_fixture(tmp_path: Path) -> None:
     installed_path = Path(catalog_entry.installation.installed_path or "")
     assert installed_path.is_dir()
     assert (installed_path / source_path.name).read_bytes() == b"fixture model"
+
+
+def test_catalog_entry_includes_runtime_profiles(tmp_path: Path) -> None:
+    source_path, checksum = write_fixture(tmp_path)
+    manager = ModelDownloadManager(
+        ProjectStore(tmp_path / "diplomat.db"),
+        registry=[make_entry(source_path, checksum)],
+        runtime_capabilities=RuntimeCapabilities(
+            cuda_available=False,
+            cuda_device_count=0,
+            detected_by="test",
+        ),
+        auto_start=False,
+    )
+
+    catalog_entry = manager.get_catalog_entry("fixture-asr-light")
+
+    assert catalog_entry.runtime_profiles[0].profile_id == "fixture-asr-light:cpu:int8"
+    assert any(
+        profile.reason == "CUDA is not available in this Worker runtime."
+        for profile in catalog_entry.runtime_profiles
+    )
 
 
 def test_model_install_state_persists_across_store_recreation(tmp_path: Path) -> None:

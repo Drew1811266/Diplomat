@@ -53,9 +53,23 @@ export const ModelAvailabilitySchema = z.object({
   reason: z.string().nullable()
 });
 
+export const ModelRuntimeProfileSchema = z.object({
+  profileId: z.string().min(1),
+  task: ModelTaskSchema,
+  provider: z.string().min(1),
+  device: z.string().min(1),
+  computeType: z.string().min(1),
+  batchSize: z.number().int().positive(),
+  recommended: z.boolean(),
+  available: z.boolean(),
+  reason: z.string().nullable(),
+  notes: z.string().min(1)
+});
+
 export const ModelCatalogEntrySchema = ModelRegistryEntrySchema.extend({
   installation: ModelInstallationSchema,
-  availability: ModelAvailabilitySchema
+  availability: ModelAvailabilitySchema,
+  runtimeProfiles: z.array(ModelRuntimeProfileSchema)
 });
 
 export const ModelCatalogResponseSchema = z.object({
@@ -84,6 +98,7 @@ export type ModelInstallStatus = z.infer<typeof ModelInstallStatusSchema>;
 export type ModelRegistryEntry = z.infer<typeof ModelRegistryEntrySchema>;
 export type ModelInstallation = z.infer<typeof ModelInstallationSchema>;
 export type ModelAvailability = z.infer<typeof ModelAvailabilitySchema>;
+export type ModelRuntimeProfile = z.infer<typeof ModelRuntimeProfileSchema>;
 export type ModelCatalogEntry = z.infer<typeof ModelCatalogEntrySchema>;
 export type ModelCatalogResponse = z.infer<typeof ModelCatalogResponseSchema>;
 export type ModelDownloadResponse = z.infer<typeof ModelDownloadResponseSchema>;

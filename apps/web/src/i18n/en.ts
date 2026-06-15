@@ -199,7 +199,8 @@ export const en = {
     installTranslationModelFirst: "Install a translation model from Models before starting local translation.",
     translationPairUnsupported: "Selected translation model does not support this language pair.",
     translationModelUnavailable: "Install this translation model before starting translation.",
-    localTranslationPending: "Local translation model execution lands in 0.25."
+    localTranslationPending: "Local translation model execution lands in 0.25.",
+    runtimeProfile: "{{device}} · {{computeType}} · Batch size {{batchSize}}"
   },
   fields: {
     projectName: "Project name",

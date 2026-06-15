@@ -197,7 +197,8 @@ export const zh = {
     installTranslationModelFirst: "请先在“模型”中安装翻译模型，再开始本地翻译。",
     translationPairUnsupported: "所选翻译模型不支持当前语言方向。",
     translationModelUnavailable: "请先安装这个翻译模型再开始翻译。",
-    localTranslationPending: "本地翻译模型执行将在 0.25 实现。"
+    localTranslationPending: "本地翻译模型执行将在 0.25 实现。",
+    runtimeProfile: "{{device}} · {{computeType}} · 批量 {{batchSize}}"
   },
   fields: {
     projectName: "项目名称",

@@ -6,6 +6,37 @@ import type {
   TaskResponse
 } from "@diplomat/shared";
 
+function runtimeProfiles(modelId: string, task: "asr" | "translation", provider: string) {
+  const translationNote =
+    provider === "local-llm" ? "Local LLM translation profile." : "CTranslate2 batch translation profile.";
+  return [
+    {
+      profileId: `${modelId}:cpu:int8`,
+      task,
+      provider,
+      device: "cpu",
+      computeType: "int8",
+      batchSize: task === "translation" ? 8 : 1,
+      recommended: true,
+      available: true,
+      reason: null,
+      notes: task === "translation" ? translationNote : "CPU fallback ASR profile."
+    },
+    {
+      profileId: `${modelId}:cuda:float16`,
+      task,
+      provider,
+      device: "cuda",
+      computeType: "float16",
+      batchSize: task === "translation" ? 8 : 1,
+      recommended: true,
+      available: false,
+      reason: "CUDA is not available in this Worker runtime.",
+      notes: task === "translation" ? translationNote : "CUDA float16 ASR profile."
+    }
+  ];
+}
+
 export const projectDiagnosticsFixture: ProjectDiagnostics = {
   status: "not_transcribed",
   warnings: [],
@@ -202,7 +233,8 @@ export const modelCatalogFixture: ModelCatalogResponse = {
       availability: {
         usable: false,
         reason: "Model is not installed."
-      }
+      },
+      runtimeProfiles: runtimeProfiles("asr.faster-whisper.small", "asr", "faster-whisper")
     },
     {
       modelId: "asr.faster-whisper.medium",
@@ -239,7 +271,8 @@ export const modelCatalogFixture: ModelCatalogResponse = {
       availability: {
         usable: true,
         reason: null
-      }
+      },
+      runtimeProfiles: runtimeProfiles("asr.faster-whisper.medium", "asr", "faster-whisper")
     },
     {
       modelId: "translation.opus-mt.zh-en",
@@ -276,7 +309,8 @@ export const modelCatalogFixture: ModelCatalogResponse = {
       availability: {
         usable: false,
         reason: "Model download is in progress."
-      }
+      },
+      runtimeProfiles: runtimeProfiles("translation.opus-mt.zh-en", "translation", "ct2-marian")
     },
     {
       modelId: "translation.qwen3.4b",
@@ -316,7 +350,8 @@ export const modelCatalogFixture: ModelCatalogResponse = {
       availability: {
         usable: false,
         reason: "checksum mismatch"
-      }
+      },
+      runtimeProfiles: runtimeProfiles("translation.qwen3.4b", "translation", "local-llm")
     }
   ]
 };

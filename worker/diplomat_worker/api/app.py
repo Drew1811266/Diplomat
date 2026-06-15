@@ -20,6 +20,7 @@ from diplomat_worker.api.schemas import (
     ModelDeleteResponse,
     ModelDownloadResponse,
     ModelInstallationResponse,
+    ModelRuntimeProfileResponse,
     ProjectListResponse,
     ProjectBackupResponse,
     ProjectDiagnosticsResponse,
@@ -286,6 +287,21 @@ def model_catalog_entry_response(entry: ModelCatalogEntryRecord) -> ModelCatalog
             usable=entry.availability.usable,
             reason=entry.availability.reason,
         ),
+        runtime_profiles=[
+            ModelRuntimeProfileResponse(
+                profile_id=profile.profile_id,
+                task=profile.task,
+                provider=profile.provider,
+                device=profile.device,
+                compute_type=profile.compute_type,
+                batch_size=profile.batch_size,
+                recommended=profile.recommended,
+                available=profile.available,
+                reason=profile.reason,
+                notes=profile.notes,
+            )
+            for profile in entry.runtime_profiles
+        ],
     )
 
 
@@ -327,6 +343,7 @@ def translation_config_from_request(request: TranslationSettingsRequest) -> Tran
         model_name_or_path=request.model_name_or_path,
         device=request.device,
         compute_type=request.compute_type,
+        batch_size=request.batch_size,
         endpoint=request.endpoint,
         api_key_env=request.api_key_env,
     )
@@ -498,6 +515,7 @@ def create_app(
             active_downloads = ModelDownloadManager(
                 active_runtime.store,
                 registry=active_runtime.model_registry,
+                runtime_capabilities=active_runtime.runtime_capabilities,
             )
             app.state.model_downloads = active_downloads
         return active_downloads

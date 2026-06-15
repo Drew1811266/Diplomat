@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 from diplomat_worker.asr.config import AsrModelConfig
+from diplomat_worker.models.capabilities import RuntimeCapabilities
 from diplomat_worker.models.registry import ModelRegistryEntry, get_model_entry
 from diplomat_worker.storage.project_store import ProjectStore
 
@@ -25,9 +26,10 @@ def resolve_asr_model_config(
     registry: list[ModelRegistryEntry],
     fallback_language: str,
     allow_unmanaged_models: bool = False,
+    runtime_capabilities: RuntimeCapabilities | None = None,
 ) -> AsrModelConfig:
     language = config.source_language or fallback_language
-    _validate_runtime_options(config.device, config.compute_type)
+    _validate_runtime_options(config.device, config.compute_type, runtime_capabilities)
 
     if config.provider == "fake":
         return replace(config, source_language=language)
@@ -99,12 +101,25 @@ def _validate_entry_for_asr(entry: ModelRegistryEntry) -> None:
         )
 
 
-def _validate_runtime_options(device: str, compute_type: str) -> None:
+def _validate_runtime_options(
+    device: str,
+    compute_type: str,
+    runtime_capabilities: RuntimeCapabilities | None = None,
+) -> None:
     supported_compute = COMPUTE_TYPES_BY_DEVICE.get(device)
     if supported_compute is None:
         raise AsrConfigurationError(
             "ASR_DEVICE_UNSUPPORTED",
             f"Unsupported ASR device: {device}. Use cpu or cuda.",
+        )
+    if (
+        device == "cuda"
+        and runtime_capabilities is not None
+        and not runtime_capabilities.cuda_available
+    ):
+        raise AsrConfigurationError(
+            "ASR_CUDA_UNAVAILABLE",
+            "CUDA is not available in this Worker runtime. Switch to CPU or install a working NVIDIA CUDA runtime.",
         )
     if compute_type not in supported_compute:
         supported = ", ".join(sorted(supported_compute))

@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from diplomat_worker.models.capabilities import RuntimeCapabilities
 from diplomat_worker.models.registry import ModelRegistryEntry
 from diplomat_worker.storage.project_store import ProjectStore
 from diplomat_worker.translation.config import TranslationProviderConfig
@@ -241,3 +242,26 @@ def test_resolver_rejects_cpu_float16_and_accepts_cuda_float16(tmp_path: Path) -
     assert resolved.model_name_or_path == str(installed_path)
     assert resolved.device == "cuda"
     assert resolved.compute_type == "float16"
+
+
+def test_resolver_rejects_cuda_when_runtime_reports_unavailable(tmp_path: Path) -> None:
+    entry = make_entry()
+    store = make_store(tmp_path)
+    install_entry(store, entry)
+
+    assert_translation_error(
+        "TRANSLATION_CUDA_UNAVAILABLE",
+        lambda: resolve_translation_provider_config(
+            TranslationProviderConfig(
+                provider="ct2-marian",
+                model_id=entry.model_id,
+                device="cuda",
+                compute_type="float16",
+            ),
+            store=store,
+            registry=[entry],
+            fallback_source_language="zh",
+            fallback_target_language="en",
+            runtime_capabilities=RuntimeCapabilities(cuda_available=False),
+        ),
+    )

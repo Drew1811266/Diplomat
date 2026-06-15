@@ -55,12 +55,27 @@ describe("model registry schemas", () => {
           availability: {
             usable: true,
             reason: null
-          }
+          },
+          runtimeProfiles: [
+            {
+              profileId: "asr-light:cpu:int8",
+              task: "asr",
+              provider: "faster-whisper",
+              device: "cpu",
+              computeType: "int8",
+              batchSize: 1,
+              recommended: true,
+              available: true,
+              reason: null,
+              notes: "CPU fallback ASR profile."
+            }
+          ]
         }
       ]
     });
 
     expect(parsed.models[0]!.availability.usable).toBe(true);
+    expect(parsed.models[0]!.runtimeProfiles[0]!.batchSize).toBe(1);
   });
 
   it("rejects unknown status values", () => {
