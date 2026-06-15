@@ -230,8 +230,8 @@ This runs the shared package tests, Web tests, TypeScript checks, Worker tests, 
 
 ## Version
 
-Current project version: **0.33.0**
-Release tag: **v0.33**
+Current project version: **0.34.0**
+Release tag: **v0.34**
 
 ## License
 
