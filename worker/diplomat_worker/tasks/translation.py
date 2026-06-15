@@ -3,7 +3,12 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from typing import TYPE_CHECKING
 
-from diplomat_worker.schemas.subtitle import SubtitleDocument, SubtitleLine, TranslationOrigin
+from diplomat_worker.schemas.subtitle import (
+    SubtitleDocument,
+    SubtitleLine,
+    TranslationGlossaryEntry,
+    TranslationOrigin,
+)
 from diplomat_worker.storage.project_store import TaskRecord
 from diplomat_worker.tasks.analysis import ThreadCancelToken
 from diplomat_worker.tasks.errors import classify_runtime_error
@@ -12,6 +17,7 @@ from diplomat_worker.translation.base import (
     TranslationRequest,
 )
 from diplomat_worker.translation.config import TranslationProviderConfig
+from diplomat_worker.translation.quality import apply_translation_quality
 from diplomat_worker.translation.resolver import (
     TranslationConfigurationError,
     resolve_translation_provider_config,
@@ -37,11 +43,13 @@ class TranslationJobManager:
         target_language: str,
         mode: str,
         provider_config: TranslationProviderConfig,
+        glossary: list[dict] | None = None,
     ) -> TaskRecord:
         self.runtime.store.get_project(project_id)
         if mode not in {"missing_only", "overwrite_all"}:
             raise ValueError("Unsupported translation mode")
         self._resolve_config(provider_config, source_language, target_language)
+        normalized_glossary = self._normalize_glossary(glossary)
         if mode == "overwrite_all" and self.runtime.store.has_subtitle_document(project_id):
             self.runtime.store.create_subtitle_snapshot(
                 project_id,
@@ -56,6 +64,7 @@ class TranslationJobManager:
                 "sourceLanguage": source_language,
                 "targetLanguage": target_language,
                 "mode": mode,
+                "glossary": normalized_glossary,
                 **provider_config.to_request_payload(),
             },
         )
@@ -112,6 +121,7 @@ class TranslationJobManager:
             target_language=target_language or payload["targetLanguage"],
             mode=mode or payload["mode"],
             provider_config=provider_config or TranslationProviderConfig.from_request_payload(payload),
+            glossary=payload.get("glossary", []),
         )
 
     def run_pending_once(self) -> None:
@@ -160,6 +170,17 @@ class TranslationJobManager:
                 raise TranslationCanceled("Translation canceled")
 
             if not selected_lines:
+                next_document = document.model_copy(
+                    update={
+                        "lines": apply_translation_quality(
+                            document.lines,
+                            self._glossary_from_payload(payload),
+                            source_language=source_language,
+                            target_language=target_language,
+                        )
+                    }
+                )
+                self.runtime.store.save_subtitle_document(task.project_id, next_document)
                 self.runtime.store.update_task(
                     task_id,
                     status="completed",
@@ -220,12 +241,18 @@ class TranslationJobManager:
                     diagnostic_log_path=str(diagnostic_path),
                 )
 
+            next_lines = [
+                translated_lines.get(line.id, line)
+                for line in document.lines
+            ]
             next_document = document.model_copy(
                 update={
-                    "lines": [
-                        translated_lines.get(line.id, line)
-                        for line in document.lines
-                    ]
+                    "lines": apply_translation_quality(
+                        next_lines,
+                        self._glossary_from_payload(payload),
+                        source_language=source_language,
+                        target_language=target_language,
+                    )
                 }
             )
             self.runtime.store.save_subtitle_document(task.project_id, next_document)
@@ -293,6 +320,21 @@ class TranslationJobManager:
             runtime_capabilities=self.runtime.runtime_capabilities,
         )
 
+    def _normalize_glossary(self, glossary: list[dict] | None) -> list[dict]:
+        return [
+            term.model_dump(by_alias=True)
+            for term in self._glossary_from_entries(glossary or [])
+        ]
+
+    def _glossary_from_payload(self, payload: dict) -> list[TranslationGlossaryEntry]:
+        return self._glossary_from_entries(payload.get("glossary", []))
+
+    def _glossary_from_entries(self, glossary: list[dict]) -> list[TranslationGlossaryEntry]:
+        return [
+            TranslationGlossaryEntry.model_validate(entry)
+            for entry in glossary
+        ]
+
     def _select_lines(self, lines: list[SubtitleLine], mode: str) -> list[SubtitleLine]:
         if mode == "overwrite_all":
             return [line for line in lines if line.source_text.strip()]
@@ -316,7 +358,11 @@ class TranslationJobManager:
             update={
                 "lines": [
                     line.model_copy(
-                        update={"translation_status": "queued", "translation_error": None}
+                        update={
+                            "translation_status": "queued",
+                            "translation_error": None,
+                            "translation_quality_issues": [],
+                        }
                     )
                     if line.id in selected_ids
                     else line

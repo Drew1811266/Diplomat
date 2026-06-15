@@ -825,6 +825,7 @@ def create_app(
                 target_language=request.target_language,
                 mode=request.mode,
                 provider_config=translation_config_from_request(request),
+                glossary=[entry.model_dump(by_alias=True) for entry in request.glossary],
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
