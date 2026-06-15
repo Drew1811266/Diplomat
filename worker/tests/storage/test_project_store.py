@@ -550,6 +550,7 @@ def test_translation_settings_default_to_project_languages(tmp_path: Path) -> No
     assert settings.mode == "missing_only"
     assert settings.device == "cpu"
     assert settings.compute_type == "int8"
+    assert settings.glossary == []
 
 
 def test_translation_settings_can_be_saved_and_reopened(tmp_path: Path) -> None:
@@ -582,6 +583,39 @@ def test_translation_settings_can_be_saved_and_reopened(tmp_path: Path) -> None:
     assert reopened.model_name_or_path is None
     assert reopened.device == "cuda"
     assert reopened.compute_type == "float16"
+    assert reopened.glossary == []
+
+
+def test_translation_settings_persist_glossary(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    project = store.create_project(
+        name="Demo",
+        source_video_path=tmp_path / "demo.mp4",
+        duration_ms=1000,
+        source_language="en",
+        target_language="zh",
+    )
+
+    saved = store.save_translation_settings(
+        project.project_id,
+        provider="ct2-marian",
+        source_language="en",
+        target_language="zh",
+        mode="missing_only",
+        glossary=[
+            {
+                "id": "term-1",
+                "sourceText": "GPU",
+                "targetText": "GPU",
+                "sourceLanguage": "en",
+                "targetLanguage": "zh",
+                "caseSensitive": False,
+            }
+        ],
+    )
+
+    assert saved.glossary[0]["sourceText"] == "GPU"
+    assert store.get_translation_settings(project.project_id).glossary[0]["targetText"] == "GPU"
 
 
 def test_translation_settings_table_migrates_local_model_columns(tmp_path: Path) -> None:
@@ -652,6 +686,7 @@ def test_translation_settings_table_migrates_local_model_columns(tmp_path: Path)
     assert settings.device == "cpu"
     assert settings.compute_type == "int8"
     assert settings.endpoint == "http://localhost:5000"
+    assert settings.glossary == []
 
 
 def test_project_store_migrates_m2a_database_without_rewriting_subtitle(tmp_path: Path) -> None:

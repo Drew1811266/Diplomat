@@ -1062,14 +1062,26 @@ def test_translation_settings_round_trip(app_module, tmp_path: Path) -> None:
             "mode": "overwrite_all",
             "endpoint": None,
             "apiKeyEnv": None,
+            "glossary": [
+                {
+                    "id": "term-1",
+                    "sourceText": "GPU",
+                    "targetText": "GPU",
+                    "sourceLanguage": "en",
+                    "targetLanguage": "zh",
+                    "caseSensitive": False,
+                }
+            ],
         },
     )
 
     assert default_response.status_code == 200
     assert default_response.json()["projectId"] == project_id
     assert default_response.json()["mode"] == "missing_only"
+    assert default_response.json()["glossary"] == []
     assert save_response.status_code == 200
     assert save_response.json()["mode"] == "overwrite_all"
+    assert save_response.json()["glossary"][0]["sourceText"] == "GPU"
 
 
 def test_create_translation_job_returns_accepted_task(app_module, tmp_path: Path) -> None:

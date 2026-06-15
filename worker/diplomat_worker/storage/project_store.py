@@ -9,7 +9,7 @@ from pathlib import Path
 
 from diplomat_worker.schemas.subtitle import SubtitleDocument, SubtitleStyle
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 SUBTITLE_SNAPSHOT_SCHEMA_VERSION = "diplomat.subtitle-snapshot.v1"
 STYLE_PRESET_SCHEMA_VERSION = "diplomat.style-presets.v1"
 SUBTITLE_SNAPSHOT_REASONS = {
@@ -69,6 +69,7 @@ class TranslationSettingsRecord:
     compute_type: str
     endpoint: str | None
     api_key_env: str | None
+    glossary: list[dict]
     updated_at: str
 
 
@@ -281,6 +282,7 @@ class ProjectStore:
                 compute_type TEXT NOT NULL DEFAULT 'int8',
                 endpoint TEXT,
                 api_key_env TEXT,
+                glossary_json TEXT NOT NULL DEFAULT '[]',
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(project_id) REFERENCES projects(project_id)
             )
@@ -296,6 +298,7 @@ class ProjectStore:
             "compute_type": (
                 "ALTER TABLE translation_settings ADD COLUMN compute_type TEXT NOT NULL DEFAULT 'int8'"
             ),
+            "glossary_json": "ALTER TABLE translation_settings ADD COLUMN glossary_json TEXT NOT NULL DEFAULT '[]'",
         }
         for column, statement in migrations.items():
             if column not in columns:
@@ -687,6 +690,7 @@ class ProjectStore:
                         "computeType": settings.compute_type,
                         "endpoint": settings.endpoint,
                         "apiKeyEnv": settings.api_key_env,
+                        "glossary": settings.glossary,
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -774,6 +778,7 @@ class ProjectStore:
                     compute_type=settings.get("computeType", "int8"),
                     endpoint=settings.get("endpoint"),
                     api_key_env=settings.get("apiKeyEnv"),
+                    glossary=settings.get("glossary", []),
                 )
 
             exports_dir = self.project_child_dir(project, "exports")
@@ -1387,6 +1392,7 @@ class ProjectStore:
                     compute_type,
                     endpoint,
                     api_key_env,
+                    glossary_json,
                     updated_at
                 FROM translation_settings
                 WHERE project_id = ?
@@ -1407,6 +1413,7 @@ class ProjectStore:
             compute_type="int8",
             endpoint=None,
             api_key_env=None,
+            glossary=[],
             updated_at=project.updated_at,
         )
 
@@ -1423,6 +1430,7 @@ class ProjectStore:
         compute_type: str = "int8",
         endpoint: str | None = None,
         api_key_env: str | None = None,
+        glossary: list[dict] | None = None,
     ) -> TranslationSettingsRecord:
         self.get_project(project_id)
         if len(source_language) < 2:
@@ -1435,6 +1443,7 @@ class ProjectStore:
             raise ValueError("device must not be empty")
         if not compute_type.strip():
             raise ValueError("compute_type must not be empty")
+        glossary_payload = glossary or []
         now = self._utc_now()
         with self._connect() as connection:
             connection.execute(
@@ -1451,9 +1460,10 @@ class ProjectStore:
                     compute_type,
                     endpoint,
                     api_key_env,
+                    glossary_json,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(project_id) DO UPDATE SET
                     provider = excluded.provider,
                     model_id = excluded.model_id,
@@ -1465,6 +1475,7 @@ class ProjectStore:
                     compute_type = excluded.compute_type,
                     endpoint = excluded.endpoint,
                     api_key_env = excluded.api_key_env,
+                    glossary_json = excluded.glossary_json,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -1479,6 +1490,7 @@ class ProjectStore:
                     compute_type,
                     endpoint,
                     api_key_env,
+                    json.dumps(glossary_payload, ensure_ascii=False, sort_keys=True),
                     now,
                 ),
             )
@@ -1498,6 +1510,7 @@ class ProjectStore:
             compute_type=row["compute_type"],
             endpoint=row["endpoint"],
             api_key_env=row["api_key_env"],
+            glossary=json.loads(row["glossary_json"] or "[]"),
             updated_at=row["updated_at"],
         )
 
