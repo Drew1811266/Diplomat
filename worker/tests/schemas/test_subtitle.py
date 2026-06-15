@@ -7,7 +7,9 @@ from diplomat_worker.schemas.subtitle import (
     SubtitleDocument,
     SubtitleLine,
     SubtitleStyle,
+    TranslationGlossaryEntry,
     TranslationOrigin,
+    TranslationQualityIssue,
     WordTiming,
 )
 
@@ -186,3 +188,45 @@ def test_subtitle_line_accepts_generated_translation_metadata() -> None:
 
     assert line.translation_status == "translated"
     assert line.translation_origin == TranslationOrigin(provider="fake", model="fake-v1")
+
+
+def test_subtitle_line_accepts_translation_quality_issues() -> None:
+    line = make_line(
+        translationQualityIssues=[
+            {
+                "code": "glossary_term_missing",
+                "severity": "warning",
+                "message": 'Expected translation for "GPU" to include "GPU".',
+                "termId": "term-1",
+            }
+        ]
+    )
+
+    assert line.translation_quality_issues == [
+        TranslationQualityIssue(
+            code="glossary_term_missing",
+            severity="warning",
+            message='Expected translation for "GPU" to include "GPU".',
+            term_id="term-1",
+        )
+    ]
+
+
+def test_translation_glossary_entry_serializes_camel_case() -> None:
+    entry = TranslationGlossaryEntry(
+        id="term-1",
+        sourceText="GPU",
+        targetText="GPU",
+        sourceLanguage="en",
+        targetLanguage="zh",
+        caseSensitive=False,
+    )
+
+    assert entry.model_dump(by_alias=True) == {
+        "id": "term-1",
+        "sourceText": "GPU",
+        "targetText": "GPU",
+        "sourceLanguage": "en",
+        "targetLanguage": "zh",
+        "caseSensitive": False,
+    }
