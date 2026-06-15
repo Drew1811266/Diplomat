@@ -5,7 +5,12 @@ import pytest
 
 from diplomat_worker.api.runtime import WorkerRuntime
 from diplomat_worker.models.registry import ModelRegistryEntry
-from diplomat_worker.schemas.subtitle import AiOrigin, SubtitleDocument, SubtitleLine
+from diplomat_worker.schemas.subtitle import (
+    AiOrigin,
+    SubtitleDocument,
+    SubtitleLine,
+    TranslationQualityIssue,
+)
 from diplomat_worker.storage.project_store import ProjectStore
 from diplomat_worker.tasks.translation import TranslationJobManager
 from diplomat_worker.translation.base import TranslationRequest, TranslationResult
@@ -195,6 +200,45 @@ def test_translation_job_updates_missing_translations(tmp_path: Path) -> None:
     assert line.translation_status == "translated"
     assert line.translation_origin is not None
     assert line.translation_origin.provider == "fake"
+
+
+def test_translation_job_records_glossary_quality_issues(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    project_id = create_project_with_document(runtime, tmp_path)
+    manager = TranslationJobManager(runtime, auto_start=False)
+
+    task = manager.create_translation_job(
+        project_id,
+        source_language="en",
+        target_language="zh",
+        mode="missing_only",
+        provider_config=TranslationProviderConfig(provider="fake"),
+        glossary=[
+            {
+                "id": "term-hello",
+                "sourceText": "Hello",
+                "targetText": "HELLO_TERM",
+                "sourceLanguage": "en",
+                "targetLanguage": "zh",
+                "caseSensitive": False,
+            }
+        ],
+    )
+    manager.run_pending_once()
+
+    completed = runtime.store.get_task(task.task_id)
+    line = runtime.store.load_subtitle_document(project_id).lines[0]
+
+    assert completed.status == "completed"
+    assert task.request_payload["glossary"][0]["targetText"] == "HELLO_TERM"
+    assert line.translation_quality_issues == [
+        TranslationQualityIssue(
+            code="glossary_term_missing",
+            severity="warning",
+            message='Expected translation for "Hello" to include "HELLO_TERM".',
+            termId="term-hello",
+        )
+    ]
 
 
 def test_translation_job_maps_runtime_out_of_memory_error(tmp_path: Path) -> None:
@@ -395,6 +439,7 @@ def test_translation_job_completes_with_installed_curated_translation_model(tmp_
         "sourceLanguage": "en",
         "targetLanguage": "zh",
         "mode": "missing_only",
+        "glossary": [],
         "provider": "ct2-marian",
         "modelId": entry.model_id,
         "device": "cpu",
@@ -502,6 +547,16 @@ def test_retry_failed_translation_job_preserves_local_model_config(tmp_path: Pat
             "modelId": entry.model_id,
             "device": "cuda",
             "computeType": "float16",
+            "glossary": [
+                {
+                    "id": "term-1",
+                    "sourceText": "GPU",
+                    "targetText": "GPU",
+                    "sourceLanguage": "en",
+                    "targetLanguage": "zh",
+                    "caseSensitive": False,
+                }
+            ],
         },
     )
     runtime.store.update_task(task.task_id, status="failed", completed=True)
@@ -517,5 +572,15 @@ def test_retry_failed_translation_job_preserves_local_model_config(tmp_path: Pat
         "modelId": entry.model_id,
         "device": "cuda",
         "computeType": "float16",
+        "glossary": [
+            {
+                "id": "term-1",
+                "sourceText": "GPU",
+                "targetText": "GPU",
+                "sourceLanguage": "en",
+                "targetLanguage": "zh",
+                "caseSensitive": False,
+            }
+        ],
         "batchSize": 8,
     }

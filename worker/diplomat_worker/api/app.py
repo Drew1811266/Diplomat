@@ -362,6 +362,7 @@ def translation_settings_response(settings) -> TranslationSettingsResponse:
         compute_type=settings.compute_type,
         endpoint=settings.endpoint,
         api_key_env=settings.api_key_env,
+        glossary=settings.glossary,
         updated_at=settings.updated_at,
     )
 
@@ -789,6 +790,7 @@ def create_app(
                 compute_type=request.compute_type,
                 endpoint=request.endpoint,
                 api_key_env=request.api_key_env,
+                glossary=[entry.model_dump(by_alias=True) for entry in request.glossary],
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
@@ -815,6 +817,7 @@ def create_app(
                 compute_type=request.compute_type,
                 endpoint=request.endpoint,
                 api_key_env=request.api_key_env,
+                glossary=[entry.model_dump(by_alias=True) for entry in request.glossary],
             )
             task = get_translation_jobs().create_translation_job(
                 project_id,
@@ -822,6 +825,7 @@ def create_app(
                 target_language=request.target_language,
                 mode=request.mode,
                 provider_config=translation_config_from_request(request),
+                glossary=[entry.model_dump(by_alias=True) for entry in request.glossary],
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc

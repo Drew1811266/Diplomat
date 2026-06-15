@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TranslationGlossaryEntrySchema } from "./subtitle";
 
 export const TaskStatusSchema = z.enum([
   "queued",
@@ -40,7 +41,8 @@ export const TranslationJobRequestSchema = z.object({
   computeType: z.string().min(1).default("int8"),
   batchSize: z.number().int().positive().default(8),
   endpoint: z.string().nullable().default(null),
-  apiKeyEnv: z.string().nullable().default(null)
+  apiKeyEnv: z.string().nullable().default(null),
+  glossary: z.array(TranslationGlossaryEntrySchema).default([])
 });
 
 export const TranslationSettingsResponseSchema = TranslationJobRequestSchema.extend({

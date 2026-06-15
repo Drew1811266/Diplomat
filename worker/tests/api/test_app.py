@@ -1062,14 +1062,26 @@ def test_translation_settings_round_trip(app_module, tmp_path: Path) -> None:
             "mode": "overwrite_all",
             "endpoint": None,
             "apiKeyEnv": None,
+            "glossary": [
+                {
+                    "id": "term-1",
+                    "sourceText": "GPU",
+                    "targetText": "GPU",
+                    "sourceLanguage": "en",
+                    "targetLanguage": "zh",
+                    "caseSensitive": False,
+                }
+            ],
         },
     )
 
     assert default_response.status_code == 200
     assert default_response.json()["projectId"] == project_id
     assert default_response.json()["mode"] == "missing_only"
+    assert default_response.json()["glossary"] == []
     assert save_response.status_code == 200
     assert save_response.json()["mode"] == "overwrite_all"
+    assert save_response.json()["glossary"][0]["sourceText"] == "GPU"
 
 
 def test_create_translation_job_returns_accepted_task(app_module, tmp_path: Path) -> None:
@@ -1086,6 +1098,16 @@ def test_create_translation_job_returns_accepted_task(app_module, tmp_path: Path
             "targetLanguage": "zh",
             "mode": "missing_only",
             "batchSize": 4,
+            "glossary": [
+                {
+                    "id": "term-1",
+                    "sourceText": "Hello",
+                    "targetText": "HELLO_TERM",
+                    "sourceLanguage": "en",
+                    "targetLanguage": "zh",
+                    "caseSensitive": False,
+                }
+            ],
         },
     )
 
@@ -1095,7 +1117,9 @@ def test_create_translation_job_returns_accepted_task(app_module, tmp_path: Path
     assert payload["type"] == "translation"
     assert payload["status"] == "queued"
     assert payload["progress"] == 0
-    assert runtime.store.get_task(payload["taskId"]).request_payload["batchSize"] == 4
+    task_payload = runtime.store.get_task(payload["taskId"]).request_payload
+    assert task_payload["batchSize"] == 4
+    assert task_payload["glossary"][0]["targetText"] == "HELLO_TERM"
 
 
 def test_create_translation_job_rejects_uninstalled_curated_translation_model(
@@ -1197,6 +1221,7 @@ def test_retry_translation_job_accepts_replacement_config(app_module, tmp_path: 
         "sourceLanguage": "en",
         "targetLanguage": "zh",
         "mode": "overwrite_all",
+        "glossary": [],
     }
 
 

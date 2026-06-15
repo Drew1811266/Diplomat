@@ -41,6 +41,22 @@ export const TranslationOriginSchema = z.object({
   model: z.string().min(1)
 });
 
+export const TranslationGlossaryEntrySchema = z.object({
+  id: z.string().min(1),
+  sourceText: z.string().min(1),
+  targetText: z.string().min(1),
+  sourceLanguage: LanguageCodeSchema,
+  targetLanguage: LanguageCodeSchema,
+  caseSensitive: z.boolean().default(false)
+});
+
+export const TranslationQualityIssueSchema = z.object({
+  code: z.literal("glossary_term_missing"),
+  severity: z.enum(["warning", "error"]),
+  message: z.string().min(1),
+  termId: z.string().nullable().default(null)
+});
+
 export const SpeakerSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
@@ -85,6 +101,7 @@ export const SubtitleLineSchema = z
     translationStatus: TranslationStatusSchema.default("not_requested"),
     translationOrigin: TranslationOriginSchema.nullable().default(null),
     translationError: z.string().nullable().default(null),
+    translationQualityIssues: z.array(TranslationQualityIssueSchema).default([]),
     notes: z.string()
   })
   .refine((line) => line.endMs > line.startMs, {
@@ -107,3 +124,5 @@ export type SubtitleStyle = z.infer<typeof SubtitleStyleSchema>;
 export type Speaker = z.infer<typeof SpeakerSchema>;
 export type TranslationStatus = z.infer<typeof TranslationStatusSchema>;
 export type TranslationOrigin = z.infer<typeof TranslationOriginSchema>;
+export type TranslationGlossaryEntry = z.infer<typeof TranslationGlossaryEntrySchema>;
+export type TranslationQualityIssue = z.infer<typeof TranslationQualityIssueSchema>;

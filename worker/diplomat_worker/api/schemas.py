@@ -3,7 +3,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from diplomat_worker.schemas.subtitle import SubtitleDocument, SubtitleStyle
+from diplomat_worker.schemas.subtitle import (
+    SubtitleDocument,
+    SubtitleStyle,
+    TranslationGlossaryEntry,
+)
 
 
 class CamelModel(BaseModel):
@@ -216,6 +220,7 @@ class TranslationSettingsRequest(CamelModel):
     batch_size: int = Field(default=8, alias="batchSize", ge=1)
     endpoint: str | None = None
     api_key_env: str | None = Field(default=None, alias="apiKeyEnv")
+    glossary: list[TranslationGlossaryEntry] = Field(default_factory=list)
 
 
 class TranslationSettingsResponse(TranslationSettingsRequest):

@@ -27,6 +27,7 @@ function line(overrides: Partial<SubtitleLine>): SubtitleLine {
     translationStatus: "not_requested",
     translationOrigin: null,
     translationError: null,
+    translationQualityIssues: [],
     notes: "",
     ...overrides
   };

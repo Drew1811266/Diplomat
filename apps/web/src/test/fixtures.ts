@@ -148,6 +148,7 @@ export const analyzedDocumentFixture: SubtitleDocument = {
       translationStatus: "not_requested",
       translationOrigin: null,
       translationError: null,
+      translationQualityIssues: [],
       notes: ""
     }
   ]
@@ -161,7 +162,8 @@ export const translatedDocumentFixture: SubtitleDocument = {
       translatedText: "[en] 原始字幕文本",
       translationStatus: "translated",
       translationOrigin: { provider: "fake", model: "fake-v1" },
-      translationError: null
+      translationError: null,
+      translationQualityIssues: []
     }
   ]
 };

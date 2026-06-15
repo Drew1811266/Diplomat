@@ -146,4 +146,32 @@ describe("translation metadata", () => {
 
     expect(parsed.translationOrigin?.provider).toBe("fake");
   });
+
+  it("parses translation quality issues on subtitle lines", () => {
+    const parsed = SubtitleLineSchema.parse({
+      id: "line-1",
+      startMs: 0,
+      endMs: 1000,
+      speakerId: "speaker-1",
+      sourceLanguage: "en",
+      targetLanguage: "zh",
+      sourceText: "GPU acceleration",
+      translatedText: "图形处理器加速",
+      words: [],
+      styleOverrides: {},
+      reviewStatus: "draft",
+      aiOrigin: { engine: "fake-asr", model: "fake-v1" },
+      notes: "",
+      translationQualityIssues: [
+        {
+          code: "glossary_term_missing",
+          severity: "warning",
+          message: 'Expected translation for "GPU" to include "GPU".',
+          termId: "term-1"
+        }
+      ]
+    });
+
+    expect(parsed.translationQualityIssues[0]?.termId).toBe("term-1");
+  });
 });

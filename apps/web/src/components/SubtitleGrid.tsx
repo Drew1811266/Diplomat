@@ -138,7 +138,8 @@ export function SubtitleGrid({
                 const selected = line.id === selectedLineId;
                 const active = line.id === activeLineId;
                 const timingIssues = timingIssuesByLineId[line.id] ?? [];
-                const hasIssues = timingIssues.length > 0;
+                const qualityIssues = line.translationQualityIssues;
+                const hasIssues = timingIssues.length > 0 || qualityIssues.length > 0;
 
                 return (
                   <Table.Tr
@@ -193,9 +194,16 @@ export function SubtitleGrid({
                         <Badge size="xs" variant="light" color={translationStatusColor[line.translationStatus]}>
                           {t(`subtitleGrid.translationStatus.${line.translationStatus}`)}
                         </Badge>
-                        {hasIssues ? (
+                        {timingIssues.length ? (
                           <Badge size="xs" variant="light" color="red">
                             {t("subtitleGrid.timingIssueCount", { count: timingIssues.length })}
+                          </Badge>
+                        ) : null}
+                        {qualityIssues.length ? (
+                          <Badge size="xs" variant="light" color="orange">
+                            {t("subtitleGrid.translationQualityIssueCount", {
+                              count: qualityIssues.length
+                            })}
                           </Badge>
                         ) : null}
                       </Group>

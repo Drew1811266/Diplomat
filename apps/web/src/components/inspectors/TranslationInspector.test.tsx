@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ModelCatalogEntry, TranslationJobRequest } from "@diplomat/shared";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "../../test/render";
 import { modelCatalogFixture } from "../../test/fixtures";
@@ -17,7 +18,8 @@ const translationConfig: TranslationJobRequest = {
   computeType: "int8",
   batchSize: 8,
   endpoint: null,
-  apiKeyEnv: null
+  apiKeyEnv: null,
+  glossary: []
 };
 
 const installedTranslationModel: ModelCatalogEntry = {
@@ -279,6 +281,52 @@ describe("TranslationInspector", () => {
       ...translationConfig,
       provider: "fake",
       apiKeyEnv: "LIBRETRANSLATE_API_KEY"
+    });
+  });
+
+  it("edits glossary entries for the active translation direction", async () => {
+    const user = userEvent.setup();
+    const onConfigChange = vi.fn();
+
+    function Harness() {
+      const [config, setConfig] = useState(configuredTranslationConfig);
+
+      return (
+        <TranslationInspector
+          config={config}
+          busy={false}
+          modelCatalog={[installedTranslationModel]}
+          onConfigChange={(nextConfig) => {
+            onConfigChange(nextConfig);
+            setConfig(nextConfig);
+          }}
+          onStart={() => undefined}
+          onCancel={() => undefined}
+          onRetry={() => undefined}
+        />
+      );
+    }
+
+    renderWithProviders(<Harness />);
+
+    await user.click(screen.getByRole("button", { name: "Add term" }));
+    expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+
+    await user.type(screen.getByLabelText("Source term"), "GPU");
+    await user.type(screen.getByLabelText("Target term"), "Graphics processor");
+
+    expect(onConfigChange).toHaveBeenLastCalledWith({
+      ...configuredTranslationConfig,
+      glossary: [
+        {
+          id: "zh-en-term-1",
+          sourceText: "GPU",
+          targetText: "Graphics processor",
+          sourceLanguage: "zh",
+          targetLanguage: "en",
+          caseSensitive: false
+        }
+      ]
     });
   });
 });

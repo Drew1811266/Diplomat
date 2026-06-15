@@ -101,7 +101,8 @@ const defaultTranslationConfig: TranslationJobRequest = {
   computeType: "int8",
   batchSize: 8,
   endpoint: null,
-  apiKeyEnv: null
+  apiKeyEnv: null,
+  glossary: []
 };
 
 const emptySubtitleLines: SubtitleLine[] = [];

@@ -105,7 +105,8 @@ describe("TranslationJobRequestSchema", () => {
       computeType: "int8",
       endpoint: null,
       apiKeyEnv: null,
-      batchSize: 8
+      batchSize: 8,
+      glossary: []
     });
   });
 
@@ -131,6 +132,25 @@ describe("TranslationJobRequestSchema", () => {
       computeType: "float16",
       batchSize: 16
     });
+  });
+
+  it("parses translation glossary entries on job requests", () => {
+    const request = TranslationJobRequestSchema.parse({
+      sourceLanguage: "en",
+      targetLanguage: "zh",
+      glossary: [
+        {
+          id: "term-1",
+          sourceText: "GPU",
+          targetText: "GPU",
+          sourceLanguage: "en",
+          targetLanguage: "zh",
+          caseSensitive: false
+        }
+      ]
+    });
+
+    expect(request.glossary[0]?.sourceText).toBe("GPU");
   });
 });
 

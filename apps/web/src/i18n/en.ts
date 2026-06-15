@@ -119,6 +119,7 @@ export const en = {
     },
     selectLine: "Select line {{id}}",
     timingIssueCount: "{{count}} timing issue",
+    translationQualityIssueCount: "{{count}} quality issue",
     empty: "No subtitle rows",
     noFilterMatches: "No subtitle rows match the current filter.",
     noSourceText: "No source text",
@@ -200,7 +201,9 @@ export const en = {
     translationPairUnsupported: "Selected translation model does not support this language pair.",
     translationModelUnavailable: "Install this translation model before starting translation.",
     localTranslationPending: "Local translation model execution lands in 0.25.",
-    runtimeProfile: "{{device}} · {{computeType}} · Batch size {{batchSize}}"
+    runtimeProfile: "{{device}} · {{computeType}} · Batch size {{batchSize}}",
+    emptyGlossary: "No glossary terms",
+    translationQualityIssues: "Quality checks"
   },
   fields: {
     projectName: "Project name",
@@ -219,6 +222,9 @@ export const en = {
     computeType: "Compute type",
     initialPrompt: "Initial prompt",
     translationMode: "Translation mode",
+    glossary: "Glossary",
+    sourceTerm: "Source term",
+    targetTerm: "Target term",
     endpoint: "Endpoint",
     apiKeyEnv: "API key env",
     exportMode: "Export mode",
@@ -290,7 +296,9 @@ export const en = {
     retry: "Retry",
     open: "Open",
     save: "Save",
-    close: "Close"
+    close: "Close",
+    addTerm: "Add term",
+    removeTerm: "Remove term"
   },
   settings: {
     title: "Settings",

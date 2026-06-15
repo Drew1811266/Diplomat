@@ -37,6 +37,22 @@ class TranslationOrigin(CamelModel):
     model: str = Field(min_length=1)
 
 
+class TranslationGlossaryEntry(CamelModel):
+    id: str = Field(min_length=1)
+    source_text: str = Field(alias="sourceText", min_length=1)
+    target_text: str = Field(alias="targetText", min_length=1)
+    source_language: str = Field(alias="sourceLanguage", min_length=2, max_length=12)
+    target_language: str = Field(alias="targetLanguage", min_length=2, max_length=12)
+    case_sensitive: bool = Field(default=False, alias="caseSensitive")
+
+
+class TranslationQualityIssue(CamelModel):
+    code: Literal["glossary_term_missing"] = "glossary_term_missing"
+    severity: Literal["warning", "error"] = "warning"
+    message: str = Field(min_length=1)
+    term_id: str | None = Field(default=None, alias="termId")
+
+
 TranslationStatus = Literal["not_requested", "queued", "translated", "edited", "failed"]
 
 
@@ -106,6 +122,10 @@ class SubtitleLine(CamelModel):
         alias="translationOrigin",
     )
     translation_error: str | None = Field(default=None, alias="translationError")
+    translation_quality_issues: list[TranslationQualityIssue] = Field(
+        default_factory=list,
+        alias="translationQualityIssues",
+    )
     notes: str = ""
 
     @field_validator("target_language")
