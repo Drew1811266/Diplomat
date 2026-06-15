@@ -13,6 +13,8 @@ from diplomat_worker.models.registry import (
     built_in_model_registry,
     get_model_entry,
 )
+from diplomat_worker.models.capabilities import RuntimeCapabilities
+from diplomat_worker.models.profiles import ModelRuntimeProfile, build_runtime_profiles
 from diplomat_worker.storage.project_store import ModelInstallationRecord, ProjectStore
 
 
@@ -27,6 +29,7 @@ class ModelCatalogEntry:
     registry: ModelRegistryEntry
     installation: ModelInstallationRecord
     availability: ModelAvailability
+    runtime_profiles: list[ModelRuntimeProfile]
 
 
 @dataclass(frozen=True)
@@ -108,11 +111,13 @@ class ModelDownloadManager:
         self,
         store: ProjectStore,
         registry: list[ModelRegistryEntry] | None = None,
+        runtime_capabilities: RuntimeCapabilities | None = None,
         auto_start: bool = True,
         max_workers: int = 1,
     ) -> None:
         self.store = store
         self.registry = registry or built_in_model_registry()
+        self.runtime_capabilities = runtime_capabilities or RuntimeCapabilities()
         self.auto_start = auto_start
         self._executor = ThreadPoolExecutor(max_workers=max_workers) if auto_start else None
         self._pending: list[str] = []
@@ -133,6 +138,7 @@ class ModelDownloadManager:
             registry=entry,
             installation=installation,
             availability=self._availability(installation),
+            runtime_profiles=build_runtime_profiles(entry, self.runtime_capabilities),
         )
 
     def start_download(self, model_id: str) -> ModelDownloadResponse:
