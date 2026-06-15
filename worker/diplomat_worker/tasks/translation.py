@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from diplomat_worker.schemas.subtitle import SubtitleDocument, SubtitleLine, TranslationOrigin
 from diplomat_worker.storage.project_store import TaskRecord
 from diplomat_worker.tasks.analysis import ThreadCancelToken
+from diplomat_worker.tasks.errors import classify_runtime_error
 from diplomat_worker.translation.base import (
     TranslationCanceled,
     TranslationRequest,
@@ -244,14 +245,17 @@ class TranslationJobManager:
             )
         except Exception as exc:
             log(traceback.format_exc())
-            self._mark_first_failed_line(task, str(exc))
+            error_code, error_message = classify_runtime_error(exc)
+            if error_code == "RUNTIME_FAILED":
+                error_code = "TRANSLATION_FAILED"
+            self._mark_first_failed_line(task, error_message)
             self.runtime.store.update_task(
                 task_id,
                 status="failed",
-                message="Translation failed",
+                message=error_message,
                 completed=True,
-                error_code="TRANSLATION_FAILED",
-                error_message=str(exc),
+                error_code=error_code,
+                error_message=error_message,
                 diagnostic_log_path=str(diagnostic_path),
             )
         finally:
@@ -271,6 +275,7 @@ class TranslationJobManager:
             fallback_source_language=source_language,
             fallback_target_language=target_language,
             allow_unmanaged_models=self.runtime.allow_unmanaged_translation_models,
+            runtime_capabilities=self.runtime.runtime_capabilities,
         )
 
     def _select_lines(self, lines: list[SubtitleLine], mode: str) -> list[SubtitleLine]:

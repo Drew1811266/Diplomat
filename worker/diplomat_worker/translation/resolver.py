@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+from diplomat_worker.models.capabilities import RuntimeCapabilities
 from diplomat_worker.models.registry import ModelRegistryEntry, get_model_entry
 from diplomat_worker.storage.project_store import ProjectStore
 from diplomat_worker.translation.config import TranslationProviderConfig
@@ -27,6 +28,7 @@ def resolve_translation_provider_config(
     fallback_source_language: str,
     fallback_target_language: str,
     allow_unmanaged_models: bool = False,
+    runtime_capabilities: RuntimeCapabilities | None = None,
 ) -> TranslationProviderConfig:
     if config.provider in {"fake", "libretranslate"}:
         return config
@@ -37,7 +39,7 @@ def resolve_translation_provider_config(
             f"Unsupported translation provider: {config.provider}",
         )
 
-    _validate_runtime_options(config.device, config.compute_type)
+    _validate_runtime_options(config.device, config.compute_type, runtime_capabilities)
 
     if not config.model_id:
         if allow_unmanaged_models and config.model_name_or_path:
@@ -112,12 +114,25 @@ def _validate_language_pair(
         )
 
 
-def _validate_runtime_options(device: str, compute_type: str) -> None:
+def _validate_runtime_options(
+    device: str,
+    compute_type: str,
+    runtime_capabilities: RuntimeCapabilities | None = None,
+) -> None:
     supported_compute = COMPUTE_TYPES_BY_DEVICE.get(device)
     if supported_compute is None:
         raise TranslationConfigurationError(
             "TRANSLATION_DEVICE_UNSUPPORTED",
             f"Unsupported translation device: {device}. Use cpu or cuda.",
+        )
+    if (
+        device == "cuda"
+        and runtime_capabilities is not None
+        and not runtime_capabilities.cuda_available
+    ):
+        raise TranslationConfigurationError(
+            "TRANSLATION_CUDA_UNAVAILABLE",
+            "CUDA is not available in this Worker runtime. Switch to CPU or install a working NVIDIA CUDA runtime.",
         )
     if compute_type not in supported_compute:
         supported = ", ".join(sorted(supported_compute))

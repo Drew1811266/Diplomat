@@ -10,6 +10,7 @@ from diplomat_worker.asr.config import AsrModelConfig
 from diplomat_worker.asr.resolver import AsrConfigurationError, resolve_asr_model_config
 from diplomat_worker.pipeline.core import CorePipelineInput, run_core_pipeline
 from diplomat_worker.storage.project_store import TaskRecord
+from diplomat_worker.tasks.errors import classify_runtime_error
 
 if TYPE_CHECKING:
     from diplomat_worker.api.runtime import WorkerRuntime
@@ -230,13 +231,14 @@ class AnalysisJobManager:
             )
         except Exception as exc:
             log(traceback.format_exc())
+            error_code, error_message = classify_runtime_error(exc)
             self.runtime.store.update_task(
                 task_id,
                 status="failed",
-                message="Analysis failed",
+                message=error_message,
                 completed=True,
-                error_code="ANALYSIS_FAILED",
-                error_message=str(exc),
+                error_code=error_code if error_code != "RUNTIME_FAILED" else "ANALYSIS_FAILED",
+                error_message=error_message,
                 diagnostic_log_path=str(diagnostic_path),
             )
         finally:
@@ -250,4 +252,5 @@ class AnalysisJobManager:
             registry=self.runtime.model_registry or [],
             fallback_language=fallback_language,
             allow_unmanaged_models=self.runtime.allow_unmanaged_asr_models,
+            runtime_capabilities=self.runtime.runtime_capabilities,
         )

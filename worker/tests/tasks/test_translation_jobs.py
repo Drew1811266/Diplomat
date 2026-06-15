@@ -29,6 +29,11 @@ class RecordingTranslationProvider:
         )
 
 
+class OutOfMemoryTranslationProvider:
+    def translate(self, request: TranslationRequest, cancel_token=None) -> TranslationResult:
+        raise RuntimeError("CUDA out of memory while allocating")
+
+
 def make_entry(model_id: str = "translation.fixture.en-zh") -> ModelRegistryEntry:
     return ModelRegistryEntry(
         model_id=model_id,
@@ -144,6 +149,30 @@ def test_translation_job_updates_missing_translations(tmp_path: Path) -> None:
     assert line.translation_status == "translated"
     assert line.translation_origin is not None
     assert line.translation_origin.provider == "fake"
+
+
+def test_translation_job_maps_runtime_out_of_memory_error(tmp_path: Path) -> None:
+    runtime = make_runtime(
+        tmp_path,
+        translation_provider_factory=lambda config: OutOfMemoryTranslationProvider(),
+    )
+    project_id = create_project_with_document(runtime, tmp_path)
+    manager = TranslationJobManager(runtime, auto_start=False)
+
+    task = manager.create_translation_job(
+        project_id,
+        source_language="en",
+        target_language="zh",
+        mode="missing_only",
+        provider_config=TranslationProviderConfig(provider="fake"),
+    )
+    manager.run_pending_once()
+
+    failed = runtime.store.get_task(task.task_id)
+    assert failed.status == "failed"
+    assert failed.error_code == "RUNTIME_OUT_OF_MEMORY"
+    assert failed.error_message is not None
+    assert "lighter model" in failed.error_message
 
 
 def test_missing_only_preserves_edited_translation(tmp_path: Path) -> None:
