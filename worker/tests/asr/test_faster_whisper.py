@@ -112,6 +112,25 @@ def test_faster_whisper_transcriber_clips_single_chunk(monkeypatch, tmp_path: Pa
     assert result.segments[0].end_ms == 61_750
 
 
+def test_faster_whisper_transcriber_reuses_loaded_model_between_chunks(monkeypatch, tmp_path: Path) -> None:
+    install_fake_faster_whisper(monkeypatch)
+    audio_path = tmp_path / "audio.wav"
+    audio_path.write_bytes(b"audio")
+    transcriber = FasterWhisperTranscriber(model_name="small", language="zh")
+
+    transcriber.transcribe(
+        audio_path=audio_path,
+        chunks=[AudioChunk(index=0, start_ms=0, end_ms=30_000)],
+    )
+    transcriber.transcribe(
+        audio_path=audio_path,
+        chunks=[AudioChunk(index=1, start_ms=30_000, end_ms=60_000)],
+    )
+
+    assert len(FakeWhisperModel.instances) == 1
+    assert len(FakeWhisperModel.instances[0].transcribe_calls) == 2
+
+
 def test_faster_whisper_transcriber_stops_before_loading_when_canceled(tmp_path: Path) -> None:
     class AlreadyCanceled:
         def is_cancel_requested(self) -> bool:

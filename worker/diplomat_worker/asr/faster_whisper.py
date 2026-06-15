@@ -30,6 +30,24 @@ class FasterWhisperTranscriber:
         self.compute_type = compute_type
         self.language = language
         self.initial_prompt = initial_prompt
+        self._model = None
+
+    def warmup(self, cancel_token: CancelToken | None = None) -> None:
+        if cancel_token is not None and cancel_token.is_cancel_requested():
+            raise AsrCanceled("Analysis canceled")
+        self._load_model()
+
+    def _load_model(self):
+        if self._model is not None:
+            return self._model
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError as exc:
+            raise RuntimeError(
+                "faster-whisper is not installed. Install the Worker ASR extras before running local ASR."
+            ) from exc
+        self._model = WhisperModel(self.model_name, device=self.device, compute_type=self.compute_type)
+        return self._model
 
     def transcribe(
         self,
@@ -38,19 +56,12 @@ class FasterWhisperTranscriber:
         progress_callback: ProgressCallback | None = None,
         cancel_token: CancelToken | None = None,
     ) -> AsrResult:
-        try:
-            from faster_whisper import WhisperModel
-        except ImportError as exc:
-            raise RuntimeError(
-                "faster-whisper is not installed. Install the Worker ASR extras before running local ASR."
-            ) from exc
-
         if cancel_token is not None and cancel_token.is_cancel_requested():
             raise AsrCanceled("Analysis canceled")
         if progress_callback is not None:
             progress_callback(0.05, "Loading faster-whisper model")
 
-        model = WhisperModel(self.model_name, device=self.device, compute_type=self.compute_type)
+        model = self._load_model()
         active_chunk = chunks[0] if len(chunks) == 1 else None
         transcribe_kwargs = {
             "language": self.language,
