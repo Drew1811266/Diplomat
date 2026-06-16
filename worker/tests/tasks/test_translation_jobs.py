@@ -61,6 +61,31 @@ class BatchRecordingTranslationProvider:
         ]
 
 
+class CancelAfterFirstBatchProvider:
+    provider = "fake"
+
+    def __init__(self) -> None:
+        self.batch_requests: list[list[TranslationRequest]] = []
+
+    def translate(self, request: TranslationRequest, cancel_token=None) -> TranslationResult:
+        raise AssertionError("translate should not be used when translate_batch is available")
+
+    def translate_batch(self, requests: list[TranslationRequest], cancel_token=None) -> list[TranslationResult]:
+        self.batch_requests.append(requests)
+        results = [
+            TranslationResult(
+                line_id=request.line_id,
+                translated_text=f"[batch {request.target_language}] {request.source_text}",
+                provider=self.provider,
+                model="cancel-after-first-batch",
+            )
+            for request in requests
+        ]
+        if len(self.batch_requests) == 1 and cancel_token is not None:
+            cancel_token.request_cancel()
+        return results
+
+
 def make_entry(model_id: str = "translation.fixture.en-zh") -> ModelRegistryEntry:
     return ModelRegistryEntry(
         model_id=model_id,
@@ -293,6 +318,48 @@ def test_translation_job_uses_batch_provider_when_available(tmp_path: Path) -> N
     assert [line.translated_text for line in document.lines] == [
         "[batch zh] Hello world",
         "[batch zh] Second line",
+    ]
+
+
+def test_canceled_translation_job_persists_completed_batches_for_retry(tmp_path: Path) -> None:
+    provider = CancelAfterFirstBatchProvider()
+    runtime = make_runtime(
+        tmp_path,
+        translation_provider_factory=lambda config: provider,
+    )
+    project_id = create_project_with_document(runtime, tmp_path)
+    add_second_line(runtime, project_id)
+    manager = TranslationJobManager(runtime, auto_start=False)
+
+    task = manager.create_translation_job(
+        project_id,
+        source_language="en",
+        target_language="zh",
+        mode="missing_only",
+        provider_config=TranslationProviderConfig(provider="fake", batch_size=1),
+    )
+    manager.run_pending_once()
+
+    canceled = runtime.store.get_task(task.task_id)
+    canceled_document = runtime.store.load_subtitle_document(project_id)
+    retry = manager.retry_task(task.task_id)
+    manager.run_pending_once()
+    completed = runtime.store.get_task(retry.task_id)
+    completed_document = runtime.store.load_subtitle_document(project_id)
+
+    assert canceled.status == "canceled"
+    assert canceled_document.lines[0].translated_text == "[batch zh] Hello world"
+    assert canceled_document.lines[0].translation_status == "translated"
+    assert canceled_document.lines[1].translated_text == ""
+    assert canceled_document.lines[1].translation_status == "queued"
+    assert completed.status == "completed"
+    assert [line.translated_text for line in completed_document.lines] == [
+        "[batch zh] Hello world",
+        "[batch zh] Second line",
+    ]
+    assert [[request.line_id for request in batch] for batch in provider.batch_requests] == [
+        ["line-1"],
+        ["line-2"],
     ]
 
 

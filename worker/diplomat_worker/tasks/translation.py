@@ -231,6 +231,15 @@ class TranslationJobManager:
                             "translation_error": None,
                         }
                     )
+                document = document.model_copy(
+                    update={
+                        "lines": [
+                            translated_lines.get(line.id, line)
+                            for line in document.lines
+                        ]
+                    }
+                )
+                self.runtime.store.save_subtitle_document(task.project_id, document)
                 processed_count += len(results)
                 progress = 0.05 + (processed_count / len(selected_lines)) * 0.9
                 self.runtime.store.update_task(
