@@ -3,7 +3,15 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 
-type TaskSurfaceStatus = "ready" | "queued" | "running" | "completed" | "failed" | "canceled" | "blocked";
+type TaskSurfaceStatus =
+  | "ready"
+  | "queued"
+  | "running"
+  | "canceling"
+  | "completed"
+  | "failed"
+  | "canceled"
+  | "blocked";
 
 type TaskStatusSurfaceProps = {
   busy: boolean;
@@ -18,6 +26,7 @@ const statusColors: Record<TaskSurfaceStatus, string> = {
   ready: "gray",
   queued: "blue",
   running: "teal",
+  canceling: "orange",
   completed: "green",
   failed: "red",
   canceled: "orange",

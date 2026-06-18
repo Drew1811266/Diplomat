@@ -11,7 +11,7 @@ import type {
   TranslationJobRequest
 } from "@diplomat/shared";
 import { useMediaQuery } from "@mantine/hooks";
-import { IconWaveSine } from "@tabler/icons-react";
+import { IconFileText, IconPlayerStop, IconRefresh, IconWaveSine } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { projectMediaUrl } from "../api";
@@ -240,9 +240,7 @@ export function WorkbenchPage() {
   );
   const canRetryExportTask = Boolean(canRetryCurrentTask && observedTask?.type === "export");
   const taskStatusMessage = observedTask
-    ? `${t(`status.${observedTask.status}`)} · ${observedTask.message} · ${Math.round(
-        observedTask.progress * 100
-      )}%`
+    ? observedTask.message
     : t("status.ready");
   const taskStatusError =
     observedTask?.errorMessage ??
@@ -938,6 +936,51 @@ export function WorkbenchPage() {
   }
 
   const dataNotice = renderDataNotice();
+  const projectContextTitle = project.data?.name ?? t("workbench.noProject");
+  const projectContextSource = project.data?.sourceVideoPath ?? t("workbench.previewUnavailable");
+  const taskStatusAction =
+    observedTask || taskOperationPending ? (
+      <Group gap={6} wrap="nowrap">
+        {observedTask?.diagnosticLogPath ? (
+          <Button
+            type="button"
+            size="compact-xs"
+            variant="subtle"
+            color="gray"
+            leftSection={<IconFileText size={14} aria-hidden />}
+            onClick={() => void openPathInFileManager(observedTask.diagnosticLogPath ?? "")}
+          >
+            {t("actions.openLogs")}
+          </Button>
+        ) : null}
+        {canCancelTask ? (
+          <Button
+            type="button"
+            size="compact-xs"
+            variant="light"
+            color="orange"
+            leftSection={<IconPlayerStop size={14} aria-hidden />}
+            loading={cancelTask.isPending}
+            onClick={() => void handleCancelTask()}
+          >
+            {t("actions.cancel")}
+          </Button>
+        ) : null}
+        {canRetryCurrentTask ? (
+          <Button
+            type="button"
+            size="compact-xs"
+            variant="light"
+            color="blue"
+            leftSection={<IconRefresh size={14} aria-hidden />}
+            loading={retryTask.isPending}
+            onClick={() => void handleRetryTask()}
+          >
+            {t("actions.retry")}
+          </Button>
+        ) : null}
+      </Group>
+    ) : null;
   const timelinePanel =
     activeProjectId && subtitleDocument ? (
       <Box
@@ -996,8 +1039,8 @@ export function WorkbenchPage() {
           minHeight: 620,
           display: "grid",
           gridTemplateRows: recoveryPanelVisible
-            ? "auto auto auto auto minmax(0, 1fr)"
-            : "auto auto auto minmax(0, 1fr)",
+            ? "auto auto auto auto auto minmax(0, 1fr)"
+            : "auto auto auto auto minmax(0, 1fr)",
           overflow: "hidden",
           border: "1px solid #cbd5e1",
           borderRadius: 6
@@ -1012,6 +1055,38 @@ export function WorkbenchPage() {
       />
 
       <Box
+        component="section"
+        aria-label={t("workbench.labels.projectContext")}
+        px="sm"
+        py={7}
+        bg="#ffffff"
+        style={{
+          borderBottom: "1px solid #dbe3ec",
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) auto",
+          gap: 12,
+          alignItems: "center"
+        }}
+      >
+        <Box style={{ minWidth: 0 }}>
+          <Text size="sm" fw={800} c="#111827" truncate>
+            {projectContextTitle}
+          </Text>
+          <Text size="xs" c="#5b677a" truncate>
+            {projectContextSource}
+          </Text>
+        </Box>
+        <Group gap={6} wrap="nowrap">
+          <Text size="xs" fw={800} c="#5b677a">
+            {t("workbench.timeline.subtitleRows", { count: subtitleLines.length })}
+          </Text>
+          <Text size="xs" fw={800} c={hasUnsavedChanges ? "orange" : "teal"}>
+            {hasUnsavedChanges ? t("workbench.unsaved") : t("workbench.saved")}
+          </Text>
+        </Group>
+      </Box>
+
+      <Box
         px="sm"
         py={4}
         bg="#ffffff"
@@ -1023,6 +1098,9 @@ export function WorkbenchPage() {
           busy={taskActive}
           message={taskStatusMessage}
           error={taskStatusError}
+          status={observedTask?.status ?? (taskActive ? "running" : "ready")}
+          progress={observedTask?.progress ?? null}
+          action={taskStatusAction}
         />
       </Box>
 

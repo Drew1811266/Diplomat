@@ -38,7 +38,7 @@ describe("TaskStatusSurface", () => {
     expect(screen.getByLabelText("Task progress")).toBeInTheDocument();
   });
 
-  it("renders queued and completed states without requiring busy", () => {
+  it("renders queued, completed, and canceled states without requiring busy", () => {
     const { rerender } = renderWithProviders(
       <TaskStatusSurface busy={false} status="queued" message="Queued translation" />
     );
@@ -48,6 +48,10 @@ describe("TaskStatusSurface", () => {
     rerender(<TaskStatusSurface busy={false} status="completed" message="Translation completed" />);
 
     expect(screen.getByRole("status")).toHaveTextContent("Completed");
+
+    rerender(<TaskStatusSurface busy={false} status="canceled" message="Canceled by user" />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Canceled");
   });
 
   it("renders failed errors with optional actions", () => {

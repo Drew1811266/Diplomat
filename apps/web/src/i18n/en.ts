@@ -81,6 +81,7 @@ export const en = {
     title: "Workbench",
     labels: {
       projectTools: "Project tools",
+      projectContext: "Project context",
       videoPreview: "Video preview",
       videoPreviewMedia: "Video preview media",
       inspector: "Inspector",
@@ -295,6 +296,7 @@ export const en = {
     cancel: "Cancel",
     retry: "Retry",
     open: "Open",
+    openLogs: "Open logs",
     save: "Save",
     close: "Close",
     addTerm: "Add term",
@@ -471,6 +473,7 @@ export const en = {
     ready: "Ready",
     running: "Running",
     queued: "Queued",
+    canceling: "Canceling",
     completed: "Completed",
     failed: "Failed",
     canceled: "Canceled",

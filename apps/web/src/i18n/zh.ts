@@ -79,6 +79,7 @@ export const zh = {
     title: "工作台",
     labels: {
       projectTools: "项目工具",
+      projectContext: "项目上下文",
       videoPreview: "视频预览",
       videoPreviewMedia: "视频预览媒体",
       inspector: "检查器",
@@ -293,6 +294,7 @@ export const zh = {
     cancel: "取消",
     retry: "重试",
     open: "打开",
+    openLogs: "打开日志",
     save: "保存",
     close: "关闭",
     addTerm: "添加术语",
@@ -469,6 +471,7 @@ export const zh = {
     ready: "就绪",
     running: "运行中",
     queued: "排队中",
+    canceling: "取消中",
     completed: "已完成",
     failed: "失败",
     canceled: "已取消",
