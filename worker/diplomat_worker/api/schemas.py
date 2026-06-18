@@ -159,7 +159,7 @@ class ModelCatalogEntryResponse(CamelModel):
     name: str
     task: Literal["asr", "translation"]
     tier: Literal["light", "high_quality"]
-    runtime: Literal["faster-whisper", "ct2-marian", "local-llm"]
+    runtime: Literal["faster-whisper", "vibevoice-asr", "ct2-marian", "local-llm"]
     provider: str
     version: str
     languages: list[str]

@@ -56,10 +56,14 @@ describe("ModelsPage", () => {
 
     expect(await screen.findByRole("main", { name: "Models" })).toBeVisible();
     expect(await screen.findByText("Faster Whisper Small")).toBeVisible();
+    expect(screen.getByText("Microsoft VibeVoice ASR")).toBeVisible();
     expect(screen.getByText("OPUS-MT Chinese to English")).toBeVisible();
+    expect(screen.getByText("Tencent Hunyuan MT 7B FP8")).toBeVisible();
+    expect(screen.getByText("Model license acceptance is required.")).toBeVisible();
     expect(screen.getAllByText("MIT").length).toBeGreaterThan(0);
     expect(screen.getByText("CC-BY-4.0")).toBeVisible();
     expect(screen.getAllByText("faster-whisper").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("vibevoice-asr").length).toBeGreaterThan(0);
     expect(screen.getAllByText("ct2-marian").length).toBeGreaterThan(0);
     expect(screen.getByText("zh -> en")).toBeVisible();
     expect(screen.getByText("D:/Diplomat/models/asr-medium")).toBeVisible();
@@ -68,7 +72,9 @@ describe("ModelsPage", () => {
     await user.click(screen.getByLabelText("Translation"));
 
     expect(screen.queryByText("Faster Whisper Small")).not.toBeInTheDocument();
+    expect(screen.queryByText("Microsoft VibeVoice ASR")).not.toBeInTheDocument();
     expect(screen.getByText("OPUS-MT Chinese to English")).toBeVisible();
+    expect(screen.getByText("Tencent Hunyuan MT 7B FP8")).toBeVisible();
   });
 
   it("calls model download, cancel, retry, and delete endpoints", async () => {

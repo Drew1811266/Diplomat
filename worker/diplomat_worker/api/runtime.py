@@ -55,6 +55,7 @@ class WorkerRuntime:
     waveform_generator: WaveformGenerator = generate_waveform_data
     model_registry: list[ModelRegistryEntry] | None = field(default_factory=built_in_model_registry)
     runtime_capabilities: RuntimeCapabilities = field(default_factory=detect_runtime_capabilities)
+    development_model_root: Path | None = None
     allow_unmanaged_asr_models: bool = False
     allow_unmanaged_translation_models: bool = False
 

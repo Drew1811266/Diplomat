@@ -3,7 +3,7 @@ from typing import Literal
 
 ModelTask = Literal["asr", "translation"]
 ModelTier = Literal["light", "high_quality"]
-ModelRuntime = Literal["faster-whisper", "ct2-marian", "local-llm"]
+ModelRuntime = Literal["faster-whisper", "vibevoice-asr", "ct2-marian", "local-llm"]
 
 
 @dataclass(frozen=True)
@@ -135,6 +135,48 @@ def built_in_model_registry() -> list[ModelRegistryEntry]:
             checksum_algorithm="sha256",
             checksum="b31e1da988e39a506f50ab27701e65a46c13a1bfea94e1bb180fe36cfbf354eb",
             terms_summary="Pinned Hugging Face snapshot manifest for Apache-2.0 Qwen3 local LLM weights.",
+        ),
+        ModelRegistryEntry(
+            model_id="asr.microsoft.vibevoice-asr",
+            name="Microsoft VibeVoice ASR",
+            task="asr",
+            tier="high_quality",
+            runtime="vibevoice-asr",
+            provider="microsoft",
+            version="d0c9efdb8d614685062c04425d91e01b6f37d944",
+            languages=["zh", "en"],
+            language_pairs=[],
+            model_size_bytes=17_349_559_904,
+            download_size_bytes=17_349_559_904,
+            disk_requirement_bytes=18_500_000_000,
+            recommended_hardware="NVIDIA GPU required; 24 GB VRAM recommended for 0.4 development.",
+            license_name="MIT",
+            license_url="https://huggingface.co/microsoft/VibeVoice-ASR",
+            source_url="hf://microsoft/VibeVoice-ASR@d0c9efdb8d614685062c04425d91e01b6f37d944",
+            checksum_algorithm="sha256",
+            checksum="60d61effa5b94497f1638a38cdbadb3bd908985d5b00798e44d87ed3d8c1ff9f",
+            terms_summary="Pinned Hugging Face development manifest for Microsoft VibeVoice ASR.",
+        ),
+        ModelRegistryEntry(
+            model_id="translation.tencent.hunyuan-mt-7b-fp8",
+            name="Tencent Hunyuan MT 7B FP8",
+            task="translation",
+            tier="high_quality",
+            runtime="local-llm",
+            provider="tencent",
+            version="81e5a3f7199524570ba75e61360e990ba88665e4",
+            languages=["zh", "en"],
+            language_pairs=[("zh", "en"), ("en", "zh")],
+            model_size_bytes=8_047_121_287,
+            download_size_bytes=8_047_121_287,
+            disk_requirement_bytes=9_000_000_000,
+            recommended_hardware="NVIDIA GPU required; FP8 runtime target for 24 GB VRAM development.",
+            license_name="Upstream License.txt",
+            license_url="https://huggingface.co/tencent/Hunyuan-MT-7B-fp8/blob/main/License.txt",
+            source_url="hf://tencent/Hunyuan-MT-7B-fp8@81e5a3f7199524570ba75e61360e990ba88665e4",
+            checksum_algorithm="sha256",
+            checksum="89f1757846ac6c9e9d85da914c0818850e10c2244e885d9a3e7db6f3e77e1392",
+            terms_summary="Pinned Hugging Face development manifest for Tencent Hunyuan MT 7B FP8; upstream license acceptance required.",
         ),
     ]
 

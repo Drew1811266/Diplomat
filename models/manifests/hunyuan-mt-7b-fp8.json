@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "diplomat.modelManifest.v1",
+  "modelId": "translation.tencent.hunyuan-mt-7b-fp8",
+  "name": "Tencent Hunyuan MT 7B FP8",
+  "task": "translation",
+  "runtime": "local-llm",
+  "provider": "tencent",
+  "source": {
+    "type": "huggingface",
+    "repoId": "tencent/Hunyuan-MT-7B-fp8",
+    "revision": "81e5a3f7199524570ba75e61360e990ba88665e4",
+    "url": "https://huggingface.co/tencent/Hunyuan-MT-7B-fp8"
+  },
+  "license": {
+    "name": "Upstream License.txt",
+    "url": "https://huggingface.co/tencent/Hunyuan-MT-7B-fp8/blob/main/License.txt",
+    "acceptanceRequired": true,
+    "acceptanceRecord": "models/licenses/accepted/tencent--Hunyuan-MT-7B-fp8.json"
+  },
+  "developmentPath": "models/dev/translation/tencent--Hunyuan-MT-7B-fp8",
+  "expectedFiles": [
+    "config.json",
+    "generation_config.json",
+    "hf_quant_config.json",
+    "model-00001-of-00002.safetensors",
+    "model-00002-of-00002.safetensors",
+    "model.safetensors.index.json",
+    "tokenizer.json",
+    "tokenizer_config.json"
+  ],
+  "weightsIgnoredByGit": true,
+  "notes": "0.37 metadata only. Runtime inference is planned for 0.39."
+}
