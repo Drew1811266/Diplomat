@@ -230,6 +230,58 @@ def test_0_40_runner_resolves_ready_development_model_paths(tmp_path: Path) -> N
     )
 
 
+def test_0_40_runner_collects_runtime_cleanup_evidence(tmp_path: Path) -> None:
+    log_path = tmp_path / "analysis.log"
+    log_path.write_text(
+        "Starting analysis\n"
+        "Runtime cleanup: Closed runtime resource.\n"
+        "Runtime cleanup: Cleared CUDA accelerator cache.\n",
+        encoding="utf-8",
+    )
+    runner = load_acceptance_runner()
+
+    evidence = runner.collect_runtime_cleanup_evidence(
+        {
+            "type": "analysis",
+            "diagnosticLogPath": str(log_path),
+        },
+        label="analysis",
+        require_cuda_cache=True,
+    )
+
+    assert evidence == {
+        "label": "analysis",
+        "logPath": str(log_path),
+        "closed": True,
+        "acceleratorCacheCleared": True,
+        "messages": [
+            "Closed runtime resource.",
+            "Cleared CUDA accelerator cache.",
+        ],
+    }
+
+
+def test_0_40_runner_rejects_missing_cuda_cleanup_evidence(tmp_path: Path) -> None:
+    log_path = tmp_path / "translation.log"
+    log_path.write_text(
+        "Starting translation\n"
+        "Runtime cleanup: Closed runtime resource.\n"
+        "Runtime cleanup: CUDA is not available; accelerator cache cleanup skipped.\n",
+        encoding="utf-8",
+    )
+    runner = load_acceptance_runner()
+
+    with pytest.raises(runner.AcceptanceError, match="translation did not clear CUDA accelerator cache"):
+        runner.collect_runtime_cleanup_evidence(
+            {
+                "type": "translation",
+                "diagnosticLogPath": str(log_path),
+            },
+            label="translation",
+            require_cuda_cache=True,
+        )
+
+
 def test_0_40_prepare_requires_explicit_hunyuan_license_acceptance(tmp_path: Path) -> None:
     root = copy_model_layout(tmp_path)
 

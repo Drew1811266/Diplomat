@@ -130,6 +130,11 @@ def main() -> int:
         summary["analysisTask"] = task_summary(analysis_result)
         if analysis_result.status != "completed":
             raise AcceptanceError(f"Analysis task did not complete: {analysis_result.status}")
+        summary.setdefault("runtimeCleanup", {})["analysis"] = collect_runtime_cleanup_evidence(
+            summary["analysisTask"],
+            label="analysis",
+            require_cuda_cache=args.asr_device.lower() == "cuda",
+        )
 
         translation = TranslationJobManager(runtime, auto_start=False)
         translation_task = translation.create_translation_job(
@@ -151,6 +156,11 @@ def main() -> int:
         summary["translationTask"] = task_summary(translation_result)
         if translation_result.status != "completed":
             raise AcceptanceError(f"Translation task did not complete: {translation_result.status}")
+        summary.setdefault("runtimeCleanup", {})["translation"] = collect_runtime_cleanup_evidence(
+            summary["translationTask"],
+            label="translation",
+            require_cuda_cache=args.translation_device.lower() == "cuda",
+        )
 
         document = runtime.store.load_subtitle_document(project.project_id)
         translated_count = sum(1 for line in document.lines if line.translated_text.strip())
@@ -192,6 +202,42 @@ def resolve_development_model_paths(root: Path, model_ids: list[str]) -> dict[st
             raise AcceptanceError(f"{model_id}: {readiness.reason}")
         paths[model_id] = str((root / manifest.development_path).resolve())
     return paths
+
+
+def collect_runtime_cleanup_evidence(
+    task: dict,
+    *,
+    label: str,
+    require_cuda_cache: bool,
+) -> dict:
+    log_path_value = task.get("diagnosticLogPath")
+    if not log_path_value:
+        raise AcceptanceError(f"{label} task did not record a diagnostic log path.")
+
+    log_path = Path(log_path_value)
+    if not log_path.is_file():
+        raise AcceptanceError(f"{label} diagnostic log does not exist: {log_path}")
+
+    messages = []
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("Runtime cleanup: "):
+            messages.append(line.removeprefix("Runtime cleanup: "))
+
+    closed = "Closed runtime resource." in messages
+    accelerator_cache_cleared = "Cleared CUDA accelerator cache." in messages
+
+    if not closed:
+        raise AcceptanceError(f"{label} did not close runtime resource.")
+    if require_cuda_cache and not accelerator_cache_cleared:
+        raise AcceptanceError(f"{label} did not clear CUDA accelerator cache.")
+
+    return {
+        "label": label,
+        "logPath": str(log_path),
+        "closed": closed,
+        "acceleratorCacheCleared": accelerator_cache_cleared,
+        "messages": messages,
+    }
 
 
 def parse_args() -> argparse.Namespace:
