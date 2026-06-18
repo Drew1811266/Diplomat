@@ -31,3 +31,12 @@ htmlcov/
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/blob-report/
+
+# Development model storage: keep directories and manifests, never model weights.
+models/dev/**
+!models/dev/
+!models/dev/**/
+!models/dev/**/.gitkeep
+models/licenses/accepted/**
+!models/licenses/accepted/
+!models/licenses/accepted/.gitkeep
