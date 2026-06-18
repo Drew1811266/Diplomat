@@ -68,3 +68,27 @@ def test_ct2_translation_profiles_include_batch_size() -> None:
     assert profile.available is True
     assert profile.batch_size == 8
     assert profile.notes == "CTranslate2 batch translation profile."
+
+
+def test_vibevoice_asr_profiles_require_cuda() -> None:
+    profiles = build_runtime_profiles(
+        make_entry(
+            model_id="asr.fixture.vibevoice",
+            task="asr",
+            runtime="vibevoice-asr",
+            provider="microsoft",
+            tier="high_quality",
+        ),
+        RuntimeCapabilities(cuda_available=False, cuda_device_count=0, detected_by="test"),
+    )
+
+    cuda_profile = find_runtime_profile(profiles, device="cuda", compute_type="float16")
+    cpu_profile = find_runtime_profile(profiles, device="cpu", compute_type="float32")
+
+    assert cuda_profile is not None
+    assert cuda_profile.recommended is True
+    assert cuda_profile.available is False
+    assert cuda_profile.reason == "CUDA is not available in this Worker runtime."
+    assert cpu_profile is not None
+    assert cpu_profile.available is False
+    assert cpu_profile.reason == "VibeVoice ASR requires the CUDA runtime for 0.4 development."

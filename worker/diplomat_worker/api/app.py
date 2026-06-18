@@ -517,6 +517,7 @@ def create_app(
                 active_runtime.store,
                 registry=active_runtime.model_registry,
                 runtime_capabilities=active_runtime.runtime_capabilities,
+                development_model_root=active_runtime.development_model_root,
             )
             app.state.model_downloads = active_downloads
         return active_downloads

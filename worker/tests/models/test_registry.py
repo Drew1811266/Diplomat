@@ -31,3 +31,10 @@ def test_get_model_entry_rejects_unknown_ids() -> None:
         assert "unknown-model" in str(exc)
     else:
         raise AssertionError("Expected unknown model id to raise KeyError")
+
+
+def test_registry_contains_0_4_real_model_targets() -> None:
+    registry = built_in_model_registry()
+
+    assert get_model_entry("asr.microsoft.vibevoice-asr", registry).runtime == "vibevoice-asr"
+    assert get_model_entry("translation.tencent.hunyuan-mt-7b-fp8", registry).runtime == "local-llm"

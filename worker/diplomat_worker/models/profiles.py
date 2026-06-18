@@ -49,6 +49,29 @@ def build_runtime_profiles(
                 "CUDA float16 ASR profile.",
             ),
         ]
+    if entry.runtime == "vibevoice-asr":
+        return [
+            _profile(
+                entry,
+                "cuda",
+                "float16",
+                1,
+                True,
+                capabilities.cuda_available,
+                None if capabilities.cuda_available else "CUDA is not available in this Worker runtime.",
+                "VibeVoice ASR CUDA development profile.",
+            ),
+            _profile(
+                entry,
+                "cpu",
+                "float32",
+                1,
+                False,
+                False,
+                "VibeVoice ASR requires the CUDA runtime for 0.4 development.",
+                "CPU fallback is not supported for VibeVoice ASR.",
+            ),
+        ]
     if entry.runtime == "ct2-marian":
         return [
             _profile(entry, "cpu", "int8", 8, True, True, None, "CTranslate2 batch translation profile."),

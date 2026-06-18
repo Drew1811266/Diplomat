@@ -14,6 +14,10 @@ from diplomat_worker.models.registry import (
     get_model_entry,
 )
 from diplomat_worker.models.capabilities import RuntimeCapabilities
+from diplomat_worker.models.dev_manifests import (
+    development_readiness,
+    get_development_manifest,
+)
 from diplomat_worker.models.profiles import ModelRuntimeProfile, build_runtime_profiles
 from diplomat_worker.storage.project_store import ModelInstallationRecord, ProjectStore
 
@@ -112,12 +116,14 @@ class ModelDownloadManager:
         store: ProjectStore,
         registry: list[ModelRegistryEntry] | None = None,
         runtime_capabilities: RuntimeCapabilities | None = None,
+        development_model_root: Path | None = None,
         auto_start: bool = True,
         max_workers: int = 1,
     ) -> None:
         self.store = store
         self.registry = registry or built_in_model_registry()
         self.runtime_capabilities = runtime_capabilities or RuntimeCapabilities()
+        self.development_model_root = development_model_root
         self.auto_start = auto_start
         self._executor = ThreadPoolExecutor(max_workers=max_workers) if auto_start else None
         self._pending: list[str] = []
@@ -137,7 +143,7 @@ class ModelDownloadManager:
         return ModelCatalogEntry(
             registry=entry,
             installation=installation,
-            availability=self._availability(installation),
+            availability=self._availability(entry, installation),
             runtime_profiles=build_runtime_profiles(entry, self.runtime_capabilities),
         )
 
@@ -405,7 +411,11 @@ class ModelDownloadManager:
             digest.update(item.read_bytes())
         return digest.hexdigest()
 
-    def _availability(self, installation: ModelInstallationRecord) -> ModelAvailability:
+    def _availability(
+        self,
+        entry: ModelRegistryEntry,
+        installation: ModelInstallationRecord,
+    ) -> ModelAvailability:
         if installation.status == "installed":
             if installation.installed_path is None or not installation.installed_path.exists():
                 return ModelAvailability(usable=False, reason="Installed model files are missing.")
@@ -416,7 +426,19 @@ class ModelDownloadManager:
             return ModelAvailability(usable=False, reason="Model download was canceled.")
         if installation.status in {"queued", "downloading", "verifying"}:
             return ModelAvailability(usable=False, reason="Model download is in progress.")
+        development_availability = self._development_availability(entry)
+        if development_availability is not None:
+            return development_availability
         return ModelAvailability(usable=False, reason="Model is not installed.")
+
+    def _development_availability(self, entry: ModelRegistryEntry) -> ModelAvailability | None:
+        try:
+            manifest = get_development_manifest(entry.model_id, root=self.development_model_root)
+        except KeyError:
+            return None
+
+        readiness = development_readiness(manifest, self.development_model_root)
+        return ModelAvailability(usable=readiness.usable, reason=readiness.reason)
 
     def _download_response(
         self,
