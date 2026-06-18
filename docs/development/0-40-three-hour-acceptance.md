@@ -35,6 +35,7 @@ Latest local check:
 - The 0.40 runner probes the source media before model preflight and rejects short or silent media before any model execution.
 - The 0.40 runner passes manifest-verified `models/dev` paths as controlled local model paths for the acceptance runtime.
 - The 0.40 runner reads ASR and translation diagnostic logs and fails acceptance if runtime resources are not closed or if CUDA-mode tasks do not report CUDA accelerator cache cleanup.
+- The 0.40 runner validates the final subtitle document and fails acceptance on blank source lines, missing translations, failed translation states, incomplete translation states, or timing corruption.
 - `scripts/verify-0.40-three-hour-workflow.ps1` is available as the operator-facing wrapper for the Python acceptance runner.
 - `models/dev/translation/tencent--Hunyuan-MT-7B-fp8` still contains only `.gitkeep`.
 - `models/licenses/accepted/tencent--Hunyuan-MT-7B-fp8.json` is missing.
@@ -66,7 +67,8 @@ Current readiness:
 - Hunyuan MT FP8 model readiness is usable.
 - Three-hour source video completes ASR and translation.
 - No task remains failed, canceled, queued, or partially complete.
-- Subtitle document contains transcript and translated text for the completed run.
+- Subtitle document contains transcript and translated text for every source line in the completed run.
+- Subtitle document has no blank source lines, missing translations, failed translation states, incomplete translation states, or timing issues.
 - Runtime cleanup evidence is present in logs and in `acceptance-summary.json` for both ASR and translation.
 - CUDA-mode ASR and translation tasks record `Cleared CUDA accelerator cache.` before the final gate can pass.
 - Full repository verification passes after the acceptance run.

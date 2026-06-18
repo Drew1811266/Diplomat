@@ -7,6 +7,13 @@ from pathlib import Path
 
 import pytest
 
+from diplomat_worker.schemas.subtitle import (
+    AiOrigin,
+    SubtitleDocument,
+    SubtitleLine,
+    TranslationOrigin,
+)
+
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -279,6 +286,112 @@ def test_0_40_runner_rejects_missing_cuda_cleanup_evidence(tmp_path: Path) -> No
             },
             label="translation",
             require_cuda_cache=True,
+        )
+
+
+def make_acceptance_document(lines: list[SubtitleLine] | None = None) -> SubtitleDocument:
+    return SubtitleDocument(
+        project_id="project-1",
+        media_id="media-1",
+        duration_ms=10_000,
+        speakers=[],
+        styles=[],
+        lines=lines
+        or [
+            SubtitleLine(
+                id="line-1",
+                start_ms=0,
+                end_ms=1000,
+                speaker_id=None,
+                source_language="zh",
+                target_language="en",
+                source_text="你好",
+                translated_text="Hello",
+                words=[],
+                style_overrides={},
+                review_status="draft",
+                ai_origin=AiOrigin(engine="vibevoice-asr", model="asr.microsoft.vibevoice-asr"),
+                translation_status="translated",
+                translation_origin=TranslationOrigin(
+                    provider="local-llm",
+                    model="translation.tencent.hunyuan-mt-7b-fp8",
+                ),
+                notes="",
+            )
+        ],
+    )
+
+
+def test_0_40_runner_summarizes_complete_subtitle_document(tmp_path: Path) -> None:
+    runner = load_acceptance_runner()
+    subtitle_path = tmp_path / "subtitle.diplomat.json"
+
+    summary = runner.validate_subtitle_acceptance(
+        make_acceptance_document(),
+        subtitle_path=subtitle_path,
+    )
+
+    assert summary == {
+        "lineCount": 1,
+        "sourceLineCount": 1,
+        "translatedLineCount": 1,
+        "blankSourceLineCount": 0,
+        "missingTranslationCount": 0,
+        "failedTranslationCount": 0,
+        "incompleteTranslationStatusCount": 0,
+        "timingIssueCount": 0,
+        "translationQualityIssueCount": 0,
+        "path": str(subtitle_path),
+    }
+
+
+def test_0_40_runner_rejects_partial_subtitle_translation(tmp_path: Path) -> None:
+    document = make_acceptance_document()
+    document = document.model_copy(
+        update={
+            "lines": [
+                document.lines[0],
+                document.lines[0].model_copy(
+                    update={
+                        "id": "line-2",
+                        "start_ms": 1000,
+                        "end_ms": 2000,
+                        "source_text": "第二句",
+                        "translated_text": "",
+                        "translation_status": "queued",
+                        "translation_origin": None,
+                    }
+                ),
+            ]
+        }
+    )
+    runner = load_acceptance_runner()
+
+    with pytest.raises(runner.AcceptanceError, match="Subtitle acceptance failed"):
+        runner.validate_subtitle_acceptance(
+            document,
+            subtitle_path=tmp_path / "subtitle.diplomat.json",
+        )
+
+
+def test_0_40_runner_rejects_subtitle_timing_corruption(tmp_path: Path) -> None:
+    document = make_acceptance_document(
+        [
+            make_acceptance_document().lines[0].model_copy(
+                update={
+                    "id": "line-1",
+                    "start_ms": 9500,
+                    "end_ms": 10_500,
+                }
+            )
+        ]
+    )
+    runner = load_acceptance_runner()
+
+    with pytest.raises(runner.AcceptanceError, match="timing issue"):
+        runner.validate_subtitle_acceptance(
+            document,
+            subtitle_path=tmp_path / "subtitle.diplomat.json",
         )
 
 

@@ -163,16 +163,10 @@ def main() -> int:
         )
 
         document = runtime.store.load_subtitle_document(project.project_id)
-        translated_count = sum(1 for line in document.lines if line.translated_text.strip())
-        summary["subtitle"] = {
-            "lineCount": len(document.lines),
-            "translatedLineCount": translated_count,
-            "path": str(project.project_dir / "subtitle.diplomat.json"),
-        }
-        if len(document.lines) == 0:
-            raise AcceptanceError("ASR produced no subtitle lines.")
-        if translated_count == 0:
-            raise AcceptanceError("Translation produced no translated lines.")
+        summary["subtitle"] = validate_subtitle_acceptance(
+            document,
+            subtitle_path=project.project_dir / "subtitle.diplomat.json",
+        )
 
         summary["status"] = "passed"
         summary["completedAt"] = datetime.now(UTC).isoformat()
@@ -238,6 +232,71 @@ def collect_runtime_cleanup_evidence(
         "acceleratorCacheCleared": accelerator_cache_cleared,
         "messages": messages,
     }
+
+
+def validate_subtitle_acceptance(document, *, subtitle_path: Path) -> dict:
+    lines = document.lines
+    source_lines = [line for line in lines if line.source_text.strip()]
+    blank_source_line_count = len(lines) - len(source_lines)
+    missing_translation_count = sum(1 for line in source_lines if not line.translated_text.strip())
+    failed_translation_count = sum(
+        1
+        for line in source_lines
+        if line.translation_status == "failed" or bool(line.translation_error)
+    )
+    incomplete_translation_status_count = sum(
+        1
+        for line in source_lines
+        if line.translation_status not in {"translated", "edited"}
+    )
+    timing_issue_count = count_subtitle_timing_issues(lines, document.duration_ms)
+    translation_quality_issue_count = sum(len(line.translation_quality_issues) for line in lines)
+
+    summary = {
+        "lineCount": len(lines),
+        "sourceLineCount": len(source_lines),
+        "translatedLineCount": sum(1 for line in source_lines if line.translated_text.strip()),
+        "blankSourceLineCount": blank_source_line_count,
+        "missingTranslationCount": missing_translation_count,
+        "failedTranslationCount": failed_translation_count,
+        "incompleteTranslationStatusCount": incomplete_translation_status_count,
+        "timingIssueCount": timing_issue_count,
+        "translationQualityIssueCount": translation_quality_issue_count,
+        "path": str(subtitle_path),
+    }
+
+    failures: list[str] = []
+    if summary["lineCount"] == 0:
+        failures.append("ASR produced no subtitle lines")
+    if blank_source_line_count:
+        failures.append(f"{blank_source_line_count} blank source line")
+    if missing_translation_count:
+        failures.append(f"{missing_translation_count} missing translation")
+    if failed_translation_count:
+        failures.append(f"{failed_translation_count} failed translation")
+    if incomplete_translation_status_count:
+        failures.append(f"{incomplete_translation_status_count} incomplete translation status")
+    if timing_issue_count:
+        failures.append(f"{timing_issue_count} timing issue")
+
+    if failures:
+        raise AcceptanceError(f"Subtitle acceptance failed: {', '.join(failures)}.")
+
+    return summary
+
+
+def count_subtitle_timing_issues(lines, duration_ms: int) -> int:
+    issues = 0
+    previous_start_ms = -1
+    for line in lines:
+        if line.start_ms < previous_start_ms:
+            issues += 1
+        if line.start_ms < 0 or line.end_ms <= line.start_ms:
+            issues += 1
+        if line.start_ms > duration_ms or line.end_ms > duration_ms:
+            issues += 1
+        previous_start_ms = line.start_ms
+    return issues
 
 
 def parse_args() -> argparse.Namespace:
