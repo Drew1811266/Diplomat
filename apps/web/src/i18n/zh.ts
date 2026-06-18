@@ -371,6 +371,14 @@ export const zh = {
           "使用“任务”页跟踪排队、运行、完成、失败和取消的后台任务。"
         ]
       },
+      longVideo: {
+        title: "长视频工作流",
+        items: [
+          "ASR 前优先使用语音感知切分，避免在一句话中间截断。",
+          "让 ASR 完成并释放内存后，再加载本地翻译模型。",
+          "使用恢复检查点，让三小时任务失败后可以按阶段恢复，而不是从头开始。"
+        ]
+      },
       editing: {
         title: "编辑",
         items: [
@@ -423,6 +431,14 @@ export const zh = {
     catalog: "模型目录",
     noModels: "当前筛选下没有模型。",
     license: "许可证",
+    profileAvailability: "{{available}}/{{total}} 个配置",
+    recommendedProfile: "推荐配置",
+    summary: {
+      installed: "已安装",
+      usable: "可用",
+      activeDownloads: "下载中",
+      runtimeProfiles: "可用运行配置"
+    },
     filters: {
       all: "全部",
       asr: "ASR",
@@ -465,7 +481,37 @@ export const zh = {
   },
   tasks: {
     title: "任务",
-    description: "后台分析、翻译和导出任务历史会显示在这里。"
+    description: "跟踪长视频的本地切分、ASR、翻译、导出和恢复任务。",
+    overview: {
+      title: "长视频流水线",
+      description: "Diplomat 会把各阶段隔离执行，让 ASR、翻译和导出使用硬件资源时不互相抢占。"
+    },
+    stages: {
+      segmentation: {
+        title: "智能切分",
+        description: "在转写前尽量围绕语音边界切分音频。",
+        status: "规划中"
+      },
+      asr: {
+        title: "ASR 转写",
+        description: "语音转文字任务会处理已准备的片段，并写入可恢复的字幕草稿。",
+        status: "本地"
+      },
+      translation: {
+        title: "翻译",
+        description: "ASR 释放内存后，翻译片段会结合术语表和上下文处理。",
+        status: "本地"
+      },
+      export: {
+        title: "导出与渲染",
+        description: "校验通过后再执行字幕文件导出和内嵌字幕视频渲染。",
+        status: "可恢复"
+      }
+    },
+    recovery: {
+      title: "恢复控制",
+      description: "取消或失败的任务会保留足够状态，便于重试、诊断和按阶段恢复。"
+    }
   },
   status: {
     ready: "就绪",

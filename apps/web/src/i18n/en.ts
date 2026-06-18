@@ -373,6 +373,14 @@ export const en = {
           "Use Tasks to track queued, running, completed, failed, and canceled jobs."
         ]
       },
+      longVideo: {
+        title: "Long-video workflow",
+        items: [
+          "Prefer speech-aware segmentation before ASR so chunks do not cut through spoken phrases.",
+          "Let ASR finish and release memory before loading the local translation model.",
+          "Use recovery checkpoints so a failed three-hour job can resume by stage instead of starting over."
+        ]
+      },
       editing: {
         title: "Editing",
         items: [
@@ -425,6 +433,14 @@ export const en = {
     catalog: "Model Catalog",
     noModels: "No models match the current filter.",
     license: "License",
+    profileAvailability: "{{available}}/{{total}} profiles",
+    recommendedProfile: "Recommended profile",
+    summary: {
+      installed: "Installed",
+      usable: "Usable",
+      activeDownloads: "Active downloads",
+      runtimeProfiles: "Available profiles"
+    },
     filters: {
       all: "All",
       asr: "ASR",
@@ -467,7 +483,38 @@ export const en = {
   },
   tasks: {
     title: "Tasks",
-    description: "Background analysis, translation, and export task history will appear here."
+    description: "Track local segmentation, ASR, translation, export, and recovery work for long videos.",
+    overview: {
+      title: "Long-video pipeline",
+      description:
+        "Diplomat keeps each stage separate so ASR, translation, and export can use hardware resources without competing."
+    },
+    stages: {
+      segmentation: {
+        title: "Smart segmentation",
+        description: "Audio is split around speech boundaries before transcription starts.",
+        status: "Planned"
+      },
+      asr: {
+        title: "ASR transcription",
+        description: "Speech-to-text tasks process prepared chunks and write recoverable subtitle drafts.",
+        status: "Local"
+      },
+      translation: {
+        title: "Translation",
+        description: "Translated chunks use glossary and context after ASR memory is released.",
+        status: "Local"
+      },
+      export: {
+        title: "Export and render",
+        description: "Subtitle files and burned-in video renders run after validation passes.",
+        status: "Recoverable"
+      }
+    },
+    recovery: {
+      title: "Recovery controls",
+      description: "Canceled or failed jobs keep enough state for retry, diagnostics, and stage-level resume."
+    }
   },
   status: {
     ready: "Ready",

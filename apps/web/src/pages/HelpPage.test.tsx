@@ -46,6 +46,7 @@ describe("HelpPage", () => {
     expect(screen.getByRole("heading", { name: "Help Center" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "First run" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Model management" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Long-video workflow" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Release checklist" })).toBeInTheDocument();
     expect(
       screen.getByText("Install only the curated open-source models listed in Models.")
@@ -60,6 +61,7 @@ describe("HelpPage", () => {
     expect(screen.getByRole("main", { name: "帮助中心" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "帮助中心" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "首次使用" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "长视频工作流" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "发布前检查" })).toBeInTheDocument();
     expect(screen.getByText("只安装“模型”页列出的内置开源模型。")).toBeInTheDocument();
   });

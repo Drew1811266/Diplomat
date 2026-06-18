@@ -7,6 +7,7 @@ import {
   Paper,
   Progress,
   SegmentedControl,
+  SimpleGrid,
   Stack,
   Table,
   Text,
@@ -89,6 +90,10 @@ function progressValue(model: ModelCatalogEntry) {
   );
 }
 
+function availableProfileCount(model: ModelCatalogEntry) {
+  return model.runtimeProfiles.filter((profile) => profile.available).length;
+}
+
 export function ModelsPage() {
   const { t } = useTranslation();
   const [taskFilter, setTaskFilter] = useState<ModelTaskFilter>("all");
@@ -111,6 +116,13 @@ export function ModelsPage() {
   const catalog = models.data?.models ?? [];
   const filteredModels = catalog.filter(
     (model) => taskFilter === "all" || model.task === taskFilter
+  );
+  const installedCount = catalog.filter((model) => model.installation.status === "installed").length;
+  const usableCount = catalog.filter((model) => model.availability.usable).length;
+  const activeDownloadCount = catalog.filter((model) => isModelBusy(model.installation.status)).length;
+  const profileCount = catalog.reduce(
+    (count, model) => count + availableProfileCount(model),
+    0
   );
 
   function actionFor(model: ModelCatalogEntry) {
@@ -179,6 +191,41 @@ export function ModelsPage() {
           }
           error={error}
         />
+
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="sm">
+          <Paper withBorder radius="md" p="md" bg="#ffffff">
+            <Text size="xs" fw={800} c="dimmed">
+              {t("models.summary.installed")}
+            </Text>
+            <Title order={3} size="h4">
+              {installedCount}/{catalog.length}
+            </Title>
+          </Paper>
+          <Paper withBorder radius="md" p="md" bg="#ffffff">
+            <Text size="xs" fw={800} c="dimmed">
+              {t("models.summary.usable")}
+            </Text>
+            <Title order={3} size="h4">
+              {usableCount}
+            </Title>
+          </Paper>
+          <Paper withBorder radius="md" p="md" bg="#ffffff">
+            <Text size="xs" fw={800} c="dimmed">
+              {t("models.summary.activeDownloads")}
+            </Text>
+            <Title order={3} size="h4">
+              {activeDownloadCount}
+            </Title>
+          </Paper>
+          <Paper withBorder radius="md" p="md" bg="#ffffff">
+            <Text size="xs" fw={800} c="dimmed">
+              {t("models.summary.runtimeProfiles")}
+            </Text>
+            <Title order={3} size="h4">
+              {profileCount}
+            </Title>
+          </Paper>
+        </SimpleGrid>
 
         <Paper withBorder radius="md" p="md" bg="#ffffff">
           <Stack gap="sm">
@@ -296,6 +343,19 @@ export function ModelsPage() {
                               <Text size="xs" c="dimmed">
                                 {model.version}
                               </Text>
+                              <Group gap={4} mt={6}>
+                                <Badge color={availableProfileCount(model) > 0 ? "teal" : "gray"} variant="light">
+                                  {t("models.profileAvailability", {
+                                    available: availableProfileCount(model),
+                                    total: model.runtimeProfiles.length
+                                  })}
+                                </Badge>
+                                {model.runtimeProfiles.some((profile) => profile.recommended) ? (
+                                  <Badge color="blue" variant="outline">
+                                    {t("models.recommendedProfile")}
+                                  </Badge>
+                                ) : null}
+                              </Group>
                             </Table.Td>
                             <Table.Td>
                               <Tooltip label={action.label} withArrow>

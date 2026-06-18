@@ -27,6 +27,9 @@ describe("TasksPage", () => {
 
     expect(screen.getByRole("main", { name: "任务" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "任务" })).toBeInTheDocument();
-    expect(screen.getByText("后台分析、翻译和导出任务历史会显示在这里。")).toBeInTheDocument();
+    expect(screen.getByText("长视频流水线")).toBeInTheDocument();
+    expect(screen.getByText("智能切分")).toBeInTheDocument();
+    expect(screen.getByText("ASR 转写")).toBeInTheDocument();
+    expect(screen.getByText("恢复控制")).toBeInTheDocument();
   });
 });

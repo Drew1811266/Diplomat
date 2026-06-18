@@ -8,6 +8,7 @@ import {
   IconRocket,
   IconSettings,
   IconShieldCheck,
+  IconScissors,
   type Icon
 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
@@ -16,6 +17,7 @@ const helpSections = [
   { key: "firstRun", icon: IconRocket },
   { key: "models", icon: IconDatabase },
   { key: "localWorkflow", icon: IconFolder },
+  { key: "longVideo", icon: IconScissors },
   { key: "editing", icon: IconEdit },
   { key: "export", icon: IconFileExport },
   { key: "diagnostics", icon: IconSettings },
