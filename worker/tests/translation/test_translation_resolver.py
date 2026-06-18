@@ -205,6 +205,29 @@ def test_resolver_returns_installed_path_for_curated_translation_model(tmp_path:
     assert resolved.model_name_or_path == str(installed_path)
 
 
+def test_resolver_accepts_vendor_owned_local_llm_entry(tmp_path: Path) -> None:
+    entry = make_entry(
+        model_id="translation.tencent.hunyuan-mt-7b-fp8",
+        runtime="local-llm",
+        provider="tencent",
+        language_pairs=[("zh", "en"), ("en", "zh")],
+    )
+    store = make_store(tmp_path)
+    installed_path = install_entry(store, entry)
+
+    resolved = resolve_translation_provider_config(
+        TranslationProviderConfig(provider="local-llm", model_id=entry.model_id),
+        store=store,
+        registry=[entry],
+        fallback_source_language="zh",
+        fallback_target_language="en",
+    )
+
+    assert resolved.provider == "local-llm"
+    assert resolved.model_id == entry.model_id
+    assert resolved.model_name_or_path == str(installed_path)
+
+
 def test_resolver_rejects_cpu_float16_and_accepts_cuda_float16(tmp_path: Path) -> None:
     entry = make_entry()
     store = make_store(tmp_path)

@@ -95,6 +95,13 @@ def _validate_entry_for_translation(entry: ModelRegistryEntry, provider: str) ->
             "TRANSLATION_MODEL_NOT_COMPATIBLE",
             f"{entry.name} is not a translation model.",
         )
+    if provider == "local-llm":
+        if entry.runtime != "local-llm":
+            raise TranslationConfigurationError(
+                "TRANSLATION_MODEL_NOT_COMPATIBLE",
+                f"{entry.name} is not compatible with provider {provider}.",
+            )
+        return
     if entry.runtime != provider or entry.provider != provider:
         raise TranslationConfigurationError(
             "TRANSLATION_MODEL_NOT_COMPATIBLE",

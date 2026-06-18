@@ -111,6 +111,26 @@ def test_ct2_marian_provider_translates_batch(monkeypatch, tmp_path: Path) -> No
     assert [result.line_id for result in results] == ["line-1", "line-2"]
 
 
+def test_ct2_marian_close_drops_loaded_runtime(monkeypatch, tmp_path: Path) -> None:
+    install_fake_ct2_modules(monkeypatch)
+    model_path = tmp_path / "translation-model"
+    model_path.mkdir()
+    (model_path / "source.spm").write_bytes(b"source tokenizer")
+    (model_path / "target.spm").write_bytes(b"target tokenizer")
+    provider = CTranslate2MarianProvider(model_path=str(model_path))
+
+    provider.translate(TranslationRequest("line-1", "你好", "zh", "en"))
+    assert provider._translator is not None
+    assert provider._source_tokenizer is not None
+    assert provider._target_tokenizer is not None
+
+    provider.close()
+
+    assert provider._translator is None
+    assert provider._source_tokenizer is None
+    assert provider._target_tokenizer is None
+
+
 def test_ct2_marian_provider_stops_before_loading_when_canceled(tmp_path: Path) -> None:
     class AlreadyCanceled:
         def is_cancel_requested(self) -> bool:

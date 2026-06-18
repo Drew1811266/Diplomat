@@ -18,6 +18,7 @@ class RecordingTranscriber:
     def __init__(self, model: str, language: str) -> None:
         self.model = model
         self.language = language
+        self.closed = False
 
     def transcribe(self, audio_path, chunks, progress_callback=None, cancel_token=None) -> AsrResult:
         if progress_callback is not None:
@@ -37,6 +38,9 @@ class RecordingTranscriber:
             ],
         )
 
+    def close(self) -> None:
+        self.closed = True
+
 
 class CancelAfterOneChunkTranscriber(FakeTranscriber):
     def __init__(self) -> None:
@@ -53,6 +57,17 @@ class CancelAfterOneChunkTranscriber(FakeTranscriber):
 class OutOfMemoryTranscriber:
     def transcribe(self, audio_path, chunks, progress_callback=None, cancel_token=None):
         raise RuntimeError("CUDA out of memory while allocating")
+
+
+class FailingClosableTranscriber:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def transcribe(self, audio_path, chunks, progress_callback=None, cancel_token=None):
+        raise RuntimeError("transcriber failed")
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def make_entry(model_id: str = "asr.fixture.small") -> ModelRegistryEntry:
@@ -362,6 +377,44 @@ def test_analysis_job_completes_with_installed_curated_asr_model(tmp_path: Path)
     assert captured_configs[0].model_id == entry.model_id
     assert document.lines[0].source_text == "Recorded transcript"
     assert document.lines[0].ai_origin.model == entry.model_id
+    assert captured_configs
+
+
+def test_analysis_job_releases_transcriber_after_success(tmp_path: Path) -> None:
+    transcribers: list[RecordingTranscriber] = []
+
+    def factory(config: AsrModelConfig, fallback_language: str) -> RecordingTranscriber:
+        transcriber = RecordingTranscriber(model="fixture", language=fallback_language)
+        transcribers.append(transcriber)
+        return transcriber
+
+    runtime = make_runtime(tmp_path, transcriber_factory=factory)
+    project_id = create_project(runtime, tmp_path)
+    manager = AnalysisJobManager(runtime, auto_start=False)
+
+    task = manager.create_analysis_job(project_id, AsrModelConfig(provider="fake"))
+    manager.run_pending_once()
+
+    assert runtime.store.get_task(task.task_id).status == "completed"
+    assert transcribers[0].closed is True
+
+
+def test_analysis_job_releases_transcriber_after_failure(tmp_path: Path) -> None:
+    transcriber = FailingClosableTranscriber()
+    runtime = make_runtime(
+        tmp_path,
+        transcriber_factory=lambda config, fallback_language: transcriber,
+    )
+    project_id = create_project(runtime, tmp_path)
+    manager = AnalysisJobManager(runtime, auto_start=False)
+
+    task = manager.create_analysis_job(project_id, AsrModelConfig(provider="fake"))
+    manager.run_pending_once()
+
+    failed = runtime.store.get_task(task.task_id)
+    assert failed.status == "failed"
+    assert failed.error_code == "ANALYSIS_FAILED"
+    assert transcriber.closed is True
 
 
 def test_analysis_job_rejects_uninstalled_curated_asr_model(tmp_path: Path) -> None:

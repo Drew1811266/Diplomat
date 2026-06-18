@@ -23,6 +23,7 @@ class RecordingTranslationProvider:
         self.provider = provider
         self.model = model
         self.requests: list[TranslationRequest] = []
+        self.closed = False
 
     def translate(self, request: TranslationRequest, cancel_token=None) -> TranslationResult:
         self.requests.append(request)
@@ -33,10 +34,19 @@ class RecordingTranslationProvider:
             model=self.model,
         )
 
+    def close(self) -> None:
+        self.closed = True
+
 
 class OutOfMemoryTranslationProvider:
+    def __init__(self) -> None:
+        self.closed = False
+
     def translate(self, request: TranslationRequest, cancel_token=None) -> TranslationResult:
         raise RuntimeError("CUDA out of memory while allocating")
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class BatchRecordingTranslationProvider:
@@ -267,9 +277,10 @@ def test_translation_job_records_glossary_quality_issues(tmp_path: Path) -> None
 
 
 def test_translation_job_maps_runtime_out_of_memory_error(tmp_path: Path) -> None:
+    provider = OutOfMemoryTranslationProvider()
     runtime = make_runtime(
         tmp_path,
-        translation_provider_factory=lambda config: OutOfMemoryTranslationProvider(),
+        translation_provider_factory=lambda config: provider,
     )
     project_id = create_project_with_document(runtime, tmp_path)
     manager = TranslationJobManager(runtime, auto_start=False)
@@ -288,6 +299,7 @@ def test_translation_job_maps_runtime_out_of_memory_error(tmp_path: Path) -> Non
     assert failed.error_code == "RUNTIME_OUT_OF_MEMORY"
     assert failed.error_message is not None
     assert "lighter model" in failed.error_message
+    assert provider.closed is True
 
 
 def test_translation_job_uses_batch_provider_when_available(tmp_path: Path) -> None:
@@ -472,13 +484,16 @@ def test_missing_only_translation_does_not_create_overwrite_snapshot(tmp_path: P
 def test_translation_job_completes_with_installed_curated_translation_model(tmp_path: Path) -> None:
     entry = make_entry()
     captured_configs: list[TranslationProviderConfig] = []
+    providers: list[RecordingTranslationProvider] = []
 
     def factory(config: TranslationProviderConfig) -> RecordingTranslationProvider:
         captured_configs.append(config)
-        return RecordingTranslationProvider(
+        provider = RecordingTranslationProvider(
             provider=config.provider,
             model=config.model_id or "missing-model",
         )
+        providers.append(provider)
+        return provider
 
     runtime = make_runtime(tmp_path, model_registry=[entry], translation_provider_factory=factory)
     installed_path = install_entry(runtime.store, entry)
@@ -520,6 +535,7 @@ def test_translation_job_completes_with_installed_curated_translation_model(tmp_
     assert line.translation_origin is not None
     assert line.translation_origin.provider == "ct2-marian"
     assert line.translation_origin.model == entry.model_id
+    assert providers[0].closed is True
 
 
 def test_translation_job_rejects_uninstalled_curated_translation_model(tmp_path: Path) -> None:

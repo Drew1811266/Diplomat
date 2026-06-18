@@ -9,6 +9,7 @@ from diplomat_worker.asr.base import AsrCanceled
 from diplomat_worker.asr.config import AsrModelConfig
 from diplomat_worker.asr.resolver import AsrConfigurationError, resolve_asr_model_config
 from diplomat_worker.pipeline.core import CorePipelineInput, run_core_pipeline
+from diplomat_worker.runtime.resources import release_runtime_resources
 from diplomat_worker.storage.project_store import TaskRecord
 from diplomat_worker.tasks.errors import classify_runtime_error
 
@@ -120,6 +121,7 @@ class AnalysisJobManager:
         diagnostic_path = project.project_dir / "logs" / f"{task.task_id}.log"
         diagnostic_path.parent.mkdir(parents=True, exist_ok=True)
         token = self._cancel_tokens.setdefault(task_id, ThreadCancelToken())
+        transcriber = None
 
         def log(message: str) -> None:
             with diagnostic_path.open("a", encoding="utf-8") as handle:
@@ -242,6 +244,9 @@ class AnalysisJobManager:
                 diagnostic_log_path=str(diagnostic_path),
             )
         finally:
+            release_report = release_runtime_resources(transcriber)
+            for message in release_report.messages:
+                log(f"Runtime cleanup: {message}")
             with self._lock:
                 self._cancel_tokens.pop(task_id, None)
 
