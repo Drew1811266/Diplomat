@@ -257,6 +257,37 @@ def test_resolver_accepts_hunyuan_cuda_bfloat16(tmp_path: Path) -> None:
     assert resolved.compute_type == "bfloat16"
 
 
+def test_resolver_accepts_curated_unmanaged_hunyuan_path_for_acceptance(tmp_path: Path) -> None:
+    entry = make_entry(
+        model_id="translation.tencent.hunyuan-mt-7b-fp8",
+        runtime="local-llm",
+        provider="tencent",
+        language_pairs=[("zh", "en"), ("en", "zh")],
+    )
+    dev_path = tmp_path / "models-dev" / "hunyuan"
+    dev_path.mkdir(parents=True)
+
+    resolved = resolve_translation_provider_config(
+        TranslationProviderConfig(
+            provider="local-llm",
+            model_id=entry.model_id,
+            model_name_or_path=str(dev_path),
+            device="cuda",
+            compute_type="bfloat16",
+        ),
+        store=make_store(tmp_path),
+        registry=[entry],
+        fallback_source_language="zh",
+        fallback_target_language="en",
+        allow_unmanaged_models=True,
+        runtime_capabilities=RuntimeCapabilities(cuda_available=True),
+    )
+
+    assert resolved.provider == "local-llm"
+    assert resolved.model_id == entry.model_id
+    assert resolved.model_name_or_path == str(dev_path)
+
+
 def test_resolver_rejects_cpu_float16_and_accepts_cuda_float16(tmp_path: Path) -> None:
     entry = make_entry()
     store = make_store(tmp_path)

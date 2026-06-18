@@ -211,6 +211,35 @@ def test_resolver_returns_installed_path_for_vibevoice_asr_model(tmp_path: Path)
     assert resolved.compute_type == "bfloat16"
 
 
+def test_resolver_accepts_curated_unmanaged_vibevoice_path_for_acceptance(tmp_path: Path) -> None:
+    entry = make_entry(
+        model_id="asr.microsoft.vibevoice-asr",
+        runtime="vibevoice-asr",
+        provider="microsoft",
+    )
+    dev_path = tmp_path / "models-dev" / "vibevoice"
+    dev_path.mkdir(parents=True)
+
+    resolved = resolve_asr_model_config(
+        AsrModelConfig(
+            provider="vibevoice-asr",
+            model_id=entry.model_id,
+            model_name_or_path=str(dev_path),
+            device="cuda",
+            compute_type="bfloat16",
+        ),
+        store=make_store(tmp_path),
+        registry=[entry],
+        fallback_language="zh",
+        allow_unmanaged_models=True,
+        runtime_capabilities=RuntimeCapabilities(cuda_available=True),
+    )
+
+    assert resolved.provider == "vibevoice-asr"
+    assert resolved.model_id == entry.model_id
+    assert resolved.model_name_or_path == str(dev_path)
+
+
 def test_resolver_rejects_vibevoice_without_cuda(tmp_path: Path) -> None:
     entry = make_entry(
         model_id="asr.microsoft.vibevoice-asr",

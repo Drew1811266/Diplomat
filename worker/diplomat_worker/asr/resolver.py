@@ -1,4 +1,5 @@
 from dataclasses import replace
+from pathlib import Path
 
 from diplomat_worker.asr.config import AsrModelConfig
 from diplomat_worker.models.capabilities import RuntimeCapabilities
@@ -65,6 +66,15 @@ def resolve_asr_model_config(
             "ASR_LANGUAGE_UNSUPPORTED",
             f"{entry.name} does not support source language: {language}",
         )
+
+    if allow_unmanaged_models and config.model_name_or_path:
+        model_path = Path(config.model_name_or_path)
+        if not model_path.exists():
+            raise AsrConfigurationError(
+                "ASR_MODEL_FILES_MISSING",
+                f"ASR model files are missing for {entry.name}: {model_path}",
+            )
+        return replace(config, source_language=language, model_name_or_path=str(model_path))
 
     installation = store.get_model_installation(
         entry.model_id,

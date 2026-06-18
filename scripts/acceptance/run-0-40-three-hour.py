@@ -15,6 +15,10 @@ if str(WORKER_ROOT) not in sys.path:
 from diplomat_worker.api.runtime import WorkerRuntime  # noqa: E402
 from diplomat_worker.asr.config import AsrModelConfig  # noqa: E402
 from diplomat_worker.media.ffmpeg import probe_video  # noqa: E402
+from diplomat_worker.models.dev_manifests import (  # noqa: E402
+    development_readiness,
+    get_development_manifest,
+)
 from diplomat_worker.models.capabilities import detect_runtime_capabilities  # noqa: E402
 from diplomat_worker.models.registry import built_in_model_registry  # noqa: E402
 from diplomat_worker.storage.project_store import ProjectStore  # noqa: E402
@@ -46,6 +50,21 @@ def main() -> int:
         if not source_video.is_file():
             raise AcceptanceError(f"Source video does not exist: {source_video}")
 
+        probe = probe_video(source_video, ffprobe_path=args.ffprobe_path)
+        summary["videoProbe"] = {
+            "durationMs": probe.duration_ms,
+            "minimumDurationMs": MIN_ACCEPTANCE_DURATION_MS,
+            "hasAudio": probe.has_audio,
+            "audioCodec": probe.audio_codec,
+            "videoCodec": probe.video_codec,
+        }
+        if probe.duration_ms < MIN_ACCEPTANCE_DURATION_MS:
+            raise AcceptanceError(
+                f"Source video is shorter than three hours: {probe.duration_ms} ms."
+            )
+        if not probe.has_audio:
+            raise AcceptanceError("Source video has no audio stream.")
+
         preflight = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "acceptance" / "check-0-40-readiness.py")],
             cwd=ROOT,
@@ -64,19 +83,11 @@ def main() -> int:
         if preflight.returncode != 0:
             raise AcceptanceError("0.40 preflight failed. See preflight output in acceptance summary.")
 
-        probe = probe_video(source_video, ffprobe_path=args.ffprobe_path)
-        summary["videoProbe"] = {
-            "durationMs": probe.duration_ms,
-            "hasAudio": probe.has_audio,
-            "audioCodec": probe.audio_codec,
-            "videoCodec": probe.video_codec,
-        }
-        if probe.duration_ms < MIN_ACCEPTANCE_DURATION_MS:
-            raise AcceptanceError(
-                f"Source video is shorter than three hours: {probe.duration_ms} ms."
-            )
-        if not probe.has_audio:
-            raise AcceptanceError("Source video has no audio stream.")
+        model_paths = resolve_development_model_paths(
+            ROOT,
+            [args.asr_model_id, args.translation_model_id],
+        )
+        summary["developmentModels"] = model_paths
 
         data_dir = evidence_dir / "worker-data"
         runtime = WorkerRuntime(
@@ -87,6 +98,8 @@ def main() -> int:
             model_registry=built_in_model_registry(),
             runtime_capabilities=detect_runtime_capabilities(),
             development_model_root=ROOT,
+            allow_unmanaged_asr_models=True,
+            allow_unmanaged_translation_models=True,
         )
         project = runtime.store.create_project(
             name="0.40 three-hour acceptance",
@@ -106,6 +119,7 @@ def main() -> int:
             AsrModelConfig(
                 provider=args.asr_provider,
                 model_id=args.asr_model_id,
+                model_name_or_path=model_paths[args.asr_model_id],
                 device=args.asr_device,
                 compute_type=args.asr_compute_type,
                 source_language=args.source_language,
@@ -126,6 +140,7 @@ def main() -> int:
             provider_config=TranslationProviderConfig(
                 provider=args.translation_provider,
                 model_id=args.translation_model_id,
+                model_name_or_path=model_paths[args.translation_model_id],
                 device=args.translation_device,
                 compute_type=args.translation_compute_type,
                 batch_size=args.translation_batch_size,
@@ -168,6 +183,17 @@ class AcceptanceError(RuntimeError):
     pass
 
 
+def resolve_development_model_paths(root: Path, model_ids: list[str]) -> dict[str, str]:
+    paths: dict[str, str] = {}
+    for model_id in model_ids:
+        manifest = get_development_manifest(model_id, root=root)
+        readiness = development_readiness(manifest, root)
+        if not readiness.usable:
+            raise AcceptanceError(f"{model_id}: {readiness.reason}")
+        paths[model_id] = str((root / manifest.development_path).resolve())
+    return paths
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Diplomat 0.40 three-hour acceptance.")
     parser.add_argument("--source-video", required=True, type=Path)
@@ -183,11 +209,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--asr-provider", default="vibevoice-asr")
     parser.add_argument("--asr-model-id", default="asr.microsoft.vibevoice-asr")
     parser.add_argument("--asr-device", default="cuda")
-    parser.add_argument("--asr-compute-type", default="float16")
+    parser.add_argument("--asr-compute-type", default="bfloat16")
     parser.add_argument("--translation-provider", default="local-llm")
     parser.add_argument("--translation-model-id", default="translation.tencent.hunyuan-mt-7b-fp8")
     parser.add_argument("--translation-device", default="cuda")
-    parser.add_argument("--translation-compute-type", default="float16")
+    parser.add_argument("--translation-compute-type", default="bfloat16")
     parser.add_argument("--translation-batch-size", type=int, default=1)
     return parser.parse_args()
 

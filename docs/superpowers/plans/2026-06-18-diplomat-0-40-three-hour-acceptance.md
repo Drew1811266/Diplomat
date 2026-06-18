@@ -6,7 +6,7 @@
 
 **Hard Gate:** The current repository does not contain model weights and does not contain the Hunyuan license acceptance record. 0.40 execution is blocked until those local files exist.
 
-**Progress Note:** Preflight, model preparation, three-hour runner tooling, VibeVoice ASR runtime validation, and Hunyuan MT FP8 adapter preparation are implemented. Final 0.40 acceptance remains pending until Hunyuan license acceptance/model files are available, Hunyuan is validated against real local weights, a three-hour source video is selected, and the full acceptance run succeeds.
+**Progress Note:** Preflight, model preparation, three-hour runner tooling, the PowerShell verification wrapper, VibeVoice ASR runtime validation, and Hunyuan MT FP8 adapter preparation are implemented. Final 0.40 acceptance remains pending until Hunyuan license acceptance/model files are available, Hunyuan is validated against real local weights, a three-hour source video is selected, and the full acceptance run succeeds.
 
 ## Files
 
@@ -49,6 +49,9 @@ Expected now: fail with missing model files/license record.
 - [ ] Add `scripts/acceptance/run-0-40-three-hour.py`.
 - [ ] The runner must:
   - Accept a real source video path.
+  - Reject media shorter than three hours before model preflight.
+  - Reject media with no audio stream before model preflight.
+  - Resolve manifest-verified `models/dev` paths for the selected real models.
   - Create a project.
   - Start ASR.
   - Wait for completion.

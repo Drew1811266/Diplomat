@@ -32,6 +32,9 @@ Latest local check:
 - VibeVoice ASR GPU smoke completed on the local CUDA runtime and released CUDA memory after `close()`.
 - Hunyuan MT FP8 runtime dependencies are installed locally, including `compressed_tensors`.
 - Hunyuan MT FP8 provider code now uses the model's chat-template path and applies the FP8 config compatibility patch during model preparation.
+- The 0.40 runner probes the source media before model preflight and rejects short or silent media before any model execution.
+- The 0.40 runner passes manifest-verified `models/dev` paths as controlled local model paths for the acceptance runtime.
+- `scripts/verify-0.40-three-hour-workflow.ps1` is available as the operator-facing wrapper for the Python acceptance runner.
 - `models/dev/translation/tencent--Hunyuan-MT-7B-fp8` still contains only `.gitkeep`.
 - `models/licenses/accepted/tencent--Hunyuan-MT-7B-fp8.json` is missing.
 
@@ -79,6 +82,7 @@ Acceptance:
 
 ```powershell
 python .\scripts\acceptance\run-0-40-three-hour.py --source-video <path>
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <path>
 ```
 
 Full verification:
