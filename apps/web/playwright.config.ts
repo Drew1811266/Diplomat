@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 const webDir = fileURLToPath(new URL(".", import.meta.url));
 const baseURL = "http://127.0.0.1:1420";
 const desktopViewport = { width: 1280, height: 720 };
+const browserChannel = process.env.PLAYWRIGHT_BROWSER_CHANNEL?.trim() || undefined;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -32,6 +33,7 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
+        ...(browserChannel ? { channel: browserChannel } : {}),
         viewport: desktopViewport
       }
     }
