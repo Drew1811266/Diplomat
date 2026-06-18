@@ -25,15 +25,17 @@ This stage cannot be accepted by unit tests alone.
 
 ## Current Hard Gate Status
 
-Checked on 2026-06-18:
+Latest local check:
 
-- `models/dev/asr/microsoft--VibeVoice-ASR` contains only `.gitkeep`.
-- `models/dev/translation/tencent--Hunyuan-MT-7B-fp8` contains only `.gitkeep`.
+- `models/dev/asr/microsoft--VibeVoice-ASR` is populated locally with the expected VibeVoice ASR files.
+- VibeVoice ASR files under `models/dev` are ignored by Git and must not be tracked.
+- VibeVoice ASR GPU smoke completed on the local CUDA runtime and released CUDA memory after `close()`.
+- `models/dev/translation/tencent--Hunyuan-MT-7B-fp8` still contains only `.gitkeep`.
 - `models/licenses/accepted/tencent--Hunyuan-MT-7B-fp8.json` is missing.
 
 Current readiness:
 
-- `asr.microsoft.vibevoice-asr`: blocked by missing model files.
+- `asr.microsoft.vibevoice-asr`: usable for 0.40 development verification.
 - `translation.tencent.hunyuan-mt-7b-fp8`: blocked by missing license acceptance.
 
 ## Scope
@@ -41,7 +43,8 @@ Current readiness:
 - Add 0.40 acceptance preflight tooling.
 - Add model readiness checks that fail the final gate clearly.
 - Add a three-hour acceptance runner that records logs and output paths.
-- Add real model adapter work only after model files and license acceptance are available.
+- Keep VibeVoice ASR adapter work verified against local model files.
+- Add Hunyuan translation adapter work only after model files and license acceptance are available.
 - Execute the full three-hour acceptance run before merging.
 
 ## Non-Goals

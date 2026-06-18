@@ -20,6 +20,10 @@ from diplomat_worker.models.dev_manifests import (  # noqa: E402
 )
 
 HUNYUAN_MODEL_ID = "translation.tencent.hunyuan-mt-7b-fp8"
+VIBEVOICE_MODEL_ID = "asr.microsoft.vibevoice-asr"
+QWEN_TOKENIZER_PREFIX = "qwen-tokenizer/"
+QWEN_TOKENIZER_REPO_ID = "Qwen/Qwen2.5-7B"
+QWEN_TOKENIZER_REVISION = "d149729398750b98c0af14eb82c78cfe92750796"
 
 
 def main() -> int:
@@ -44,6 +48,8 @@ def main() -> int:
         if license_error:
             errors.append(license_error)
             continue
+
+        _prepare_auxiliary_files(manifest, target_dir)
 
         if args.download:
             download_error = _download_manifest(manifest, target_dir, args)
@@ -133,27 +139,60 @@ def _prepare_license(
     )
 
 
+def _prepare_auxiliary_files(manifest: ModelDevelopmentManifest, target_dir: Path) -> None:
+    if manifest.model_id != VIBEVOICE_MODEL_ID:
+        return
+    config_path = target_dir / "preprocessor_config.json"
+    if config_path.is_file():
+        print("  auxiliary config: existing preprocessor_config.json")
+        return
+    payload = {
+        "speech_tok_compress_ratio": 3200,
+        "target_sample_rate": 24000,
+        "normalize_audio": True,
+        "target_dB_FS": -25,
+        "eps": 1e-6,
+    }
+    config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print("  auxiliary config: wrote preprocessor_config.json")
+
+
 def _download_manifest(
     manifest: ModelDevelopmentManifest,
     target_dir: Path,
     args: argparse.Namespace,
 ) -> str | None:
     try:
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import hf_hub_download
     except ImportError:
         return "huggingface-hub is required to download model snapshots."
 
     print(f"  downloading {manifest.source.repo_id}@{manifest.source.revision}")
-    try:
-        snapshot_download(
-            repo_id=manifest.source.repo_id,
-            revision=manifest.source.revision,
-            local_dir=str(target_dir),
-            local_dir_use_symlinks=False,
-            token=args.hf_token,
-        )
-    except Exception as exc:
-        return f"{manifest.model_id}: download failed: {exc}"
+    for index, expected_file in enumerate(manifest.expected_files, start=1):
+        destination = target_dir / expected_file
+        if destination.is_file():
+            print(f"    [{index}/{len(manifest.expected_files)}] exists: {expected_file}")
+            continue
+        print(f"    [{index}/{len(manifest.expected_files)}] fetching: {expected_file}")
+        repo_id = manifest.source.repo_id
+        revision = manifest.source.revision
+        filename = expected_file
+        local_dir = target_dir
+        if manifest.model_id == VIBEVOICE_MODEL_ID and expected_file.startswith(QWEN_TOKENIZER_PREFIX):
+            repo_id = QWEN_TOKENIZER_REPO_ID
+            revision = QWEN_TOKENIZER_REVISION
+            filename = expected_file.removeprefix(QWEN_TOKENIZER_PREFIX)
+            local_dir = target_dir / QWEN_TOKENIZER_PREFIX.rstrip("/")
+        try:
+            hf_hub_download(
+                repo_id=repo_id,
+                revision=revision,
+                filename=filename,
+                local_dir=str(local_dir),
+                token=args.hf_token,
+            )
+        except Exception as exc:
+            return f"{manifest.model_id}: download failed for {expected_file}: {exc}"
 
     return None
 

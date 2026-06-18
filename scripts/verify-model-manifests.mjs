@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { resolve, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -55,6 +56,22 @@ function listFiles(path) {
     }
   }
   return files;
+}
+
+function toRepoPath(path) {
+  return relative(root, path).split(sep).join("/");
+}
+
+function gitStatus(args) {
+  return spawnSync("git", ["-C", root, ...args], { stdio: "ignore" }).status;
+}
+
+function isGitIgnored(path) {
+  return gitStatus(["check-ignore", "-q", "--", toRepoPath(path)]) === 0;
+}
+
+function isGitTracked(path) {
+  return gitStatus(["ls-files", "--error-unmatch", "--", toRepoPath(path)]) === 0;
 }
 
 if (!existsSync(manifestDir)) {
@@ -129,7 +146,13 @@ for (const file of listFiles(devRoot)) {
     continue;
   }
   if (statSync(file).isFile()) {
-    fail(`models/dev contains a non-placeholder file: ${relative(root, file)}`);
+    const repoPath = toRepoPath(file);
+    if (isGitTracked(file)) {
+      fail(`models/dev file must not be tracked by Git: ${repoPath}`);
+    }
+    if (!isGitIgnored(file)) {
+      fail(`models/dev file is not ignored by Git: ${repoPath}`);
+    }
   }
 }
 

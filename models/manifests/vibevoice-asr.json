@@ -20,9 +20,21 @@
   "expectedFiles": [
     "config.json",
     "model-00001-of-00008.safetensors",
+    "model-00002-of-00008.safetensors",
+    "model-00003-of-00008.safetensors",
+    "model-00004-of-00008.safetensors",
+    "model-00005-of-00008.safetensors",
+    "model-00006-of-00008.safetensors",
+    "model-00007-of-00008.safetensors",
     "model-00008-of-00008.safetensors",
-    "model.safetensors.index.json"
+    "model.safetensors.index.json",
+    "preprocessor_config.json",
+    "qwen-tokenizer/config.json",
+    "qwen-tokenizer/merges.txt",
+    "qwen-tokenizer/tokenizer.json",
+    "qwen-tokenizer/tokenizer_config.json",
+    "qwen-tokenizer/vocab.json"
   ],
   "weightsIgnoredByGit": true,
-  "notes": "0.37 metadata only. Runtime inference is planned for 0.38."
+  "notes": "0.40 development runtime uses the local VibeVoice ASR weights plus a pinned Qwen tokenizer bundle."
 }

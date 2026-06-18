@@ -13,12 +13,15 @@ dependencies = [
 [project.optional-dependencies]
 asr = [
   "faster-whisper>=1.1.0",
+  "hf_xet>=1.1.0",
   "soundfile>=0.12.0",
-  "torch>=2.4.0",
-  "transformers>=4.52.0"
+  "torch>=2.11.0",
+  "transformers>=4.52.0",
+  "vibevoice @ git+https://github.com/microsoft/VibeVoice.git@303b2833e01cff4578ec278bbfe536da54bd19fe"
 ]
 translation = [
   "ctranslate2>=4.4.0",
+  "hf_xet>=1.1.0",
   "sentencepiece>=0.2.0",
   "transformers>=4.52.0",
   "torch>=2.4.0"

@@ -54,12 +54,12 @@ def build_runtime_profiles(
             _profile(
                 entry,
                 "cuda",
-                "float16",
+                "bfloat16",
                 1,
                 True,
                 capabilities.cuda_available,
                 None if capabilities.cuda_available else "CUDA is not available in this Worker runtime.",
-                "VibeVoice ASR CUDA development profile.",
+                "VibeVoice ASR CUDA bfloat16 development profile.",
             ),
             _profile(
                 entry,

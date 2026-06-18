@@ -36,6 +36,7 @@ def test_development_manifests_load_approved_model_targets() -> None:
     assert vibevoice.source.repo_id == "microsoft/VibeVoice-ASR"
     assert vibevoice.license.acceptance_required is False
     assert vibevoice.development_path == Path("models/dev/asr/microsoft--VibeVoice-ASR")
+    assert len([item for item in vibevoice.expected_files if item.endswith(".safetensors")]) == 8
 
 
 def test_missing_development_directory_returns_safe_readiness_reason(tmp_path: Path) -> None:
@@ -61,11 +62,16 @@ def test_missing_expected_files_returns_safe_readiness_reason(tmp_path: Path) ->
     readiness = development_readiness(manifest, tmp_path)
 
     assert readiness.usable is False
-    assert readiness.reason == (
-        "Development model files are missing: config.json, "
-        "model-00001-of-00008.safetensors, model-00008-of-00008.safetensors, "
-        "model.safetensors.index.json"
-    )
+    assert readiness.reason is not None
+    assert readiness.reason.startswith("Development model files are missing:")
+    for expected_file in [
+        "config.json",
+        "model-00001-of-00008.safetensors",
+        "model-00008-of-00008.safetensors",
+        "model.safetensors.index.json",
+        "qwen-tokenizer/tokenizer.json",
+    ]:
+        assert expected_file in readiness.reason
 
 
 def test_license_required_model_is_blocked_until_acceptance_record_exists(tmp_path: Path) -> None:

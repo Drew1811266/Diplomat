@@ -21,6 +21,7 @@ REQUIRED_MODULES = [
     "soundfile",
     "torch",
     "transformers",
+    "vibevoice",
 ]
 
 
@@ -54,6 +55,10 @@ def main() -> int:
         else:
             print(f"- runtime module available: {module_name}")
 
+    cuda_error = _check_torch_cuda()
+    if cuda_error:
+        errors.append(cuda_error)
+
     if errors:
         print("\n0.40 preflight failed:")
         for error in errors:
@@ -62,6 +67,18 @@ def main() -> int:
 
     print("\n0.40 preflight passed.")
     return 0
+
+
+def _check_torch_cuda() -> str | None:
+    try:
+        import torch
+    except ImportError:
+        return None
+    if not torch.cuda.is_available():
+        return "PyTorch CUDA runtime is unavailable; install a CUDA-enabled torch wheel for 0.40 ASR."
+    device_name = torch.cuda.get_device_name(0)
+    print(f"- torch CUDA available: {device_name}")
+    return None
 
 
 if __name__ == "__main__":

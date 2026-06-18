@@ -15,8 +15,9 @@ class AsrConfigurationError(ValueError):
 
 COMPUTE_TYPES_BY_DEVICE = {
     "cpu": {"int8", "float32"},
-    "cuda": {"int8", "float16", "float32"},
+    "cuda": {"int8", "float16", "bfloat16", "float32"},
 }
+VIBEVOICE_COMPUTE_TYPES = {"float16", "bfloat16", "float32"}
 
 
 def resolve_asr_model_config(
@@ -34,11 +35,13 @@ def resolve_asr_model_config(
     if config.provider == "fake":
         return replace(config, source_language=language)
 
-    if config.provider != "faster-whisper":
+    if config.provider not in {"faster-whisper", "vibevoice-asr"}:
         raise AsrConfigurationError(
             "ASR_PROVIDER_UNSUPPORTED",
             f"Unsupported ASR provider: {config.provider}",
         )
+    if config.provider == "vibevoice-asr":
+        _validate_vibevoice_runtime_options(config.device, config.compute_type)
 
     if not config.model_id:
         if allow_unmanaged_models and config.model_name_or_path:
@@ -56,7 +59,7 @@ def resolve_asr_model_config(
             f"ASR model is not in the curated registry: {config.model_id}",
         ) from exc
 
-    _validate_entry_for_asr(entry)
+    _validate_entry_for_asr(entry, config.provider)
     if language not in entry.languages:
         raise AsrConfigurationError(
             "ASR_LANGUAGE_UNSUPPORTED",
@@ -93,11 +96,31 @@ def resolve_asr_model_config(
     )
 
 
-def _validate_entry_for_asr(entry: ModelRegistryEntry) -> None:
-    if entry.task != "asr" or entry.runtime != "faster-whisper" or entry.provider != "faster-whisper":
+def _validate_entry_for_asr(entry: ModelRegistryEntry, provider: str) -> None:
+    if provider == "faster-whisper":
+        compatible = entry.task == "asr" and entry.runtime == "faster-whisper" and entry.provider == "faster-whisper"
+        expected = "a faster-whisper ASR model"
+    else:
+        compatible = entry.task == "asr" and entry.runtime == "vibevoice-asr"
+        expected = "a VibeVoice ASR model"
+    if not compatible:
         raise AsrConfigurationError(
             "ASR_MODEL_NOT_COMPATIBLE",
-            f"{entry.name} is not a faster-whisper ASR model.",
+            f"{entry.name} is not {expected}.",
+        )
+
+
+def _validate_vibevoice_runtime_options(device: str, compute_type: str) -> None:
+    if device != "cuda":
+        raise AsrConfigurationError(
+            "ASR_DEVICE_UNSUPPORTED",
+            "VibeVoice ASR requires CUDA for 0.4 development.",
+        )
+    if compute_type not in VIBEVOICE_COMPUTE_TYPES:
+        supported = ", ".join(sorted(VIBEVOICE_COMPUTE_TYPES))
+        raise AsrConfigurationError(
+            "ASR_COMPUTE_UNSUPPORTED",
+            f"Unsupported VibeVoice ASR compute type {compute_type}. Use one of: {supported}.",
         )
 
 

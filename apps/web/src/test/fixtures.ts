@@ -40,16 +40,16 @@ function runtimeProfiles(modelId: string, task: "asr" | "translation", provider:
 function vibeVoiceRuntimeProfiles(modelId: string) {
   return [
     {
-      profileId: `${modelId}:cuda:float16`,
+      profileId: `${modelId}:cuda:bfloat16`,
       task: "asr" as const,
       provider: "microsoft",
       device: "cuda",
-      computeType: "float16",
+      computeType: "bfloat16",
       batchSize: 1,
       recommended: true,
       available: false,
       reason: "CUDA is not available in this Worker runtime.",
-      notes: "VibeVoice ASR CUDA development profile."
+      notes: "VibeVoice ASR CUDA bfloat16 development profile."
     },
     {
       profileId: `${modelId}:cpu:float32`,
@@ -436,7 +436,7 @@ export const modelCatalogFixture: ModelCatalogResponse = {
       availability: {
         usable: false,
         reason:
-          "Development model files are missing: config.json, model-00001-of-00008.safetensors, model-00008-of-00008.safetensors, model.safetensors.index.json"
+          "Development model files are missing: config.json, model-00001-of-00008.safetensors, model-00008-of-00008.safetensors, model.safetensors.index.json, qwen-tokenizer/tokenizer.json"
       },
       runtimeProfiles: vibeVoiceRuntimeProfiles("asr.microsoft.vibevoice-asr")
     },

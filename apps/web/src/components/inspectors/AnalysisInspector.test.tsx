@@ -187,7 +187,58 @@ describe("AnalysisInspector", () => {
       ...analysisConfig,
       provider: "faster-whisper",
       modelId: "asr.faster-whisper.medium",
-      modelNameOrPath: null
+      modelNameOrPath: null,
+      device: "cpu",
+      computeType: "int8"
+    });
+  });
+
+  it("selects installed VibeVoice ASR models with the VibeVoice provider", () => {
+    const onConfigChange = vi.fn();
+    const vibevoice = modelCatalogFixture.models.find(
+      (model) => model.modelId === "asr.microsoft.vibevoice-asr"
+    );
+    if (!vibevoice) {
+      throw new Error("Missing VibeVoice fixture");
+    }
+    const installedVibevoice = {
+      ...vibevoice,
+      installation: {
+        ...vibevoice.installation,
+        status: "installed" as const,
+        installedPath: "D:/Diplomat/models/vibevoice"
+      },
+      availability: { usable: true, reason: null },
+      runtimeProfiles: vibevoice.runtimeProfiles.map((profile) => ({
+        ...profile,
+        available: profile.device === "cuda",
+        reason: profile.device === "cuda" ? null : profile.reason
+      }))
+    };
+
+    renderWithProviders(
+      <AnalysisInspector
+        config={analysisConfig}
+        busy={false}
+        modelCatalog={[installedVibevoice]}
+        onConfigChange={onConfigChange}
+        onStart={() => undefined}
+        onCancel={() => undefined}
+        onRetry={() => undefined}
+      />
+    );
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Installed ASR model" }), {
+      target: { value: "asr.microsoft.vibevoice-asr" }
+    });
+
+    expect(onConfigChange).toHaveBeenCalledWith({
+      ...analysisConfig,
+      provider: "vibevoice-asr",
+      modelId: "asr.microsoft.vibevoice-asr",
+      modelNameOrPath: null,
+      device: "cuda",
+      computeType: "bfloat16"
     });
   });
 

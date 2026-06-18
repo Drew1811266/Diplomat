@@ -5,6 +5,7 @@ import pytest
 from diplomat_worker.asr.base import AsrCanceled
 from diplomat_worker.asr.config import AsrModelConfig, create_transcriber
 from diplomat_worker.asr.fake import FakeTranscriber
+from diplomat_worker.asr.vibevoice import VibeVoiceTranscriber
 from diplomat_worker.media.audio import AudioChunk
 
 
@@ -60,3 +61,22 @@ def test_asr_provider_factory_creates_fake_transcriber() -> None:
 
     assert isinstance(transcriber, FakeTranscriber)
     assert transcriber.language == "zh"
+
+
+def test_asr_provider_factory_creates_vibevoice_transcriber() -> None:
+    transcriber = create_transcriber(
+        AsrModelConfig(
+            provider="vibevoice-asr",
+            model_id="asr.microsoft.vibevoice-asr",
+            model_name_or_path="D:/models/vibevoice",
+            device="cuda",
+            compute_type="bfloat16",
+            source_language="zh",
+        ),
+        fallback_language="en",
+    )
+
+    assert isinstance(transcriber, VibeVoiceTranscriber)
+    assert transcriber.model_name == "D:/models/vibevoice"
+    assert transcriber.model_label == "asr.microsoft.vibevoice-asr"
+    assert transcriber.compute_type == "bfloat16"

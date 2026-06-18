@@ -82,7 +82,7 @@ def test_vibevoice_asr_profiles_require_cuda() -> None:
         RuntimeCapabilities(cuda_available=False, cuda_device_count=0, detected_by="test"),
     )
 
-    cuda_profile = find_runtime_profile(profiles, device="cuda", compute_type="float16")
+    cuda_profile = find_runtime_profile(profiles, device="cuda", compute_type="bfloat16")
     cpu_profile = find_runtime_profile(profiles, device="cpu", compute_type="float32")
 
     assert cuda_profile is not None

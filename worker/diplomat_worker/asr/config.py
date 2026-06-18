@@ -3,8 +3,9 @@ from typing import Literal
 
 from diplomat_worker.asr.fake import FakeTranscriber
 from diplomat_worker.asr.faster_whisper import FasterWhisperTranscriber
+from diplomat_worker.asr.vibevoice import VibeVoiceTranscriber
 
-AsrProvider = Literal["fake", "faster-whisper"]
+AsrProvider = Literal["fake", "faster-whisper", "vibevoice-asr"]
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,15 @@ def create_transcriber(config: AsrModelConfig, fallback_language: str):
     if config.provider == "faster-whisper":
         return FasterWhisperTranscriber(
             model_name=config.model_name_or_path or "base",
+            model_label=config.model_id,
+            device=config.device,
+            compute_type=config.compute_type,
+            language=language,
+            initial_prompt=config.initial_prompt,
+        )
+    if config.provider == "vibevoice-asr":
+        return VibeVoiceTranscriber(
+            model_name=config.model_name_or_path or "",
             model_label=config.model_id,
             device=config.device,
             compute_type=config.compute_type,
