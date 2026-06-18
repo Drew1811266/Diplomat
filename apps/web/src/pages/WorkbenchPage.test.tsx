@@ -543,8 +543,16 @@ describe("WorkbenchPage", () => {
   it("shows an empty workbench state when no active project is selected", () => {
     renderWithProviders(<WorkbenchPage />);
 
-    expect(screen.getByText("No project selected")).toBeInTheDocument();
-    expect(screen.getByText("0 subtitle rows")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Project context" })).getByText(
+        "No project selected"
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Project context" })).getByText(
+        "0 subtitle rows"
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByText("原始字幕文本")).not.toBeInTheDocument();
   });
 
@@ -623,7 +631,8 @@ describe("WorkbenchPage", () => {
         expect.objectContaining({ method: "POST" })
       )
     );
-    expect(await screen.findByText("Queued · Waveform queued · 0%")).toBeInTheDocument();
+    expect(await screen.findByText("Waveform queued")).toBeInTheDocument();
+    expect(screen.getByLabelText("Task progress")).toBeInTheDocument();
   });
 
   it("drags timeline blocks into a subtitle draft that can be saved", async () => {
@@ -1180,7 +1189,9 @@ describe("WorkbenchPage", () => {
         })
       )
     );
-    expect(await screen.findByText("Queued burn-in export")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("Queued burn-in export")
+    );
   });
 
   it("blocks export when timing validation has errors", async () => {
@@ -1354,7 +1365,9 @@ describe("WorkbenchPage", () => {
     );
     await user.click(within(inspector).getByRole("button", { name: "Start" }));
 
-    expect(await screen.findByText("Running · Transcribing audio · 35%")).toBeInTheDocument();
+    expect(await screen.findByText("Transcribing audio")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Running");
+    expect(screen.getByLabelText("Task progress")).toBeInTheDocument();
     expect(within(inspector).getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(within(inspector).getByRole("button", { name: "Retry" })).toBeDisabled();
 
@@ -1366,7 +1379,8 @@ describe("WorkbenchPage", () => {
         expect.objectContaining({ method: "POST" })
       )
     );
-    expect(await screen.findByText("Canceled · Analysis canceled · 35%")).toBeInTheDocument();
+    expect(await screen.findByText("Analysis canceled")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Canceled");
     expect(within(inspector).getByRole("button", { name: "Retry" })).toBeEnabled();
 
     await user.click(within(inspector).getByRole("button", { name: "Retry" }));
@@ -1380,7 +1394,8 @@ describe("WorkbenchPage", () => {
         })
       )
     );
-    expect(await screen.findByText("Queued · Analysis queued · 0%")).toBeInTheDocument();
+    expect(await screen.findByText("Analysis queued")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Queued");
   });
 
   it("uses localized task-active export blocking copy", async () => {

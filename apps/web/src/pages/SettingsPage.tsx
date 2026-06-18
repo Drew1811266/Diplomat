@@ -5,6 +5,8 @@ import {
   Button,
   Group,
   NativeSelect,
+  Paper,
+  SimpleGrid,
   Stack,
   Text,
   TextInput,
@@ -64,6 +66,29 @@ function SettingsSection({
 
 function ReadonlyField({ label, value }: { label: string; value: string }) {
   return <TextInput label={label} value={value} readOnly />;
+}
+
+function RuntimeSummaryCard({
+  label,
+  value,
+  color
+}: {
+  label: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <Paper withBorder radius="md" p="sm" bg="#f8fafc">
+      <Stack gap={4}>
+        <Text size="xs" fw={800} c="dimmed">
+          {label}
+        </Text>
+        <Badge color={color} variant="light" w="fit-content">
+          {value}
+        </Badge>
+      </Stack>
+    </Paper>
+  );
 }
 
 function errorMessage(error: unknown) {
@@ -223,6 +248,23 @@ export function SettingsPage() {
         <SettingsSection title={t("settings.runtime")}>
           {runtimeStatus ? (
             <Stack gap="sm">
+              <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+                <RuntimeSummaryCard
+                  label={t("settings.worker")}
+                  value={runtimeStatus.worker.status}
+                  color={runtimeStatus.worker.status === "running" ? "teal" : "gray"}
+                />
+                <RuntimeSummaryCard
+                  label={t("settings.ffmpegStatus")}
+                  value={runtimeStatus.ffmpeg.status}
+                  color={runtimeStatus.ffmpeg.status === "available" ? "teal" : "red"}
+                />
+                <RuntimeSummaryCard
+                  label={t("settings.ffprobeStatus")}
+                  value={runtimeStatus.ffprobe.status}
+                  color={runtimeStatus.ffprobe.status === "available" ? "teal" : "red"}
+                />
+              </SimpleGrid>
               <Group gap="xs">
                 <Badge color={runtimeStatus.worker.status === "running" ? "teal" : "gray"}>
                   {runtimeStatus.worker.status}

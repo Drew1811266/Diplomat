@@ -1,5 +1,21 @@
 import { createTheme, rem } from "@mantine/core";
 
+export const workstationSurfaces = {
+  app: "#f4f7fb",
+  rail: "#111827",
+  railActive: "#0f766e",
+  header: "#ffffff",
+  panel: "#ffffff",
+  panelAlt: "#f8fafc",
+  outline: "#d7dee8",
+  outlineStrong: "#aab7c7",
+  text: "#111827",
+  textMuted: "#5b677a",
+  success: "#0f766e",
+  warning: "#b45309",
+  danger: "#be123c"
+};
+
 export const appTheme = createTheme({
   primaryColor: "teal",
   fontFamily:
@@ -28,5 +44,8 @@ export const appTheme = createTheme({
       "#134e4a",
       "#042f2e"
     ]
+  },
+  other: {
+    workstationSurfaces
   }
 });

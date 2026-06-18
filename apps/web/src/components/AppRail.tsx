@@ -1,4 +1,4 @@
-import { ActionIcon, Stack, Tooltip } from "@mantine/core";
+import { ActionIcon, Box, Stack, Tooltip } from "@mantine/core";
 import {
   IconChecklist,
   IconDatabase,
@@ -8,6 +8,7 @@ import {
   IconSettings
 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
+import { workstationSurfaces } from "../app/theme";
 import type { AppPage } from "../state/uiStore";
 
 type AppRailProps = {
@@ -32,9 +33,9 @@ export function AppRail({ currentPage, onNavigate }: AppRailProps) {
       role="navigation"
       aria-label="Application"
       align="center"
-      gap="xs"
-      px={8}
-      py="sm"
+      gap={6}
+      px={10}
+      py="md"
       h="100%"
     >
       {navItems.map(({ page, icon: Icon, key }) => {
@@ -43,21 +44,39 @@ export function AppRail({ currentPage, onNavigate }: AppRailProps) {
 
         return (
           <Tooltip key={page} label={label} position="right" withArrow>
-            <ActionIcon
-              aria-label={label}
-              color={active ? "teal" : "gray"}
-              radius="md"
-              size={40}
-              variant={active ? "filled" : "subtle"}
-              onClick={() => onNavigate(page)}
-              styles={{
-                root: {
-                  color: active ? "#ffffff" : "#cbd5e1"
-                }
-              }}
-            >
-              <Icon size={22} stroke={1.8} aria-hidden="true" />
-            </ActionIcon>
+            <Box pos="relative" w={52} h={44}>
+              {active ? (
+                <Box
+                  aria-hidden="true"
+                  pos="absolute"
+                  left={0}
+                  top={8}
+                  w={3}
+                  h={28}
+                  bg={workstationSurfaces.railActive}
+                  style={{ borderRadius: 2 }}
+                />
+              ) : null}
+              <ActionIcon
+                aria-current={active ? "page" : undefined}
+                aria-label={label}
+                color={active ? "teal" : "gray"}
+                data-active={active ? "true" : "false"}
+                radius="md"
+                size={44}
+                variant={active ? "filled" : "subtle"}
+                onClick={() => onNavigate(page)}
+                styles={{
+                  root: {
+                    color: active ? "#ffffff" : "#cbd5e1",
+                    marginLeft: 8,
+                    transition: "background 160ms ease, color 160ms ease"
+                  }
+                }}
+              >
+                <Icon size={23} stroke={1.8} aria-hidden="true" />
+              </ActionIcon>
+            </Box>
           </Tooltip>
         );
       })}
