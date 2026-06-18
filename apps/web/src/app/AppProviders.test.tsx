@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { AppProviders } from "./AppProviders";
+import { workstationSurfaces } from "./theme";
 
 beforeAll(() => {
   vi.stubGlobal(
@@ -32,5 +33,11 @@ describe("AppProviders", () => {
     );
 
     expect(screen.getByRole("button", { name: "Provider child" })).toBeInTheDocument();
+  });
+
+  it("exports workstation surface tokens for the desktop shell", () => {
+    expect(workstationSurfaces.app).toBe("#f4f7fb");
+    expect(workstationSurfaces.rail).toBe("#111827");
+    expect(workstationSurfaces.panel).toBe("#ffffff");
   });
 });

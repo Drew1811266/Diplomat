@@ -25,6 +25,7 @@ describe("AppRail", () => {
     expect(screen.getByRole("button", { name: "Tasks" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Help" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Projects" })).toHaveAttribute("aria-current", "page");
 
     fireEvent.click(screen.getByRole("button", { name: "Help" }));
 
