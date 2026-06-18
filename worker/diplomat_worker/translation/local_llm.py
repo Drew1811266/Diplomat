@@ -88,6 +88,10 @@ class LocalLlmTranslationProvider:
         )
         return self._tokenizer, self._model
 
+    def close(self) -> None:
+        self._model = None
+        self._tokenizer = None
+
     def _build_prompt(self, request: TranslationRequest) -> str:
         return (
             f"Translate this subtitle from {request.source_language} to {request.target_language}.\n"

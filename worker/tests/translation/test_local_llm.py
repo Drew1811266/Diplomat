@@ -100,6 +100,29 @@ def test_local_llm_provider_generates_translation_with_local_files(monkeypatch, 
     assert result.model == "translation.qwen3.4b"
 
 
+def test_local_llm_close_drops_loaded_runtime(monkeypatch, tmp_path: Path) -> None:
+    install_fake_llm_modules(monkeypatch)
+    model_path = tmp_path / "qwen3-4b"
+    model_path.mkdir()
+    provider = LocalLlmTranslationProvider(model_path=str(model_path), device="cuda")
+
+    provider.translate(
+        TranslationRequest(
+            line_id="line-1",
+            source_text="你好世界",
+            source_language="zh",
+            target_language="en",
+        )
+    )
+    assert provider._model is not None
+    assert provider._tokenizer is not None
+
+    provider.close()
+
+    assert provider._model is None
+    assert provider._tokenizer is None
+
+
 def test_local_llm_provider_stops_before_loading_when_canceled(tmp_path: Path) -> None:
     class AlreadyCanceled:
         def is_cancel_requested(self) -> bool:

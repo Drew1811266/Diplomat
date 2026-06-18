@@ -101,6 +101,11 @@ class CTranslate2MarianProvider:
         )
         return self._translator, self._source_tokenizer, self._target_tokenizer
 
+    def close(self) -> None:
+        self._translator = None
+        self._source_tokenizer = None
+        self._target_tokenizer = None
+
     def _raise_if_canceled(self, cancel_token: CancelToken | None) -> None:
         if cancel_token and cancel_token.is_cancel_requested():
             raise TranslationCanceled("Translation canceled")

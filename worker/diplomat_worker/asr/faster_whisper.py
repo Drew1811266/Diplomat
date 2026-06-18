@@ -49,6 +49,9 @@ class FasterWhisperTranscriber:
         self._model = WhisperModel(self.model_name, device=self.device, compute_type=self.compute_type)
         return self._model
 
+    def close(self) -> None:
+        self._model = None
+
     def transcribe(
         self,
         audio_path: Path,
