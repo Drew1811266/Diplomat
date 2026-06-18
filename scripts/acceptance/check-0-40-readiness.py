@@ -18,6 +18,7 @@ from diplomat_worker.models.dev_manifests import (  # noqa: E402
 
 REQUIRED_MODULES = [
     "huggingface_hub",
+    "soundfile",
     "torch",
     "transformers",
 ]

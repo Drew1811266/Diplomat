@@ -6,10 +6,13 @@
 
 **Hard Gate:** The current repository does not contain model weights and does not contain the Hunyuan license acceptance record. 0.40 execution is blocked until those local files exist.
 
+**Progress Note:** Preflight, model preparation, and three-hour runner tooling are implemented. Final 0.40 acceptance remains pending until local models are prepared, real model adapters are validated, a three-hour source video is selected, and the full acceptance run succeeds.
+
 ## Files
 
 - Modify: version metadata files from `0.39.0` to `0.40.0` only after preflight requirements are satisfied.
 - Create: `scripts/acceptance/check-0-40-readiness.py`
+- Create: `scripts/acceptance/prepare-0-40-models.py`
 - Create: `scripts/acceptance/run-0-40-three-hour.py`
 - Create: `docs/development/0-40-stage-gate-review.md`
 - Modify Worker model adapters as needed once real model APIs are validated locally.
@@ -34,6 +37,7 @@ Expected now: fail with missing model files/license record.
 
 ## Task 2: Real Model Runtime Validation
 
+- [ ] Use `scripts/acceptance/prepare-0-40-models.py` to prepare local model files after license review.
 - [ ] Validate VibeVoice ASR model loading against the local model folder.
 - [ ] Implement or adjust the VibeVoice transcriber adapter.
 - [ ] Validate Hunyuan MT FP8 local loading against the local model folder.

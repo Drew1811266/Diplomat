@@ -1,0 +1,162 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+WORKER_ROOT = ROOT / "worker"
+if str(WORKER_ROOT) not in sys.path:
+    sys.path.insert(0, str(WORKER_ROOT))
+
+from diplomat_worker.models.dev_manifests import (  # noqa: E402
+    ModelDevelopmentManifest,
+    development_readiness,
+    load_development_manifests,
+)
+
+HUNYUAN_MODEL_ID = "translation.tencent.hunyuan-mt-7b-fp8"
+
+
+def main() -> int:
+    args = parse_args()
+    root = args.root.resolve()
+    manifests = load_development_manifests(root)
+    selected = [manifest for manifest in manifests if args.model_id in {"all", manifest.model_id}]
+    if not selected:
+        print(f"No development model manifest matched: {args.model_id}", file=sys.stderr)
+        return 1
+
+    errors: list[str] = []
+    if args.download:
+        _check_disk_space(root, args.min_free_gb, errors)
+
+    for manifest in selected:
+        print(f"Preparing {manifest.model_id}")
+        target_dir = root / manifest.development_path
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        license_error = _prepare_license(root, manifest, args)
+        if license_error:
+            errors.append(license_error)
+            continue
+
+        if args.download:
+            download_error = _download_manifest(manifest, target_dir, args)
+            if download_error:
+                errors.append(download_error)
+        else:
+            print("  download skipped; pass --download to fetch model files")
+
+        readiness = development_readiness(manifest, root)
+        print(f"  readiness: {'usable' if readiness.usable else readiness.reason}")
+        if not readiness.usable:
+            errors.append(f"{manifest.model_id}: {readiness.reason}")
+
+    if errors:
+        print("\n0.40 model preparation incomplete:")
+        for error in errors:
+            print(f"- {error}")
+        return 1
+
+    print("\n0.40 model preparation completed.")
+    return 0
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Prepare local models for Diplomat 0.40 acceptance.")
+    parser.add_argument("--root", type=Path, default=ROOT)
+    parser.add_argument("--model-id", default="all")
+    parser.add_argument("--download", action="store_true", help="Download model snapshots from Hugging Face.")
+    parser.add_argument(
+        "--accept-hunyuan-license",
+        action="store_true",
+        help="Record local acceptance of the upstream Hunyuan MT FP8 license.",
+    )
+    parser.add_argument("--hf-token", default=os.environ.get("HF_TOKEN"))
+    parser.add_argument("--min-free-gb", type=float, default=40.0)
+    return parser.parse_args()
+
+
+def _check_disk_space(root: Path, min_free_gb: float, errors: list[str]) -> None:
+    free_gb = shutil.disk_usage(root).free / (1024**3)
+    print(f"Free disk space: {free_gb:.1f} GiB")
+    if free_gb < min_free_gb:
+        errors.append(f"Free disk space is below {min_free_gb:.1f} GiB: {free_gb:.1f} GiB.")
+
+
+def _prepare_license(
+    root: Path,
+    manifest: ModelDevelopmentManifest,
+    args: argparse.Namespace,
+) -> str | None:
+    if not manifest.license.acceptance_required:
+        print("  license acceptance: not required")
+        return None
+
+    acceptance_record = manifest.license.acceptance_record
+    if acceptance_record is None:
+        return f"{manifest.model_id}: license acceptance is required but no record path is configured."
+
+    acceptance_path = root / acceptance_record
+    if acceptance_path.is_file():
+        print(f"  license acceptance: existing record {acceptance_record}")
+        return None
+
+    if manifest.model_id == HUNYUAN_MODEL_ID and args.accept_hunyuan_license:
+        acceptance_path.parent.mkdir(parents=True, exist_ok=True)
+        acceptance_payload = {
+            "schemaVersion": "diplomat.licenseAcceptance.v1",
+            "modelId": manifest.model_id,
+            "modelName": manifest.name,
+            "repoId": manifest.source.repo_id,
+            "revision": manifest.source.revision,
+            "licenseName": manifest.license.name,
+            "licenseUrl": manifest.license.url,
+            "acceptedAt": datetime.now(UTC).isoformat(),
+            "acceptedFor": "Diplomat 0.40 local development and acceptance testing",
+        }
+        acceptance_path.write_text(
+            json.dumps(acceptance_payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print(f"  license acceptance: wrote {acceptance_record}")
+        return None
+
+    return (
+        f"{manifest.model_id}: license acceptance is required. "
+        "Review the upstream license and rerun with --accept-hunyuan-license if accepted."
+    )
+
+
+def _download_manifest(
+    manifest: ModelDevelopmentManifest,
+    target_dir: Path,
+    args: argparse.Namespace,
+) -> str | None:
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError:
+        return "huggingface-hub is required to download model snapshots."
+
+    print(f"  downloading {manifest.source.repo_id}@{manifest.source.revision}")
+    try:
+        snapshot_download(
+            repo_id=manifest.source.repo_id,
+            revision=manifest.source.revision,
+            local_dir=str(target_dir),
+            local_dir_use_symlinks=False,
+            token=args.hf_token,
+        )
+    except Exception as exc:
+        return f"{manifest.model_id}: download failed: {exc}"
+
+    return None
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
