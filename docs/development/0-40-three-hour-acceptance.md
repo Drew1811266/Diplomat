@@ -34,6 +34,7 @@ Latest local check:
 - Hunyuan MT FP8 provider code now uses the model's chat-template path and applies the FP8 config compatibility patch during model preparation.
 - The 0.40 runner probes the source media before model preflight and rejects short or silent media before any model execution.
 - The 0.40 runner passes manifest-verified `models/dev` paths as controlled local model paths for the acceptance runtime.
+- The 0.40 runner validates ASR chunk evidence after analysis, including the chunk manifest, source-duration coverage, and every chunk result file.
 - The 0.40 runner reads ASR and translation diagnostic logs and fails acceptance if runtime resources are not closed or if CUDA-mode tasks do not report CUDA accelerator cache cleanup.
 - The 0.40 runner validates the final subtitle document and fails acceptance on blank source lines, missing translations, failed translation states, incomplete translation states, or timing corruption.
 - `scripts/verify-0.40-three-hour-workflow.ps1` is available as the operator-facing wrapper for the Python acceptance runner.
@@ -66,6 +67,7 @@ Current readiness:
 - VibeVoice ASR model readiness is usable.
 - Hunyuan MT FP8 model readiness is usable.
 - Three-hour source video completes ASR and translation.
+- ASR chunk manifest covers the full source duration and every listed chunk has a valid result file.
 - No task remains failed, canceled, queued, or partially complete.
 - Subtitle document contains transcript and translated text for every source line in the completed run.
 - Subtitle document has no blank source lines, missing translations, failed translation states, incomplete translation states, or timing issues.

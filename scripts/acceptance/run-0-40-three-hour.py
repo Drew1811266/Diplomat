@@ -13,6 +13,12 @@ if str(WORKER_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKER_ROOT))
 
 from diplomat_worker.api.runtime import WorkerRuntime  # noqa: E402
+from diplomat_worker.asr.chunk_store import (  # noqa: E402
+    MANIFEST_SCHEMA_VERSION,
+    chunk_result_path,
+    read_manifest,
+    valid_chunk_result_exists,
+)
 from diplomat_worker.asr.config import AsrModelConfig  # noqa: E402
 from diplomat_worker.media.ffmpeg import probe_video  # noqa: E402
 from diplomat_worker.models.dev_manifests import (  # noqa: E402
@@ -135,6 +141,11 @@ def main() -> int:
             label="analysis",
             require_cuda_cache=args.asr_device.lower() == "cuda",
         )
+        summary["asrChunks"] = validate_asr_chunk_evidence(
+            project.project_dir,
+            summary["analysisTask"],
+            duration_ms=probe.duration_ms,
+        )
 
         translation = TranslationJobManager(runtime, auto_start=False)
         translation_task = translation.create_translation_job(
@@ -231,6 +242,77 @@ def collect_runtime_cleanup_evidence(
         "closed": closed,
         "acceleratorCacheCleared": accelerator_cache_cleared,
         "messages": messages,
+    }
+
+
+def validate_asr_chunk_evidence(project_dir: Path, task: dict, *, duration_ms: int) -> dict:
+    task_id = task.get("taskId")
+    if not task_id:
+        raise AcceptanceError("Analysis task summary did not include a task id.")
+
+    task_cache_dir = project_dir / "cache" / "asr" / task_id
+    manifest_path = task_cache_dir / "manifest.json"
+    if not manifest_path.is_file():
+        raise AcceptanceError(f"ASR chunk manifest does not exist: {manifest_path}")
+
+    try:
+        manifest = read_manifest(manifest_path)
+    except Exception as exc:
+        raise AcceptanceError(f"ASR chunk manifest is unreadable: {exc}") from exc
+
+    if manifest.schema_version != MANIFEST_SCHEMA_VERSION:
+        raise AcceptanceError(f"Unsupported ASR chunk manifest schema: {manifest.schema_version}")
+    if manifest.task_id != task_id:
+        raise AcceptanceError("ASR chunk manifest task id does not match analysis task.")
+    if manifest.duration_ms != duration_ms:
+        raise AcceptanceError(
+            f"ASR chunk manifest duration {manifest.duration_ms} ms does not match source duration {duration_ms} ms."
+        )
+    if not manifest.chunks:
+        raise AcceptanceError("ASR chunk manifest contains no chunks.")
+
+    timing_errors = 0
+    previous_end_ms = 0
+    missing_results: list[str] = []
+    for position, chunk in enumerate(manifest.chunks):
+        if chunk.index != position:
+            timing_errors += 1
+        if chunk.start_ms < 0 or chunk.end_ms <= chunk.start_ms or chunk.end_ms > duration_ms:
+            timing_errors += 1
+        if position == 0 and chunk.start_ms != 0:
+            timing_errors += 1
+        if position > 0 and chunk.start_ms > previous_end_ms:
+            timing_errors += 1
+        previous_end_ms = max(previous_end_ms, chunk.end_ms)
+
+        if not valid_chunk_result_exists(
+            chunk_result_path(task_cache_dir, chunk.chunk_id),
+            chunk_id=chunk.chunk_id,
+        ):
+            missing_results.append(chunk.chunk_id)
+
+    last_chunk_end_ms = manifest.chunks[-1].end_ms
+    if last_chunk_end_ms != duration_ms:
+        timing_errors += 1
+    if timing_errors:
+        raise AcceptanceError(f"ASR chunk manifest has {timing_errors} timing issue.")
+    if missing_results:
+        raise AcceptanceError(
+            "ASR chunk evidence is missing ASR chunk result files: "
+            + ", ".join(missing_results)
+            + "."
+        )
+
+    return {
+        "taskId": task_id,
+        "manifestPath": str(manifest_path),
+        "chunkCount": len(manifest.chunks),
+        "completedChunkCount": len(manifest.chunks),
+        "durationMs": manifest.duration_ms,
+        "chunkMs": manifest.chunk_ms,
+        "overlapMs": manifest.overlap_ms,
+        "firstChunkStartMs": manifest.chunks[0].start_ms,
+        "lastChunkEndMs": last_chunk_end_ms,
     }
 
 

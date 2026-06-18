@@ -7,6 +7,14 @@ from pathlib import Path
 
 import pytest
 
+from diplomat_worker.asr.base import AsrResult, AsrSegment
+from diplomat_worker.asr.chunk_store import (
+    build_chunk_manifest,
+    chunk_result_path,
+    write_chunk_result,
+    write_manifest,
+)
+from diplomat_worker.media.audio import build_fixed_chunks
 from diplomat_worker.schemas.subtitle import (
     AiOrigin,
     SubtitleDocument,
@@ -286,6 +294,103 @@ def test_0_40_runner_rejects_missing_cuda_cleanup_evidence(tmp_path: Path) -> No
             },
             label="translation",
             require_cuda_cache=True,
+        )
+
+
+def make_asr_result(chunk_index: int) -> AsrResult:
+    return AsrResult(
+        engine="vibevoice-asr",
+        model="asr.microsoft.vibevoice-asr",
+        language="zh",
+        segments=[
+            AsrSegment(
+                id=f"segment-{chunk_index}",
+                start_ms=chunk_index * 1000,
+                end_ms=chunk_index * 1000 + 500,
+                text=f"chunk {chunk_index}",
+                words=[],
+            )
+        ],
+    )
+
+
+def write_asr_chunk_evidence(
+    project_dir: Path,
+    *,
+    task_id: str = "analysis-task",
+    duration_ms: int = 65_000,
+    skip_chunk_id: str | None = None,
+) -> Path:
+    chunks = build_fixed_chunks(duration_ms, chunk_ms=30_000, overlap_ms=500)
+    task_cache_dir = project_dir / "cache" / "asr" / task_id
+    manifest = build_chunk_manifest(
+        task_id=task_id,
+        audio_path=project_dir / "cache" / "audio-16000-mono.wav",
+        source_video_path=project_dir / "source.mp4",
+        duration_ms=duration_ms,
+        chunk_ms=30_000,
+        overlap_ms=500,
+        chunks=chunks,
+    )
+    write_manifest(task_cache_dir / "manifest.json", manifest)
+    for chunk in manifest.chunks:
+        if chunk.chunk_id == skip_chunk_id:
+            continue
+        write_chunk_result(
+            chunk_result_path(task_cache_dir, chunk.chunk_id),
+            chunk_id=chunk.chunk_id,
+            result=make_asr_result(chunk.index),
+        )
+    return task_cache_dir
+
+
+def test_0_40_runner_collects_complete_asr_chunk_evidence(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    write_asr_chunk_evidence(project_dir)
+    runner = load_acceptance_runner()
+
+    evidence = runner.validate_asr_chunk_evidence(
+        project_dir,
+        {"taskId": "analysis-task"},
+        duration_ms=65_000,
+    )
+
+    assert evidence == {
+        "taskId": "analysis-task",
+        "manifestPath": str(project_dir / "cache" / "asr" / "analysis-task" / "manifest.json"),
+        "chunkCount": 3,
+        "completedChunkCount": 3,
+        "durationMs": 65_000,
+        "chunkMs": 30_000,
+        "overlapMs": 500,
+        "firstChunkStartMs": 0,
+        "lastChunkEndMs": 65_000,
+    }
+
+
+def test_0_40_runner_rejects_missing_asr_chunk_result(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    write_asr_chunk_evidence(project_dir, skip_chunk_id="chunk-000002")
+    runner = load_acceptance_runner()
+
+    with pytest.raises(runner.AcceptanceError, match="missing ASR chunk result"):
+        runner.validate_asr_chunk_evidence(
+            project_dir,
+            {"taskId": "analysis-task"},
+            duration_ms=65_000,
+        )
+
+
+def test_0_40_runner_rejects_asr_chunk_manifest_duration_mismatch(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    write_asr_chunk_evidence(project_dir, duration_ms=64_000)
+    runner = load_acceptance_runner()
+
+    with pytest.raises(runner.AcceptanceError, match="does not match source duration"):
+        runner.validate_asr_chunk_evidence(
+            project_dir,
+            {"taskId": "analysis-task"},
+            duration_ms=65_000,
         )
 
 
