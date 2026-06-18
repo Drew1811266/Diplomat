@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -77,6 +78,13 @@ for (const doc of requiredReleaseDocs) {
     );
   }
 }
+
+const modelManifestCheck = spawnSync(
+  process.execPath,
+  [rootPath("scripts/verify-model-manifests.mjs")],
+  { stdio: "inherit" }
+);
+expect(modelManifestCheck.status === 0, "Model manifest verification must pass.");
 
 if (errors.length > 0) {
   console.error("Release asset verification failed:");

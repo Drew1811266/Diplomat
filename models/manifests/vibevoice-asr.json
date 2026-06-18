@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "diplomat.modelManifest.v1",
+  "modelId": "asr.microsoft.vibevoice-asr",
+  "name": "Microsoft VibeVoice ASR",
+  "task": "asr",
+  "runtime": "vibevoice-asr",
+  "provider": "microsoft",
+  "source": {
+    "type": "huggingface",
+    "repoId": "microsoft/VibeVoice-ASR",
+    "revision": "d0c9efdb8d614685062c04425d91e01b6f37d944",
+    "url": "https://huggingface.co/microsoft/VibeVoice-ASR"
+  },
+  "license": {
+    "name": "MIT",
+    "url": "https://huggingface.co/microsoft/VibeVoice-ASR",
+    "acceptanceRequired": false
+  },
+  "developmentPath": "models/dev/asr/microsoft--VibeVoice-ASR",
+  "expectedFiles": [
+    "config.json",
+    "model-00001-of-00008.safetensors",
+    "model-00008-of-00008.safetensors",
+    "model.safetensors.index.json"
+  ],
+  "weightsIgnoredByGit": true,
+  "notes": "0.37 metadata only. Runtime inference is planned for 0.38."
+}
