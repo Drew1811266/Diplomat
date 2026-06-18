@@ -228,6 +228,35 @@ def test_resolver_accepts_vendor_owned_local_llm_entry(tmp_path: Path) -> None:
     assert resolved.model_name_or_path == str(installed_path)
 
 
+def test_resolver_accepts_hunyuan_cuda_bfloat16(tmp_path: Path) -> None:
+    entry = make_entry(
+        model_id="translation.tencent.hunyuan-mt-7b-fp8",
+        runtime="local-llm",
+        provider="tencent",
+        language_pairs=[("zh", "en"), ("en", "zh")],
+    )
+    store = make_store(tmp_path)
+    installed_path = install_entry(store, entry)
+
+    resolved = resolve_translation_provider_config(
+        TranslationProviderConfig(
+            provider="local-llm",
+            model_id=entry.model_id,
+            device="cuda",
+            compute_type="bfloat16",
+        ),
+        store=store,
+        registry=[entry],
+        fallback_source_language="zh",
+        fallback_target_language="en",
+        runtime_capabilities=RuntimeCapabilities(cuda_available=True),
+    )
+
+    assert resolved.model_name_or_path == str(installed_path)
+    assert resolved.device == "cuda"
+    assert resolved.compute_type == "bfloat16"
+
+
 def test_resolver_rejects_cpu_float16_and_accepts_cuda_float16(tmp_path: Path) -> None:
     entry = make_entry()
     store = make_store(tmp_path)

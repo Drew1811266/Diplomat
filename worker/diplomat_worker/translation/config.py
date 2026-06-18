@@ -8,6 +8,7 @@ from diplomat_worker.translation.ct2_marian import CTranslate2MarianProvider
 from diplomat_worker.translation.local_llm import LocalLlmTranslationProvider
 
 TranslationProviderName = Literal["fake", "libretranslate", "ct2-marian", "local-llm"]
+HUNYUAN_MT_7B_FP8_MODEL_ID = "translation.tencent.hunyuan-mt-7b-fp8"
 
 
 @dataclass(frozen=True)
@@ -79,5 +80,6 @@ def create_translation_provider(config: TranslationProviderConfig):
             model_label=config.model_id,
             device=config.device,
             compute_type=config.compute_type,
+            max_new_tokens=2048 if config.model_id == HUNYUAN_MT_7B_FP8_MODEL_ID else 256,
         )
     raise ValueError(f"Unsupported translation provider: {config.provider}")

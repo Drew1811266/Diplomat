@@ -29,5 +29,5 @@
     "tokenizer_config.json"
   ],
   "weightsIgnoredByGit": true,
-  "notes": "0.37 metadata only. Runtime inference is planned for 0.39."
+  "notes": "0.40 development runtime uses the local Hunyuan MT 7B FP8 weights with compressed-tensors and the FP8 config compatibility patch."
 }

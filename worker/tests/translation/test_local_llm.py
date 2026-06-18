@@ -14,6 +14,7 @@ class FakeTokenizer:
 
     def __init__(self) -> None:
         self.last_prompt = ""
+        self.chat_template_calls = []
         FakeTokenizer.instances.append(self)
 
     @classmethod
@@ -27,8 +28,38 @@ class FakeTokenizer:
         self.last_prompt = prompt
         return {"input_ids": [[1, 2, 3]]}
 
+    def apply_chat_template(
+        self,
+        messages,
+        tokenize: bool,
+        add_generation_prompt: bool,
+        return_tensors: str,
+    ):
+        self.chat_template_calls.append(
+            {
+                "messages": messages,
+                "tokenize": tokenize,
+                "add_generation_prompt": add_generation_prompt,
+                "return_tensors": return_tensors,
+            }
+        )
+        self.last_prompt = messages[0]["content"]
+        return FakeTensor("tokenized-chat")
+
     def decode(self, tokens, skip_special_tokens: bool):
+        if self.chat_template_calls:
+            return f"user\n{self.last_prompt}\nassistant\nTranslation: Hello world"
         return f"{self.last_prompt}\nTranslation: Hello world"
+
+
+class FakeTensor:
+    def __init__(self, value: str) -> None:
+        self.value = value
+        self.device = None
+
+    def to(self, device: str):
+        self.device = device
+        return self
 
 
 class FakeModel:
@@ -36,6 +67,7 @@ class FakeModel:
 
     def __init__(self) -> None:
         self.generate_calls = []
+        self.device = "cuda:0"
         FakeModel.instances.append(self)
 
     @classmethod
@@ -58,7 +90,15 @@ def install_fake_llm_modules(monkeypatch) -> None:
         "transformers",
         SimpleNamespace(AutoTokenizer=FakeTokenizer, AutoModelForCausalLM=FakeModel),
     )
-    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(float16="float16"))
+    monkeypatch.setitem(
+        sys.modules,
+        "torch",
+        SimpleNamespace(
+            float16="float16",
+            bfloat16="bfloat16",
+            cuda=SimpleNamespace(is_available=lambda: True, empty_cache=lambda: None),
+        ),
+    )
 
 
 def test_local_llm_provider_generates_translation_with_local_files(monkeypatch, tmp_path: Path) -> None:
@@ -98,6 +138,77 @@ def test_local_llm_provider_generates_translation_with_local_files(monkeypatch, 
     assert result.translated_text == "Hello world"
     assert result.provider == "local-llm"
     assert result.model == "translation.qwen3.4b"
+
+
+def test_hunyuan_provider_uses_chat_template_and_recommended_generation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    install_fake_llm_modules(monkeypatch)
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: object() if name == "compressed_tensors" else object())
+    model_path = tmp_path / "hunyuan"
+    model_path.mkdir()
+
+    provider = LocalLlmTranslationProvider(
+        model_path=str(model_path),
+        model_label="translation.tencent.hunyuan-mt-7b-fp8",
+        device="cuda",
+        compute_type="bfloat16",
+        max_new_tokens=512,
+    )
+
+    result = provider.translate(
+        TranslationRequest(
+            line_id="line-1",
+            source_text="深度学习课程",
+            source_language="zh",
+            target_language="en",
+        )
+    )
+
+    tokenizer = FakeTokenizer.instances[0]
+    model = FakeModel.instances[0]
+    chat_call = tokenizer.chat_template_calls[0]
+    assert chat_call["tokenize"] is True
+    assert chat_call["add_generation_prompt"] is False
+    assert chat_call["return_tensors"] == "pt"
+    assert chat_call["messages"] == [
+        {
+            "role": "user",
+            "content": "把下面的文本翻译成英语，不要额外解释。\n\n深度学习课程",
+        }
+    ]
+    assert model.kwargs["torch_dtype"] == "bfloat16"
+    assert model.kwargs["device_map"] == "auto"
+    assert model.generate_calls[0]["max_new_tokens"] == 512
+    assert model.generate_calls[0]["top_k"] == 20
+    assert model.generate_calls[0]["top_p"] == 0.6
+    assert model.generate_calls[0]["repetition_penalty"] == 1.05
+    assert model.generate_calls[0]["temperature"] == 0.7
+    assert result.translated_text == "Hello world"
+
+
+def test_hunyuan_provider_requires_compressed_tensors_for_fp8(monkeypatch, tmp_path: Path) -> None:
+    install_fake_llm_modules(monkeypatch)
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: None if name == "compressed_tensors" else object())
+    model_path = tmp_path / "hunyuan"
+    model_path.mkdir()
+    provider = LocalLlmTranslationProvider(
+        model_path=str(model_path),
+        model_label="translation.tencent.hunyuan-mt-7b-fp8",
+        device="cuda",
+        compute_type="bfloat16",
+    )
+
+    with pytest.raises(RuntimeError, match="compressed-tensors"):
+        provider.translate(
+            TranslationRequest(
+                line_id="line-1",
+                source_text="Hello",
+                source_language="en",
+                target_language="zh",
+            )
+        )
 
 
 def test_local_llm_close_drops_loaded_runtime(monkeypatch, tmp_path: Path) -> None:

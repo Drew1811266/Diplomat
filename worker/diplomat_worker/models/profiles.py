@@ -98,6 +98,19 @@ def build_runtime_profiles(
             ),
         ]
     if entry.runtime == "local-llm":
+        if entry.model_id == "translation.tencent.hunyuan-mt-7b-fp8":
+            return [
+                _profile(
+                    entry,
+                    "cuda",
+                    "bfloat16",
+                    1,
+                    True,
+                    capabilities.cuda_available,
+                    None if capabilities.cuda_available else "CUDA is not available in this Worker runtime.",
+                    "Hunyuan MT FP8 CUDA bfloat16 translation profile.",
+                )
+            ]
         return [
             _profile(
                 entry,

@@ -94,3 +94,47 @@ def test_0_40_prepare_can_record_hunyuan_license_acceptance(tmp_path: Path) -> N
     assert payload["modelId"] == "translation.tencent.hunyuan-mt-7b-fp8"
     assert payload["licenseName"] == "Upstream License.txt"
     assert "model-00001-of-00002.safetensors" in result.stdout
+
+
+def test_0_40_prepare_patches_hunyuan_fp8_config(tmp_path: Path) -> None:
+    root = copy_model_layout(tmp_path)
+    manifest = json.loads((root / "models" / "manifests" / "hunyuan-mt-7b-fp8.json").read_text(encoding="utf-8"))
+    model_dir = root / manifest["developmentPath"]
+    for expected_file in manifest["expectedFiles"]:
+        target = model_dir / expected_file
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if expected_file == "config.json":
+            target.write_text(
+                json.dumps(
+                    {
+                        "quantization_config": {
+                            "ignored_layers": ["lm_head"],
+                            "quant_method": "compressed-tensors",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+        else:
+            target.write_text("fixture", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "acceptance" / "prepare-0-40-models.py"),
+            "--root",
+            str(root),
+            "--model-id",
+            "translation.tencent.hunyuan-mt-7b-fp8",
+            "--accept-hunyuan-license",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    patched = json.loads((model_dir / "config.json").read_text(encoding="utf-8"))
+    assert result.returncode == 0
+    assert patched["quantization_config"]["ignore"] == ["lm_head"]
+    assert "ignored_layers" not in patched["quantization_config"]

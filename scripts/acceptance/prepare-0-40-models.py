@@ -55,6 +55,8 @@ def main() -> int:
             download_error = _download_manifest(manifest, target_dir, args)
             if download_error:
                 errors.append(download_error)
+                continue
+            _prepare_auxiliary_files(manifest, target_dir)
         else:
             print("  download skipped; pass --download to fetch model files")
 
@@ -140,6 +142,9 @@ def _prepare_license(
 
 
 def _prepare_auxiliary_files(manifest: ModelDevelopmentManifest, target_dir: Path) -> None:
+    if manifest.model_id == HUNYUAN_MODEL_ID:
+        _patch_hunyuan_fp8_config(target_dir)
+        return
     if manifest.model_id != VIBEVOICE_MODEL_ID:
         return
     config_path = target_dir / "preprocessor_config.json"
@@ -155,6 +160,25 @@ def _prepare_auxiliary_files(manifest: ModelDevelopmentManifest, target_dir: Pat
     }
     config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print("  auxiliary config: wrote preprocessor_config.json")
+
+
+def _patch_hunyuan_fp8_config(target_dir: Path) -> None:
+    config_path = target_dir / "config.json"
+    if not config_path.is_file():
+        return
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    quantization_config = payload.get("quantization_config")
+    if not isinstance(quantization_config, dict):
+        return
+    ignored_layers = quantization_config.pop("ignored_layers", None)
+    if ignored_layers is None:
+        return
+    quantization_config["ignore"] = ignored_layers
+    config_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print("  auxiliary config: patched Hunyuan FP8 quantization_config.ignore")
 
 
 def _download_manifest(

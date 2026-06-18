@@ -17,6 +17,7 @@ from diplomat_worker.models.dev_manifests import (  # noqa: E402
 
 
 REQUIRED_MODULES = [
+    "compressed_tensors",
     "huggingface_hub",
     "soundfile",
     "torch",

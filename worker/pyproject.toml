@@ -20,11 +20,12 @@ asr = [
   "vibevoice @ git+https://github.com/microsoft/VibeVoice.git@303b2833e01cff4578ec278bbfe536da54bd19fe"
 ]
 translation = [
+  "compressed-tensors>=0.11.0",
   "ctranslate2>=4.4.0",
   "hf_xet>=1.1.0",
   "sentencepiece>=0.2.0",
-  "transformers>=4.52.0",
-  "torch>=2.4.0"
+  "torch>=2.11.0",
+  "transformers>=4.56.0"
 ]
 dev = [
   "httpx>=0.28.0",

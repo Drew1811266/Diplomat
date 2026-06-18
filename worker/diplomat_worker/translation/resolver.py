@@ -15,7 +15,7 @@ class TranslationConfigurationError(ValueError):
 
 COMPUTE_TYPES_BY_DEVICE = {
     "cpu": {"int8", "float32"},
-    "cuda": {"int8", "float16", "float32"},
+    "cuda": {"int8", "float16", "bfloat16", "float32"},
 }
 LOCAL_TRANSLATION_PROVIDERS = {"ct2-marian", "local-llm"}
 

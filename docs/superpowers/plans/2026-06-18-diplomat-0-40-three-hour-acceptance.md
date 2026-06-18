@@ -6,7 +6,7 @@
 
 **Hard Gate:** The current repository does not contain model weights and does not contain the Hunyuan license acceptance record. 0.40 execution is blocked until those local files exist.
 
-**Progress Note:** Preflight, model preparation, and three-hour runner tooling are implemented. Final 0.40 acceptance remains pending until local models are prepared, real model adapters are validated, a three-hour source video is selected, and the full acceptance run succeeds.
+**Progress Note:** Preflight, model preparation, three-hour runner tooling, VibeVoice ASR runtime validation, and Hunyuan MT FP8 adapter preparation are implemented. Final 0.40 acceptance remains pending until Hunyuan license acceptance/model files are available, Hunyuan is validated against real local weights, a three-hour source video is selected, and the full acceptance run succeeds.
 
 ## Files
 
@@ -77,7 +77,6 @@ Expected now: fail with missing model files/license record.
 
 ## Current Blockers
 
-- Missing VibeVoice ASR weights under `models/dev/asr/microsoft--VibeVoice-ASR`.
 - Missing Hunyuan MT FP8 weights under `models/dev/translation/tencent--Hunyuan-MT-7B-fp8`.
 - Missing local Hunyuan license acceptance record.
 - No three-hour source video has been selected for acceptance.

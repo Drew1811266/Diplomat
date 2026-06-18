@@ -67,6 +67,22 @@ function vibeVoiceRuntimeProfiles(modelId: string) {
 }
 
 function localLlmRuntimeProfiles(modelId: string, provider: string) {
+  if (modelId === "translation.tencent.hunyuan-mt-7b-fp8") {
+    return [
+      {
+        profileId: `${modelId}:cuda:bfloat16`,
+        task: "translation" as const,
+        provider,
+        device: "cuda",
+        computeType: "bfloat16",
+        batchSize: 1,
+        recommended: true,
+        available: false,
+        reason: "CUDA is not available in this Worker runtime.",
+        notes: "Hunyuan MT FP8 CUDA bfloat16 translation profile."
+      }
+    ];
+  }
   return [
     {
       profileId: `${modelId}:cuda:float16`,
