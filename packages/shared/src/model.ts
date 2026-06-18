@@ -2,7 +2,12 @@ import { z } from "zod";
 
 export const ModelTaskSchema = z.enum(["asr", "translation"]);
 export const ModelTierSchema = z.enum(["light", "high_quality"]);
-export const ModelRuntimeSchema = z.enum(["faster-whisper", "ct2-marian", "local-llm"]);
+export const ModelRuntimeSchema = z.enum([
+  "faster-whisper",
+  "vibevoice-asr",
+  "ct2-marian",
+  "local-llm"
+]);
 export const ModelInstallStatusSchema = z.enum([
   "not_installed",
   "queued",

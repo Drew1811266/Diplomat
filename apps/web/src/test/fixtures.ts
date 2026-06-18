@@ -37,6 +37,52 @@ function runtimeProfiles(modelId: string, task: "asr" | "translation", provider:
   ];
 }
 
+function vibeVoiceRuntimeProfiles(modelId: string) {
+  return [
+    {
+      profileId: `${modelId}:cuda:float16`,
+      task: "asr" as const,
+      provider: "microsoft",
+      device: "cuda",
+      computeType: "float16",
+      batchSize: 1,
+      recommended: true,
+      available: false,
+      reason: "CUDA is not available in this Worker runtime.",
+      notes: "VibeVoice ASR CUDA development profile."
+    },
+    {
+      profileId: `${modelId}:cpu:float32`,
+      task: "asr" as const,
+      provider: "microsoft",
+      device: "cpu",
+      computeType: "float32",
+      batchSize: 1,
+      recommended: false,
+      available: false,
+      reason: "VibeVoice ASR requires the CUDA runtime for 0.4 development.",
+      notes: "CPU fallback is not supported for VibeVoice ASR."
+    }
+  ];
+}
+
+function localLlmRuntimeProfiles(modelId: string, provider: string) {
+  return [
+    {
+      profileId: `${modelId}:cuda:float16`,
+      task: "translation" as const,
+      provider,
+      device: "cuda",
+      computeType: "float16",
+      batchSize: 1,
+      recommended: true,
+      available: false,
+      reason: "CUDA is not available in this Worker runtime.",
+      notes: "Local LLM translation profile."
+    }
+  ];
+}
+
 export const projectDiagnosticsFixture: ProjectDiagnostics = {
   status: "not_transcribed",
   warnings: [],
@@ -354,6 +400,87 @@ export const modelCatalogFixture: ModelCatalogResponse = {
         reason: "checksum mismatch"
       },
       runtimeProfiles: runtimeProfiles("translation.qwen3.4b", "translation", "local-llm")
+    },
+    {
+      modelId: "asr.microsoft.vibevoice-asr",
+      name: "Microsoft VibeVoice ASR",
+      task: "asr",
+      tier: "high_quality",
+      runtime: "vibevoice-asr",
+      provider: "microsoft",
+      version: "d0c9efdb8d614685062c04425d91e01b6f37d944",
+      languages: ["zh", "en"],
+      languagePairs: [],
+      modelSizeBytes: 17_349_559_904,
+      downloadSizeBytes: 17_349_559_904,
+      diskRequirementBytes: 18_500_000_000,
+      recommendedHardware: "NVIDIA GPU required; 24 GB VRAM recommended for 0.4 development.",
+      licenseName: "MIT",
+      licenseUrl: "https://huggingface.co/microsoft/VibeVoice-ASR",
+      sourceUrl: "hf://microsoft/VibeVoice-ASR@d0c9efdb8d614685062c04425d91e01b6f37d944",
+      checksumAlgorithm: "sha256",
+      checksum: "60d61effa5b94497f1638a38cdbadb3bd908985d5b00798e44d87ed3d8c1ff9f",
+      termsSummary: "Pinned Hugging Face development manifest for Microsoft VibeVoice ASR.",
+      installation: {
+        modelId: "asr.microsoft.vibevoice-asr",
+        status: "not_installed",
+        installedPath: null,
+        downloadedBytes: 0,
+        totalBytes: 17_349_559_904,
+        checksum: "60d61effa5b94497f1638a38cdbadb3bd908985d5b00798e44d87ed3d8c1ff9f",
+        errorMessage: null,
+        createdAt: "2026-06-18T00:00:00+00:00",
+        updatedAt: "2026-06-18T00:00:00+00:00",
+        installedAt: null
+      },
+      availability: {
+        usable: false,
+        reason:
+          "Development model files are missing: config.json, model-00001-of-00008.safetensors, model-00008-of-00008.safetensors, model.safetensors.index.json"
+      },
+      runtimeProfiles: vibeVoiceRuntimeProfiles("asr.microsoft.vibevoice-asr")
+    },
+    {
+      modelId: "translation.tencent.hunyuan-mt-7b-fp8",
+      name: "Tencent Hunyuan MT 7B FP8",
+      task: "translation",
+      tier: "high_quality",
+      runtime: "local-llm",
+      provider: "tencent",
+      version: "81e5a3f7199524570ba75e61360e990ba88665e4",
+      languages: ["zh", "en"],
+      languagePairs: [
+        ["zh", "en"],
+        ["en", "zh"]
+      ],
+      modelSizeBytes: 8_047_121_287,
+      downloadSizeBytes: 8_047_121_287,
+      diskRequirementBytes: 9_000_000_000,
+      recommendedHardware: "NVIDIA GPU required; FP8 runtime target for 24 GB VRAM development.",
+      licenseName: "Upstream License.txt",
+      licenseUrl: "https://huggingface.co/tencent/Hunyuan-MT-7B-fp8/blob/main/License.txt",
+      sourceUrl: "hf://tencent/Hunyuan-MT-7B-fp8@81e5a3f7199524570ba75e61360e990ba88665e4",
+      checksumAlgorithm: "sha256",
+      checksum: "89f1757846ac6c9e9d85da914c0818850e10c2244e885d9a3e7db6f3e77e1392",
+      termsSummary:
+        "Pinned Hugging Face development manifest for Tencent Hunyuan MT 7B FP8; upstream license acceptance required.",
+      installation: {
+        modelId: "translation.tencent.hunyuan-mt-7b-fp8",
+        status: "not_installed",
+        installedPath: null,
+        downloadedBytes: 0,
+        totalBytes: 8_047_121_287,
+        checksum: "89f1757846ac6c9e9d85da914c0818850e10c2244e885d9a3e7db6f3e77e1392",
+        errorMessage: null,
+        createdAt: "2026-06-18T00:00:00+00:00",
+        updatedAt: "2026-06-18T00:00:00+00:00",
+        installedAt: null
+      },
+      availability: {
+        usable: false,
+        reason: "Model license acceptance is required."
+      },
+      runtimeProfiles: localLlmRuntimeProfiles("translation.tencent.hunyuan-mt-7b-fp8", "tencent")
     }
   ]
 };

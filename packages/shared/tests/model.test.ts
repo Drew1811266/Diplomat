@@ -35,6 +35,18 @@ describe("model registry schemas", () => {
     expect(parsed.task).toBe("asr");
   });
 
+  it("accepts the VibeVoice ASR runtime target", () => {
+    const parsed = ModelRegistryEntrySchema.parse({
+      ...registryEntry,
+      modelId: "asr.microsoft.vibevoice-asr",
+      name: "Microsoft VibeVoice ASR",
+      runtime: "vibevoice-asr",
+      provider: "microsoft"
+    });
+
+    expect(parsed.runtime).toBe("vibevoice-asr");
+  });
+
   it("parses catalog entries merged with installation state", () => {
     const parsed = ModelCatalogResponseSchema.parse({
       models: [
