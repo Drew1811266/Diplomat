@@ -14,8 +14,10 @@ from diplomat_worker.asr.chunk_store import (
     write_manifest,
 )
 from diplomat_worker.asr.merge import merge_chunk_results
-from diplomat_worker.media.audio import build_fixed_chunks, extract_audio
+from diplomat_worker.media.audio import AudioChunk, build_fixed_chunks, extract_audio
 from diplomat_worker.schemas.subtitle import AiOrigin, Speaker, SubtitleDocument, SubtitleLine, SubtitleStyle, WordTiming
+
+SegmentationPlanner = Callable[[int], list[AudioChunk]]
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,7 @@ def run_core_pipeline(
     ffmpeg_path: str = "ffmpeg",
     progress_callback: ProgressCallback | None = None,
     cancel_token: CancelToken | None = None,
+    segmentation_planner: SegmentationPlanner | None = None,
 ) -> CorePipelineResult:
     def raise_if_canceled() -> None:
         if cancel_token is not None and cancel_token.is_cancel_requested():
@@ -95,10 +98,14 @@ def run_core_pipeline(
 
     raise_if_canceled()
     if progress_callback is not None:
-        progress_callback(0.25, "Chunking audio")
+        progress_callback(0.25, "Planning ASR chunks")
     chunk_ms = 30_000
     overlap_ms = 500
-    chunks = build_fixed_chunks(request.duration_ms, chunk_ms=chunk_ms, overlap_ms=overlap_ms)
+    chunks = (
+        segmentation_planner(request.duration_ms)
+        if segmentation_planner is not None
+        else build_fixed_chunks(request.duration_ms, chunk_ms=chunk_ms, overlap_ms=overlap_ms)
+    )
     task_cache_dir = asr_task_cache_dir(request.project_dir, request.task_id)
     manifest = build_chunk_manifest(
         task_id=request.task_id,
