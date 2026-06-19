@@ -75,4 +75,6 @@ The candidate scanner and preflight-only command validate media duration, video/
 
 0.40 can merge and tag only when real two-to-three-hour evidence exists. If the 2-3 hour workflow cannot be executed in the current environment, the stage remains blocked rather than accepted.
 
-Current smoke status: passed locally against `.dev/acceptance/0-40/smoke-20260619-120854`. This proves the short-video workflow path but does not satisfy the final release-profile gate.
+Current smoke status: passed locally against `.dev/acceptance/0-40/smoke-20260619-120854`.
+
+Current release status: passed locally against `.dev/acceptance/0-40/release-20260619-163807`. This is the accepted final two-to-three-hour release-profile evidence for the 0.40 gate.

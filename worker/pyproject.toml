@@ -1,6 +1,6 @@
 [project]
 name = "diplomat-worker"
-version = "0.39.0"
+version = "0.40.0"
 description = "Local AI and media worker for Diplomat"
 requires-python = ">=3.12"
 dependencies = [

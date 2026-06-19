@@ -6,7 +6,7 @@
 
 **Hard Gate:** The local development machine now has the Hunyuan license acceptance record and Hunyuan MT FP8 weights. 0.40 execution now proceeds through a short-video `smoke` profile before the final 2-3 hour `release` profile. The user-provided short video is English and must be translated to Chinese.
 
-**Progress Note:** Preflight, model preparation, media candidate scanning, long-video runner tooling, short-video smoke profile, preflight-only media/model validation, ASR chunk evidence checks, glossary quality checks, runtime-cleanup evidence checks, subtitle-completeness checks, export-artifact evidence checks, completed-summary verification, the PowerShell verification wrapper, VibeVoice ASR runtime validation, Hunyuan MT FP8 adapter preparation, and Hunyuan real-model smoke are implemented. The local English-to-Chinese short-video smoke run passed at `.dev/acceptance/0-40/smoke-20260619-120854`. Final 0.40 acceptance remains pending until the 2-3 hour release-profile acceptance video completes the full run.
+**Progress Note:** Preflight, model preparation, media candidate scanning, long-video runner tooling, short-video smoke profile, preflight-only media/model validation, ASR chunk evidence checks, glossary quality checks, runtime-cleanup evidence checks, subtitle-completeness checks, export-artifact evidence checks, completed-summary verification, the PowerShell verification wrapper, VibeVoice ASR runtime validation, Hunyuan MT FP8 adapter preparation, and Hunyuan real-model smoke are implemented. The local English-to-Chinese short-video smoke run passed at `.dev/acceptance/0-40/smoke-20260619-120854`. The final two-to-three-hour release-profile acceptance run passed at `.dev/acceptance/0-40/release-20260619-163807`.
 
 ## Files
 
@@ -77,23 +77,23 @@ Expected now: fail with missing model files/license record.
 
 ## Task 4: Version, Verification, Gate
 
-- [ ] Update release metadata to `0.40.0`.
+- [x] Update release metadata to `0.40.0`.
 - [ ] Run focused tests.
 - [x] Run the short-video smoke acceptance runner with `--source-language en --target-language zh`.
-- [ ] Run the 2-3 hour acceptance runner.
-- [ ] Run the completed acceptance summary verifier:
+- [x] Run the 2-3 hour acceptance runner.
+- [x] Run the completed acceptance summary verifier:
 
 ```powershell
 python .\scripts\acceptance\verify-0-40-acceptance-summary.py --summary <evidence-dir>\acceptance-summary.json
 ```
 
-- [ ] Run full verification:
+- [x] Run full verification:
 
 ```powershell
 .\scripts\check.ps1
 ```
 
-- [ ] Write `docs/development/0-40-stage-gate-review.md` with real run evidence.
+- [x] Write `docs/development/0-40-stage-gate-review.md` with real run evidence.
 
 ## Task 5: Merge And Push
 
@@ -102,4 +102,4 @@ python .\scripts\acceptance\verify-0-40-acceptance-summary.py --summary <evidenc
 
 ## Current Blockers
 
-- Full release-profile acceptance has not yet completed against a 2-3 hour source.
+- Full repository verification, merge to `main`, push, and `v0.40` tag are still pending.

@@ -108,7 +108,7 @@ test("audits the current repository 0.4 stage process", () => {
   assert.match(result.stdout, /0\.37: accepted/);
   assert.match(result.stdout, /0\.38: accepted/);
   assert.match(result.stdout, /0\.39: accepted/);
-  assert.match(result.stdout, /0\.40: in progress/);
+  assert.match(result.stdout, /0\.40: accepted/);
 });
 
 test("accepts 0.40 in-progress gate blocked by missing two-to-three-hour evidence", () => {

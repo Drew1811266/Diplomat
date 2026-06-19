@@ -63,12 +63,26 @@ Latest local check:
   - exports: `subtitle-bilingual.srt`, `subtitle-bilingual.vtt`, `subtitle-bilingual.ass`
   - independent verifier: `verify-0-40-acceptance-summary.py --acceptance-profile smoke` passed.
   - caveat: export validation reported readability warnings for dense cues; these are non-blocking smoke evidence but should inform subtitle editing UX and future segmentation tuning.
+- The release profile completed successfully on the local 2 hour 26 minute H21 keynote source:
+  - evidence directory: `.dev/acceptance/0-40/release-20260619-163807`
+  - source duration: `8,782,576 ms`
+  - ASR chunks: `298/298`
+  - subtitle lines: `437`
+  - translated lines: `437`
+  - missing translations: `0`
+  - failed translations: `0`
+  - incomplete translation states: `0`
+  - timing issues: `0`
+  - translation quality issues: `0`
+  - exports: `subtitle-bilingual.srt`, `subtitle-bilingual.vtt`, `subtitle-bilingual.ass`
+  - independent verifier: `verify-0-40-acceptance-summary.py --acceptance-profile release` passed.
+  - ASR and translation logs both recorded runtime closure and CUDA accelerator cache cleanup.
 
 Current readiness:
 
 - `asr.microsoft.vibevoice-asr`: usable for 0.40 development verification.
 - `translation.tencent.hunyuan-mt-7b-fp8`: usable for 0.40 development verification.
-- Final 0.40 acceptance is still blocked until a real 2-3 hour release-profile source video completes ASR, translation, export artifact verification, cleanup verification, subtitle validation, summary verification, and full repository verification.
+- Final 0.40 release-profile acceptance evidence exists. The remaining release work is repository verification, merge to `main`, push, and tag.
 
 ## Scope
 
@@ -152,4 +166,4 @@ Full verification:
 
 ## Stage Gate
 
-0.40 can merge only after the 2-3 hour run produces durable evidence and the stage gate review is accepted.
+0.40 has durable two-to-three-hour release evidence and an accepted stage gate review. It is ready to merge after the final repository verification passes.
