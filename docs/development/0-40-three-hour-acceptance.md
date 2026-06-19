@@ -67,7 +67,7 @@ Current readiness:
 
 ## Non-Goals
 
-- Do not merge 0.40 while real model files are missing.
+- Do not merge 0.40 before real three-hour acceptance evidence exists.
 - Do not accept fake ASR or fake translation as 0.40 evidence.
 - Do not commit model weights to Git.
 - Do not bypass upstream license requirements.

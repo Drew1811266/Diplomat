@@ -274,8 +274,8 @@ function validateAcceptedFinalGate() {
 function validateInProgressFinalGate() {
   const acceptanceDoc = readText(finalStage.developmentDoc);
   expect(
-    acceptanceDoc.includes("Do not merge 0.40 while real model files are missing."),
-    "0.40 in-progress document must explicitly block merge while real model files are missing."
+    acceptanceDoc.includes("Do not merge 0.40 before real three-hour acceptance evidence exists."),
+    "0.40 in-progress document must explicitly block merge before real three-hour acceptance evidence exists."
   );
   expect(
     acceptanceDoc.includes("Do not accept fake ASR or fake translation as 0.40 evidence."),

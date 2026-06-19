@@ -62,7 +62,7 @@ function createMinimalFixture() {
       "Stage: 0.40",
       "## Objective",
       "## Acceptance Criteria",
-      "Do not merge 0.40 while real model files are missing.",
+      "Do not merge 0.40 before real three-hour acceptance evidence exists.",
       "Do not accept fake ASR or fake translation as 0.40 evidence."
     ].join("\n")
   );
@@ -107,6 +107,15 @@ test("audits the current repository 0.4 stage process", () => {
   assert.match(result.stdout, /0\.37: accepted/);
   assert.match(result.stdout, /0\.38: accepted/);
   assert.match(result.stdout, /0\.39: accepted/);
+  assert.match(result.stdout, /0\.40: in progress/);
+});
+
+test("accepts 0.40 in-progress gate blocked by missing three-hour evidence", () => {
+  const fixture = createMinimalFixture();
+
+  const result = runVerifier(["--repo-root", fixture]);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /0\.40: in progress/);
 });
 
