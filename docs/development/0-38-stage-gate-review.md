@@ -59,7 +59,7 @@ Observed results:
 - 0.38 provides the segmentation planner and injection point, not a trained speech detector.
 - Current production analysis jobs still use the fixed fallback unless a planner is injected.
 - VibeVoice ASR and Hunyuan MT FP8 inference remain future work.
-- The final 0.40 acceptance gate still requires a complete three-hour video run.
+- The final 0.40 acceptance gate still requires a complete 2-3 hour video run.
 
 ## Acceptance
 

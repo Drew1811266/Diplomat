@@ -8,7 +8,7 @@ Base release: 0.35.0
 
 ## Goal
 
-Diplomat 0.4 turns the 0.35 desktop stability line into a real-model desktop product line. The release is accepted only when a representative three-hour lecture, course, or tutorial video can complete import, intelligent audio segmentation, ASR, translation, editing, and export with real local models.
+Diplomat 0.4 turns the 0.35 desktop stability line into a real-model desktop product line. The release is accepted only when a representative 2-3 hour lecture, course, or tutorial video can complete import, intelligent audio segmentation, ASR, translation, editing, and export with real local models.
 
 ## Three Major Tasks
 
@@ -57,7 +57,7 @@ The current frontend must become a polished desktop application rather than a fu
 | 0.37 | Model directory and manifests | Task 2 | Development model folders, manifests, ignore rules, license gates, and model readiness checks exist. |
 | 0.38 | Intelligent ASR segmentation | Task 2 and Task 3 | VAD-backed intelligent segmentation and VibeVoice-ASR isolated execution produce recoverable ASR chunks. |
 | 0.39 | Hunyuan translation pipeline | Task 2 and Task 3 | Hunyuan-MT-7B-fp8 translates subtitle batches after ASR memory is released. |
-| 0.40 | Three-hour release gate | Task 3 | A representative three-hour video completes the real workflow and produces acceptance evidence. |
+| 0.40 | 2-3 hour release gate | Task 3 | A representative 2-3 hour video completes the real workflow and produces acceptance evidence. |
 
 ## Required Stage Process
 
@@ -139,9 +139,8 @@ The repository must not commit:
 - `main` contains every accepted stage.
 - GitHub has the accepted `main`.
 - a `v0.40` release tag exists.
-- a three-hour representative video completed the real-model workflow.
+- a 2-3 hour representative video completed the real-model workflow.
 - VibeVoice-ASR and Hunyuan-MT-7B-fp8 were used in the acceptance path.
 - model memory lifecycle evidence shows ASR memory released before translation starts.
 - subtitle editing and export work after the real model pipeline.
 - stage gate docs record all known limitations.
-

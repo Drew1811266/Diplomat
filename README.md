@@ -230,11 +230,13 @@ This runs the shared package tests, Web tests, TypeScript checks, Worker tests, 
 
 ## Version
 
-Current project version: **0.39.0**
-Latest release tag: **v0.35**
+Current project version: **0.40.0**
+Latest release tag: **v0.40**
 
 ## License
 
 Diplomat is released under the [MIT License](LICENSE).
 
 AI model weights are not included in this repository and remain governed by their upstream licenses.
+
+The 0.40 Hunyuan translation target is a user-provided external model, not an MIT-licensed project asset. Diplomat records local Hunyuan acceptance only after the operator confirms the upstream restricted license, permitted-territory use, and no redistribution of model weights. Hunyuan weights must not be committed to GitHub or bundled with the MIT source release.

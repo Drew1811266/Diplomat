@@ -38,6 +38,32 @@ const installedTranslationModel: ModelCatalogEntry = {
   }
 };
 
+const installedHunyuanModel: ModelCatalogEntry = {
+  ...modelCatalogFixture.models.find(
+    (model) => model.modelId === "translation.tencent.hunyuan-mt-7b-fp8"
+  )!,
+  installation: {
+    ...modelCatalogFixture.models.find(
+      (model) => model.modelId === "translation.tencent.hunyuan-mt-7b-fp8"
+    )!.installation,
+    status: "installed",
+    installedPath: "D:/Diplomat/models/hunyuan",
+    downloadedBytes: 8_047_121_287,
+    installedAt: "2026-06-18T00:05:00+00:00"
+  },
+  availability: {
+    usable: true,
+    reason: null
+  },
+  runtimeProfiles: modelCatalogFixture.models
+    .find((model) => model.modelId === "translation.tencent.hunyuan-mt-7b-fp8")!
+    .runtimeProfiles.map((profile) => ({
+      ...profile,
+      available: true,
+      reason: null
+    }))
+};
+
 const configuredTranslationConfig: TranslationJobRequest = {
   ...translationConfig,
   modelId: installedTranslationModel.modelId
@@ -96,6 +122,38 @@ describe("TranslationInspector", () => {
       modelNameOrPath: null,
       sourceLanguage: "zh",
       targetLanguage: "en"
+    });
+  });
+
+  it("selects installed Hunyuan models with the local LLM runtime provider", () => {
+    const onConfigChange = vi.fn();
+
+    renderWithProviders(
+      <TranslationInspector
+        config={translationConfig}
+        busy={false}
+        modelCatalog={[installedHunyuanModel]}
+        onConfigChange={onConfigChange}
+        onStart={() => undefined}
+        onCancel={() => undefined}
+        onRetry={() => undefined}
+      />
+    );
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Translation model" }), {
+      target: { value: installedHunyuanModel.modelId }
+    });
+
+    expect(onConfigChange).toHaveBeenCalledWith({
+      ...translationConfig,
+      provider: "local-llm",
+      modelId: installedHunyuanModel.modelId,
+      modelNameOrPath: null,
+      sourceLanguage: "zh",
+      targetLanguage: "en",
+      device: "cuda",
+      computeType: "bfloat16",
+      batchSize: 1
     });
   });
 

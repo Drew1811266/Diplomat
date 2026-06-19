@@ -35,7 +35,12 @@ const translationProviders: TranslationJobRequest["provider"][] = [
 ];
 const translationModes: TranslationJobRequest["mode"][] = ["missing_only", "overwrite_all"];
 const devices: TranslationJobRequest["device"][] = ["cpu", "cuda"];
-const computeTypes: TranslationJobRequest["computeType"][] = ["int8", "float16", "float32"];
+const computeTypes: TranslationJobRequest["computeType"][] = [
+  "int8",
+  "float16",
+  "bfloat16",
+  "float32"
+];
 type TranslationGlossaryEntry = TranslationJobRequest["glossary"][number];
 
 function getLanguageError(value: string, requiredMessage: string, lengthMessage: string) {
@@ -55,6 +60,15 @@ function selectedProfile(model: ModelCatalogEntry | null, device: string, comput
     model?.runtimeProfiles.find(
       (profile) => profile.device === device && profile.computeType === computeType
     ) ?? null
+  );
+}
+
+function preferredProfile(model: ModelCatalogEntry) {
+  return (
+    model.runtimeProfiles.find((profile) => profile.recommended && profile.available) ??
+    model.runtimeProfiles.find((profile) => profile.recommended) ??
+    model.runtimeProfiles[0] ??
+    null
   );
 }
 
@@ -205,17 +219,21 @@ export function TranslationInspector({
     if (!model) {
       return;
     }
+    const profile = preferredProfile(model);
     const [sourceLanguage, targetLanguage] = model.languagePairs[0] ?? [
       config.sourceLanguage,
       config.targetLanguage
     ];
     onConfigChange({
       ...config,
-      provider: model.provider as TranslationJobRequest["provider"],
+      provider: model.runtime as TranslationJobRequest["provider"],
       modelId,
       modelNameOrPath: null,
       sourceLanguage,
       targetLanguage,
+      device: profile?.device ?? config.device,
+      computeType: profile?.computeType ?? config.computeType,
+      batchSize: profile?.batchSize ?? config.batchSize,
       glossary: config.glossary.map((entry) => ({
         ...entry,
         sourceLanguage,

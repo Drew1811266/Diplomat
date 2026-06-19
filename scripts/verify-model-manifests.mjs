@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { resolve, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -55,6 +56,22 @@ function listFiles(path) {
     }
   }
   return files;
+}
+
+function toRepoPath(path) {
+  return relative(root, path).split(sep).join("/");
+}
+
+function gitStatus(args) {
+  return spawnSync("git", ["-C", root, ...args], { stdio: "ignore" }).status;
+}
+
+function isGitIgnored(path) {
+  return gitStatus(["check-ignore", "-q", "--", toRepoPath(path)]) === 0;
+}
+
+function isGitTracked(path) {
+  return gitStatus(["ls-files", "--error-unmatch", "--", toRepoPath(path)]) === 0;
 }
 
 if (!existsSync(manifestDir)) {
@@ -116,6 +133,25 @@ if (!existsSync(manifestDir)) {
         manifest.license.acceptanceRecord,
         `${filename}: license.acceptanceRecord`
       );
+      assertString(manifest.license.licenseType, `${filename}: license.licenseType is required.`);
+      if (manifest.license.sourceCodeLicenseCompatible !== true) {
+        fail(`${filename}: license.sourceCodeLicenseCompatible must be true.`);
+      }
+      if (manifest.license.redistributionAllowed !== false) {
+        fail(`${filename}: license.redistributionAllowed must be false for restricted models.`);
+      }
+      if (manifest.license.modelWeightsBundled !== false) {
+        fail(`${filename}: license.modelWeightsBundled must be false for restricted models.`);
+      }
+      if (manifest.license.userProvidedOnly !== true) {
+        fail(`${filename}: license.userProvidedOnly must be true for restricted models.`);
+      }
+      if (
+        !Array.isArray(manifest.license.excludedTerritories) ||
+        manifest.license.excludedTerritories.length === 0
+      ) {
+        fail(`${filename}: license.excludedTerritories must be a non-empty array.`);
+      }
     }
 
     if (manifest.weightsIgnoredByGit !== true) {
@@ -129,7 +165,13 @@ for (const file of listFiles(devRoot)) {
     continue;
   }
   if (statSync(file).isFile()) {
-    fail(`models/dev contains a non-placeholder file: ${relative(root, file)}`);
+    const repoPath = toRepoPath(file);
+    if (isGitTracked(file)) {
+      fail(`models/dev file must not be tracked by Git: ${repoPath}`);
+    }
+    if (!isGitIgnored(file)) {
+      fail(`models/dev file is not ignored by Git: ${repoPath}`);
+    }
   }
 }
 

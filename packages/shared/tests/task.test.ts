@@ -69,6 +69,18 @@ describe("AnalysisJobRequestSchema", () => {
     expect(request.modelNameOrPath).toBe("small");
   });
 
+  it("accepts VibeVoice ASR model settings", () => {
+    const request = AnalysisJobRequestSchema.parse({
+      provider: "vibevoice-asr",
+      modelId: "asr.microsoft.vibevoice-asr",
+      device: "cuda",
+      computeType: "bfloat16"
+    });
+
+    expect(request.provider).toBe("vibevoice-asr");
+    expect(request.computeType).toBe("bfloat16");
+  });
+
   it("normalizes optional fake settings", () => {
     const request = AnalysisJobRequestSchema.parse({
       provider: "fake",

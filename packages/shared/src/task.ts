@@ -13,7 +13,7 @@ export const TaskStatusSchema = z.enum([
 export const TaskTypeSchema = z.enum(["analysis", "translation", "waveform", "export"]);
 
 export const AnalysisJobRequestSchema = z.object({
-  provider: z.enum(["fake", "faster-whisper"]).default("fake"),
+  provider: z.enum(["fake", "faster-whisper", "vibevoice-asr"]).default("fake"),
   modelId: z.string().nullable().default(null),
   modelNameOrPath: z.string().nullable().default(null),
   device: z.string().min(1).default("cpu"),

@@ -1543,6 +1543,15 @@ def test_analysis_job_request_defaults_to_fake_provider() -> None:
     assert configured.model_name_or_path is None
     assert configured.source_language == "zh"
 
+    vibevoice = AnalysisJobRequest(
+        provider="vibevoice-asr",
+        modelId="asr.microsoft.vibevoice-asr",
+        device="cuda",
+        computeType="bfloat16",
+    )
+    assert vibevoice.provider == "vibevoice-asr"
+    assert vibevoice.compute_type == "bfloat16"
+
 
 def test_asr_model_config_serializes_model_id() -> None:
     config = AsrModelConfig(

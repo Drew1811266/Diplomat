@@ -184,6 +184,113 @@ def test_resolver_returns_installed_path_for_curated_asr_model(tmp_path: Path) -
     assert resolved.source_language == "zh"
 
 
+def test_resolver_returns_installed_path_for_vibevoice_asr_model(tmp_path: Path) -> None:
+    entry = make_entry(
+        model_id="asr.microsoft.vibevoice-asr",
+        runtime="vibevoice-asr",
+        provider="microsoft",
+    )
+    store = make_store(tmp_path)
+    installed_path = install_entry(store, entry)
+
+    resolved = resolve_asr_model_config(
+        AsrModelConfig(
+            provider="vibevoice-asr",
+            model_id=entry.model_id,
+            device="cuda",
+            compute_type="bfloat16",
+        ),
+        store=store,
+        registry=[entry],
+        fallback_language="zh",
+        runtime_capabilities=RuntimeCapabilities(cuda_available=True),
+    )
+
+    assert resolved.provider == "vibevoice-asr"
+    assert resolved.model_name_or_path == str(installed_path)
+    assert resolved.compute_type == "bfloat16"
+
+
+def test_resolver_accepts_curated_unmanaged_vibevoice_path_for_acceptance(tmp_path: Path) -> None:
+    entry = make_entry(
+        model_id="asr.microsoft.vibevoice-asr",
+        runtime="vibevoice-asr",
+        provider="microsoft",
+    )
+    dev_path = tmp_path / "models-dev" / "vibevoice"
+    dev_path.mkdir(parents=True)
+
+    resolved = resolve_asr_model_config(
+        AsrModelConfig(
+            provider="vibevoice-asr",
+            model_id=entry.model_id,
+            model_name_or_path=str(dev_path),
+            device="cuda",
+            compute_type="bfloat16",
+        ),
+        store=make_store(tmp_path),
+        registry=[entry],
+        fallback_language="zh",
+        allow_unmanaged_models=True,
+        runtime_capabilities=RuntimeCapabilities(cuda_available=True),
+    )
+
+    assert resolved.provider == "vibevoice-asr"
+    assert resolved.model_id == entry.model_id
+    assert resolved.model_name_or_path == str(dev_path)
+
+
+def test_resolver_rejects_vibevoice_without_cuda(tmp_path: Path) -> None:
+    entry = make_entry(
+        model_id="asr.microsoft.vibevoice-asr",
+        runtime="vibevoice-asr",
+        provider="microsoft",
+    )
+    store = make_store(tmp_path)
+    install_entry(store, entry)
+
+    assert_asr_error(
+        "ASR_DEVICE_UNSUPPORTED",
+        lambda: resolve_asr_model_config(
+            AsrModelConfig(
+                provider="vibevoice-asr",
+                model_id=entry.model_id,
+                device="cpu",
+                compute_type="float32",
+            ),
+            store=store,
+            registry=[entry],
+            fallback_language="zh",
+        ),
+    )
+
+
+def test_resolver_rejects_vibevoice_int8(tmp_path: Path) -> None:
+    entry = make_entry(
+        model_id="asr.microsoft.vibevoice-asr",
+        runtime="vibevoice-asr",
+        provider="microsoft",
+    )
+    store = make_store(tmp_path)
+    install_entry(store, entry)
+
+    assert_asr_error(
+        "ASR_COMPUTE_UNSUPPORTED",
+        lambda: resolve_asr_model_config(
+            AsrModelConfig(
+                provider="vibevoice-asr",
+                model_id=entry.model_id,
+                device="cuda",
+                compute_type="int8",
+            ),
+            store=store,
+            registry=[entry],
+            fallback_language="zh",
+            runtime_capabilities=RuntimeCapabilities(cuda_available=True),
+        ),
+    )
+
+
 def test_resolver_rejects_cpu_float16_and_accepts_cuda_float16(tmp_path: Path) -> None:
     entry = make_entry()
     store = make_store(tmp_path)

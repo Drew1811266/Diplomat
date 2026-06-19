@@ -15,15 +15,33 @@ type AnalysisInspectorProps = {
   onRetry: () => void;
 };
 
-const analysisProviders: AnalysisJobRequest["provider"][] = ["fake", "faster-whisper"];
+const analysisProviders: AnalysisJobRequest["provider"][] = [
+  "fake",
+  "faster-whisper",
+  "vibevoice-asr"
+];
 const devices: AnalysisJobRequest["device"][] = ["cpu", "cuda"];
-const computeTypes: AnalysisJobRequest["computeType"][] = ["int8", "float16", "float32"];
+const computeTypes: AnalysisJobRequest["computeType"][] = [
+  "int8",
+  "float16",
+  "bfloat16",
+  "float32"
+];
 
 function selectedProfile(model: ModelCatalogEntry | null, device: string, computeType: string) {
   return (
     model?.runtimeProfiles.find(
       (profile) => profile.device === device && profile.computeType === computeType
     ) ?? null
+  );
+}
+
+function preferredProfile(model: ModelCatalogEntry) {
+  return (
+    model.runtimeProfiles.find((profile) => profile.recommended && profile.available) ??
+    model.runtimeProfiles.find((profile) => profile.recommended) ??
+    model.runtimeProfiles[0] ??
+    null
   );
 }
 
@@ -73,11 +91,16 @@ export function AnalysisInspector({
       return;
     }
 
+    const selectedModel = installedAsrModels.find((model) => model.modelId === modelId) ?? null;
+    const profile = selectedModel ? preferredProfile(selectedModel) : null;
+
     onConfigChange({
       ...config,
-      provider: "faster-whisper",
+      provider: selectedModel?.runtime === "vibevoice-asr" ? "vibevoice-asr" : "faster-whisper",
       modelId,
-      modelNameOrPath: null
+      modelNameOrPath: null,
+      device: profile?.device ?? config.device,
+      computeType: profile?.computeType ?? config.computeType
     });
   }
 

@@ -59,7 +59,7 @@ Observed results:
 - 0.39 does not download model weights.
 - 0.39 does not execute VibeVoice ASR or Hunyuan MT FP8 inference.
 - Cleanup is in-process and best-effort; full process isolation remains future work if model runtimes retain memory outside Python references.
-- The final 0.40 acceptance gate still requires a complete three-hour video run.
+- The final 0.40 acceptance gate still requires a complete 2-3 hour video run.
 
 ## Acceptance
 

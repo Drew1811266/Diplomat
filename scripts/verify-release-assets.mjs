@@ -86,6 +86,13 @@ const modelManifestCheck = spawnSync(
 );
 expect(modelManifestCheck.status === 0, "Model manifest verification must pass.");
 
+const stageProcessCheck = spawnSync(
+  process.execPath,
+  [rootPath("scripts/verify-0.4-stage-process.mjs")],
+  { stdio: "inherit" }
+);
+expect(stageProcessCheck.status === 0, "0.4 stage process verification must pass.");
+
 if (errors.length > 0) {
   console.error("Release asset verification failed:");
   for (const error of errors) {

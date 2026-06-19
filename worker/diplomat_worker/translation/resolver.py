@@ -1,4 +1,5 @@
 from dataclasses import replace
+from pathlib import Path
 
 from diplomat_worker.models.capabilities import RuntimeCapabilities
 from diplomat_worker.models.registry import ModelRegistryEntry, get_model_entry
@@ -15,7 +16,7 @@ class TranslationConfigurationError(ValueError):
 
 COMPUTE_TYPES_BY_DEVICE = {
     "cpu": {"int8", "float32"},
-    "cuda": {"int8", "float16", "float32"},
+    "cuda": {"int8", "float16", "bfloat16", "float32"},
 }
 LOCAL_TRANSLATION_PROVIDERS = {"ct2-marian", "local-llm"}
 
@@ -59,6 +60,15 @@ def resolve_translation_provider_config(
 
     _validate_entry_for_translation(entry, config.provider)
     _validate_language_pair(entry, fallback_source_language, fallback_target_language)
+
+    if allow_unmanaged_models and config.model_name_or_path:
+        model_path = Path(config.model_name_or_path)
+        if not model_path.exists():
+            raise TranslationConfigurationError(
+                "TRANSLATION_MODEL_FILES_MISSING",
+                f"Translation model files are missing for {entry.name}: {model_path}",
+            )
+        return replace(config, model_name_or_path=str(model_path))
 
     installation = store.get_model_installation(
         entry.model_id,

@@ -82,7 +82,7 @@ def test_vibevoice_asr_profiles_require_cuda() -> None:
         RuntimeCapabilities(cuda_available=False, cuda_device_count=0, detected_by="test"),
     )
 
-    cuda_profile = find_runtime_profile(profiles, device="cuda", compute_type="float16")
+    cuda_profile = find_runtime_profile(profiles, device="cuda", compute_type="bfloat16")
     cpu_profile = find_runtime_profile(profiles, device="cpu", compute_type="float32")
 
     assert cuda_profile is not None
@@ -92,3 +92,24 @@ def test_vibevoice_asr_profiles_require_cuda() -> None:
     assert cpu_profile is not None
     assert cpu_profile.available is False
     assert cpu_profile.reason == "VibeVoice ASR requires the CUDA runtime for 0.4 development."
+
+
+def test_hunyuan_fp8_profile_prefers_cuda_bfloat16() -> None:
+    profiles = build_runtime_profiles(
+        make_entry(
+            model_id="translation.tencent.hunyuan-mt-7b-fp8",
+            task="translation",
+            runtime="local-llm",
+            provider="tencent",
+            tier="high_quality",
+        ),
+        RuntimeCapabilities(cuda_available=True, cuda_device_count=1, detected_by="test"),
+    )
+
+    profile = find_runtime_profile(profiles, device="cuda", compute_type="bfloat16")
+
+    assert profile is not None
+    assert profile.recommended is True
+    assert profile.available is True
+    assert profile.batch_size == 1
+    assert profile.notes == "Hunyuan MT FP8 CUDA bfloat16 translation profile."
