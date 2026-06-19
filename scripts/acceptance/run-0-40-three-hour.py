@@ -49,6 +49,7 @@ def main() -> int:
         "startedAt": started_at,
         "sourceVideo": str(source_video),
         "evidenceDir": str(evidence_dir),
+        "preflightOnly": args.preflight_only,
         "status": "running",
         "checks": [],
     }
@@ -100,6 +101,12 @@ def main() -> int:
             "path": str(args.glossary_path.resolve()) if args.glossary_path else None,
             "termCount": len(glossary),
         }
+        if args.preflight_only:
+            summary["status"] = "preflight-passed"
+            summary["completedAt"] = datetime.now(UTC).isoformat()
+            write_summary(summary_path, summary)
+            print(f"0.40 acceptance preflight passed. Summary: {summary_path}")
+            return 0
 
         data_dir = evidence_dir / "worker-data"
         runtime = WorkerRuntime(
@@ -432,6 +439,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--translation-compute-type", default="bfloat16")
     parser.add_argument("--translation-batch-size", type=int, default=1)
     parser.add_argument("--glossary-path", type=Path)
+    parser.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="Validate source media, model readiness, model paths, and glossary without starting ASR or translation.",
+    )
     return parser.parse_args()
 
 

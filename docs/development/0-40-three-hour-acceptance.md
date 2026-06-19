@@ -39,6 +39,7 @@ Latest local check:
   - source text: `本节课介绍深度学习中的注意力机制和长视频字幕翻译流程。`
   - translated text: `This lesson introduces the attention mechanism in deep learning and the process of translating subtitles for long videos.`
 - The 0.40 runner probes the source media before model preflight and rejects short or silent media before any model execution.
+- The 0.40 runner supports `--preflight-only` so an operator can validate a candidate three-hour source, model readiness, model paths, and glossary before starting ASR or translation.
 - The 0.40 runner passes manifest-verified `models/dev` paths as controlled local model paths for the acceptance runtime.
 - The 0.40 runner validates ASR chunk evidence after analysis, including the chunk manifest, source-duration coverage, and every chunk result file.
 - The 0.40 runner accepts an optional glossary JSON file and passes it into translation for professional terminology checks.
@@ -89,6 +90,7 @@ Preflight:
 ```powershell
 node .\scripts\verify-model-manifests.mjs
 python .\scripts\acceptance\check-0-40-readiness.py
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <path> -PreflightOnly
 ```
 
 Hunyuan local license acceptance, after upstream license review:
@@ -108,6 +110,8 @@ Acceptance:
 python .\scripts\acceptance\run-0-40-three-hour.py --source-video <path> --glossary-path <glossary.json>
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <path> -GlossaryPath <glossary.json>
 ```
+
+`--preflight-only` / `-PreflightOnly` is not acceptance evidence. It proves the candidate media and local model setup are ready before the expensive three-hour run.
 
 Full verification:
 

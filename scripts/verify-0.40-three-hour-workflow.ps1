@@ -5,6 +5,7 @@ param(
   [Parameter(Mandatory = $false)][string]$TranslationModelDir = ".\models\dev\translation\tencent--Hunyuan-MT-7B-fp8",
   [Parameter(Mandatory = $false)][string]$GlossaryPath,
   [Parameter(Mandatory = $false)][string]$OutputDir = ".\.dev\release-evidence\0.40",
+  [switch]$PreflightOnly,
   [string]$PythonExe = "python",
   [string]$FfmpegPath = "ffmpeg",
   [string]$FfprobePath = "ffprobe",
@@ -17,8 +18,9 @@ $ErrorActionPreference = "Stop"
 function Show-Usage {
   Write-Host "Usage:"
   Write-Host "  .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <three-hour-video> -AsrModelDir .\models\dev\asr\microsoft--VibeVoice-ASR -TranslationModelDir .\models\dev\translation\tencent--Hunyuan-MT-7B-fp8 -GlossaryPath .\glossary.json -OutputDir .\.dev\release-evidence\0.40"
+  Write-Host "  .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <three-hour-video> -PreflightOnly"
   Write-Host ""
-  Write-Host "Runs the Diplomat 0.40 three-hour acceptance workflow and writes acceptance-summary.json under OutputDir."
+  Write-Host "Runs the Diplomat 0.40 three-hour acceptance workflow and writes acceptance-summary.json under OutputDir. Use -PreflightOnly to validate media and model readiness without starting ASR or translation."
 }
 
 if ($Help) {
@@ -61,6 +63,9 @@ $argsList = @(
 
 if ($null -ne $resolvedGlossaryPath) {
   $argsList += @("--glossary-path", $resolvedGlossaryPath.Path)
+}
+if ($PreflightOnly) {
+  $argsList += "--preflight-only"
 }
 
 & $PythonExe @argsList

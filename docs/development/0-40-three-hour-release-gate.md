@@ -58,10 +58,12 @@ node .\scripts\verify-release-assets.mjs
 Opt-in acceptance verification:
 
 ```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <three-hour-video> -PreflightOnly
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <three-hour-video> -AsrModelDir .\models\dev\asr\microsoft--VibeVoice-ASR -TranslationModelDir .\models\dev\translation\tencent--Hunyuan-MT-7B-fp8 -OutputDir .\.dev\release-evidence\0.40
 ```
+
+The preflight-only command validates media duration, audio presence, local model readiness, model paths, and glossary parsing without starting ASR or translation. It cannot replace the full three-hour acceptance run.
 
 ## Stage Gate
 
 0.40 can merge and tag only when real three-hour evidence exists. If the three-hour workflow cannot be executed in the current environment, the stage remains blocked rather than accepted.
-

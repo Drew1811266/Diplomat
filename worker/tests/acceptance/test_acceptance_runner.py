@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -90,6 +91,7 @@ def test_0_40_verify_wrapper_exposes_help() -> None:
     assert result.returncode == 0
     assert "verify-0.40-three-hour-workflow.ps1" in result.stdout
     assert "GlossaryPath" in result.stdout
+    assert "PreflightOnly" in result.stdout
 
 
 def test_0_40_runner_writes_summary_for_missing_source(tmp_path: Path) -> None:
@@ -193,6 +195,79 @@ def test_0_40_runner_rejects_silent_source_before_model_preflight(tmp_path: Path
     assert summary["videoProbe"]["hasAudio"] is False
     assert "no audio stream" in summary["error"]
     assert summary["checks"] == []
+
+
+def test_0_40_runner_preflight_only_stops_before_worker_execution(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    runner = load_acceptance_runner()
+    evidence_dir = tmp_path / "evidence"
+    source = tmp_path / "three-hour.mp4"
+    source.write_bytes(b"fixture")
+    ffprobe = write_fake_ffprobe(
+        tmp_path,
+        {
+            "format": {"duration": "10800"},
+            "streams": [
+                {"codec_type": "video", "codec_name": "h264"},
+                {"codec_type": "audio", "codec_name": "aac"},
+            ],
+        },
+    )
+
+    def fake_subprocess_run(command, *args, **kwargs):
+        if command and str(command[0]) == str(ffprobe):
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "format": {"duration": "10800"},
+                        "streams": [
+                            {"codec_type": "video", "codec_name": "h264"},
+                            {"codec_type": "audio", "codec_name": "aac"},
+                        ],
+                    }
+                ),
+                stderr="",
+            )
+        return SimpleNamespace(returncode=0, stdout="preflight ok", stderr="")
+
+    def fail_worker_runtime(*args, **kwargs):
+        raise AssertionError("preflight-only mode must not create WorkerRuntime")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_subprocess_run)
+    monkeypatch.setattr(
+        runner,
+        "resolve_development_model_paths",
+        lambda root, model_ids: {model_id: f"D:/models/{model_id}" for model_id in model_ids},
+    )
+    monkeypatch.setattr(runner, "WorkerRuntime", fail_worker_runtime)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run-0-40-three-hour.py",
+            "--source-video",
+            str(source),
+            "--evidence-dir",
+            str(evidence_dir),
+            "--ffprobe-path",
+            str(ffprobe),
+            "--preflight-only",
+        ],
+    )
+
+    assert runner.main() == 0
+
+    summary = json.loads((evidence_dir / "acceptance-summary.json").read_text(encoding="utf-8"))
+    assert summary["status"] == "preflight-passed"
+    assert summary["preflightOnly"] is True
+    assert summary["videoProbe"]["durationMs"] == 10_800_000
+    assert summary["videoProbe"]["hasAudio"] is True
+    assert summary["checks"][0]["id"] == "preflight"
+    assert "project" not in summary
+    assert "analysisTask" not in summary
 
 
 def copy_model_layout(tmp_path: Path) -> Path:

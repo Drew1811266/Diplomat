@@ -4,9 +4,9 @@
 
 **Goal:** Validate Diplomat 0.4 with a real three-hour video using the approved ASR and translation model targets.
 
-**Hard Gate:** The current repository does not contain model weights and does not contain the Hunyuan license acceptance record. 0.40 execution is blocked until those local files exist.
+**Hard Gate:** The local development machine now has the Hunyuan license acceptance record and Hunyuan MT FP8 weights. 0.40 execution remains blocked until a representative three-hour source video is selected and the full real-model acceptance run succeeds.
 
-**Progress Note:** Preflight, model preparation, three-hour runner tooling, ASR chunk evidence checks, glossary quality checks, runtime-cleanup evidence checks, subtitle-completeness checks, the PowerShell verification wrapper, VibeVoice ASR runtime validation, and Hunyuan MT FP8 adapter preparation are implemented. Final 0.40 acceptance remains pending until Hunyuan license acceptance/model files are available, Hunyuan is validated against real local weights, a three-hour source video is selected, and the full acceptance run succeeds.
+**Progress Note:** Preflight, model preparation, three-hour runner tooling, preflight-only media/model validation, ASR chunk evidence checks, glossary quality checks, runtime-cleanup evidence checks, subtitle-completeness checks, the PowerShell verification wrapper, VibeVoice ASR runtime validation, Hunyuan MT FP8 adapter preparation, and Hunyuan real-model smoke are implemented. Final 0.40 acceptance remains pending until a three-hour source video is selected and the full acceptance run succeeds.
 
 ## Files
 
@@ -51,6 +51,7 @@ Expected now: fail with missing model files/license record.
   - Accept a real source video path.
   - Reject media shorter than three hours before model preflight.
   - Reject media with no audio stream before model preflight.
+  - Support a preflight-only mode that validates media, model readiness, model paths, and glossary parsing without starting ASR or translation.
   - Resolve manifest-verified `models/dev` paths for the selected real models.
   - Create a project.
   - Start ASR.
@@ -86,6 +87,4 @@ Expected now: fail with missing model files/license record.
 
 ## Current Blockers
 
-- Missing Hunyuan MT FP8 weights under `models/dev/translation/tencent--Hunyuan-MT-7B-fp8`.
-- Missing local Hunyuan license acceptance record.
 - No three-hour source video has been selected for acceptance.
