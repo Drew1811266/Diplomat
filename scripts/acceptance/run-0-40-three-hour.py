@@ -20,6 +20,10 @@ from diplomat_worker.asr.chunk_store import (  # noqa: E402
     valid_chunk_result_exists,
 )
 from diplomat_worker.asr.config import AsrModelConfig  # noqa: E402
+from diplomat_worker.export.text_subtitles import (  # noqa: E402
+    validate_subtitle_document_for_export,
+    write_subtitle_export,
+)
 from diplomat_worker.media.ffmpeg import probe_video  # noqa: E402
 from diplomat_worker.models.dev_manifests import (  # noqa: E402
     development_readiness,
@@ -33,7 +37,8 @@ from diplomat_worker.tasks.translation import TranslationJobManager  # noqa: E40
 from diplomat_worker.schemas.subtitle import TranslationGlossaryEntry  # noqa: E402
 from diplomat_worker.translation.config import TranslationProviderConfig  # noqa: E402
 
-MIN_ACCEPTANCE_DURATION_MS = 3 * 60 * 60 * 1000
+RELEASE_MIN_ACCEPTANCE_DURATION_MS = 2 * 60 * 60 * 1000
+SMOKE_MIN_ACCEPTANCE_DURATION_MS = 5 * 60 * 1000
 
 
 def main() -> int:
@@ -44,8 +49,10 @@ def main() -> int:
     summary_path = evidence_dir / "acceptance-summary.json"
 
     started_at = datetime.now(UTC).isoformat()
+    minimum_duration_ms = minimum_duration_for_profile(args.acceptance_profile)
     summary: dict = {
         "schemaVersion": "diplomat.0-40-acceptance.v1",
+        "acceptanceProfile": args.acceptance_profile,
         "startedAt": started_at,
         "sourceVideo": str(source_video),
         "evidenceDir": str(evidence_dir),
@@ -61,14 +68,14 @@ def main() -> int:
         probe = probe_video(source_video, ffprobe_path=args.ffprobe_path)
         summary["videoProbe"] = {
             "durationMs": probe.duration_ms,
-            "minimumDurationMs": MIN_ACCEPTANCE_DURATION_MS,
+            "minimumDurationMs": minimum_duration_ms,
             "hasAudio": probe.has_audio,
             "audioCodec": probe.audio_codec,
             "videoCodec": probe.video_codec,
         }
-        if probe.duration_ms < MIN_ACCEPTANCE_DURATION_MS:
+        if probe.duration_ms < minimum_duration_ms:
             raise AcceptanceError(
-                f"Source video is shorter than three hours: {probe.duration_ms} ms."
+                f"Source video is shorter than {profile_duration_label(args.acceptance_profile)}: {probe.duration_ms} ms."
             )
         if not probe.has_audio:
             raise AcceptanceError("Source video has no audio stream.")
@@ -123,7 +130,7 @@ def main() -> int:
             allow_unmanaged_translation_models=True,
         )
         project = runtime.store.create_project(
-            name="0.40 three-hour acceptance",
+            name=f"0.40 {args.acceptance_profile} acceptance",
             source_video_path=source_video,
             duration_ms=probe.duration_ms,
             source_language=args.source_language,
@@ -194,6 +201,10 @@ def main() -> int:
             document,
             subtitle_path=project.project_dir / "subtitle.diplomat.json",
         )
+        summary["exports"] = write_acceptance_export_artifacts(
+            document,
+            project_dir=project.project_dir,
+        )
 
         summary["status"] = "passed"
         summary["completedAt"] = datetime.now(UTC).isoformat()
@@ -212,6 +223,18 @@ def main() -> int:
 
 class AcceptanceError(RuntimeError):
     pass
+
+
+def minimum_duration_for_profile(profile: str) -> int:
+    if profile == "smoke":
+        return SMOKE_MIN_ACCEPTANCE_DURATION_MS
+    return RELEASE_MIN_ACCEPTANCE_DURATION_MS
+
+
+def profile_duration_label(profile: str) -> str:
+    if profile == "smoke":
+        return "five minutes"
+    return "two hours"
 
 
 def resolve_development_model_paths(root: Path, model_ids: list[str]) -> dict[str, str]:
@@ -405,6 +428,42 @@ def validate_subtitle_acceptance(document, *, subtitle_path: Path) -> dict:
     return summary
 
 
+def write_acceptance_export_artifacts(document, *, project_dir: Path) -> dict:
+    export_warnings = validate_subtitle_document_for_export(document)
+    exports_dir = project_dir / "exports" / "0-40-acceptance"
+    artifacts: list[dict] = []
+    for export_format in ["srt", "vtt", "ass"]:
+        output_path = exports_dir / f"subtitle-bilingual.{export_format}"
+        write_subtitle_export(document, output_path, export_format, "bilingual")
+        size_bytes = output_path.stat().st_size if output_path.is_file() else 0
+        if size_bytes <= 0:
+            raise AcceptanceError(f"{export_format.upper()} export artifact is empty: {output_path}")
+        artifacts.append(
+            {
+                "format": export_format,
+                "mode": "bilingual",
+                "path": str(output_path),
+                "bytes": size_bytes,
+            }
+        )
+
+    return {
+        "mode": "bilingual",
+        "artifactCount": len(artifacts),
+        "artifacts": artifacts,
+        "validationWarningCount": len(export_warnings),
+        "validationWarnings": [
+            {
+                "lineId": warning.line_id,
+                "code": warning.code,
+                "severity": warning.severity,
+                "message": warning.message,
+            }
+            for warning in export_warnings
+        ],
+    }
+
+
 def count_subtitle_timing_issues(lines, duration_ms: int) -> int:
     issues = 0
     previous_start_ms = -1
@@ -420,7 +479,7 @@ def count_subtitle_timing_issues(lines, duration_ms: int) -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run Diplomat 0.40 three-hour acceptance.")
+    parser = argparse.ArgumentParser(description="Run Diplomat 0.40 two-to-three-hour acceptance.")
     parser.add_argument("--source-video", required=True, type=Path)
     parser.add_argument(
         "--evidence-dir",
@@ -441,6 +500,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--translation-compute-type", default="bfloat16")
     parser.add_argument("--translation-batch-size", type=int, default=1)
     parser.add_argument("--glossary-path", type=Path)
+    parser.add_argument(
+        "--acceptance-profile",
+        choices=["release", "smoke"],
+        default="release",
+        help="Use release for the final 2-3 hour gate or smoke for an initial short-video full workflow run.",
+    )
     parser.add_argument(
         "--preflight-only",
         action="store_true",

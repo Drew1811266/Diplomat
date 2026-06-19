@@ -6,7 +6,7 @@
 
 **Architecture:** Add a pure Python planner under `worker/diplomat_worker/pipeline/segmentation.py`. Keep `AudioChunk` as the transcriber-facing unit. Extend `run_core_pipeline` with an optional `segmentation_planner` callable. The default path stays fixed-chunk compatible, while tests inject speech intervals.
 
-**0.4 Alignment:** This is the first runtime pipeline step toward the final three-hour acceptance run. It prepares chunking for lecture/tutorial/course videos with long speech regions and specialized vocabulary.
+**0.4 Alignment:** This is the first runtime pipeline step toward the final 2-3 hour acceptance run. It prepares chunking for lecture/tutorial/course videos with long speech regions and specialized vocabulary.
 
 ## Files
 

@@ -41,7 +41,14 @@ def probe_video(source_video: Path, ffprobe_path: str = "ffprobe") -> VideoProbe
         "-show_streams",
         str(source_video),
     ]
-    result = subprocess.run(command, capture_output=True, text=True, check=True)
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+    )
     payload = json.loads(result.stdout)
     duration_seconds = float(payload.get("format", {}).get("duration", 0))
     has_audio = False

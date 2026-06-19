@@ -1,12 +1,12 @@
-# Diplomat 0.40 Three-Hour Acceptance Implementation Plan
+# Diplomat 0.40 Two-To-Three-Hour Acceptance Implementation Plan
 
-> For agentic workers: this is the final 0.4 gate. Do not mark accepted until a real three-hour run completes.
+> For agentic workers: this is the final 0.4 gate. Do not mark accepted until a real 2-3 hour run completes.
 
-**Goal:** Validate Diplomat 0.4 with a real three-hour video using the approved ASR and translation model targets.
+**Goal:** Validate Diplomat 0.4 with a real 2-3 hour video using the approved ASR and translation model targets.
 
-**Hard Gate:** The local development machine now has the Hunyuan license acceptance record and Hunyuan MT FP8 weights. 0.40 execution remains blocked until a representative three-hour source video is selected and the full real-model acceptance run succeeds.
+**Hard Gate:** The local development machine now has the Hunyuan license acceptance record and Hunyuan MT FP8 weights. 0.40 execution now proceeds through a short-video `smoke` profile before the final 2-3 hour `release` profile. The user-provided short video is English and must be translated to Chinese.
 
-**Progress Note:** Preflight, model preparation, media candidate scanning, three-hour runner tooling, preflight-only media/model validation, ASR chunk evidence checks, glossary quality checks, runtime-cleanup evidence checks, subtitle-completeness checks, completed-summary verification, the PowerShell verification wrapper, VibeVoice ASR runtime validation, Hunyuan MT FP8 adapter preparation, and Hunyuan real-model smoke are implemented. Final 0.40 acceptance remains pending until a three-hour source video is selected and the full acceptance run succeeds.
+**Progress Note:** Preflight, model preparation, media candidate scanning, long-video runner tooling, short-video smoke profile, preflight-only media/model validation, ASR chunk evidence checks, glossary quality checks, runtime-cleanup evidence checks, subtitle-completeness checks, export-artifact evidence checks, completed-summary verification, the PowerShell verification wrapper, VibeVoice ASR runtime validation, Hunyuan MT FP8 adapter preparation, and Hunyuan real-model smoke are implemented. The local English-to-Chinese short-video smoke run passed at `.dev/acceptance/0-40/smoke-20260619-120854`. Final 0.40 acceptance remains pending until the 2-3 hour release-profile acceptance video completes the full run.
 
 ## Files
 
@@ -47,13 +47,14 @@ Expected now: fail with missing model files/license record.
 - [ ] Implement or adjust the Hunyuan translation provider path.
 - [ ] Confirm ASR and translation run sequentially and cleanup logs appear.
 
-## Task 3: Three-Hour Acceptance Runner
+## Task 3: Two-To-Three-Hour Acceptance Runner
 
 - [ ] Add `scripts/acceptance/run-0-40-three-hour.py`.
 - [ ] Add `scripts/acceptance/verify-0-40-acceptance-summary.py`.
 - [ ] The runner must:
   - Accept a real source video path.
-  - Reject media shorter than three hours before model preflight.
+  - Reject release-profile media shorter than two hours before model preflight.
+  - Support `--acceptance-profile smoke` for short-video full workflow testing before the final release run.
   - Reject media with no audio stream before model preflight.
   - Reject audio-only containers with no video stream before model preflight.
   - Support a preflight-only mode that validates media, model readiness, model paths, and glossary parsing without starting ASR or translation.
@@ -69,6 +70,7 @@ Expected now: fail with missing model files/license record.
   - Fail acceptance if translation cleanup logs do not show the runtime resource was closed.
   - Fail acceptance for CUDA-mode tasks unless the diagnostic logs show CUDA accelerator cache cleanup.
   - Fail acceptance if the final subtitle document has blank source lines, missing translations, failed translation states, incomplete translation states, timing corruption, or glossary quality issues.
+  - Generate SRT, VTT, and ASS subtitle export artifacts and record them in `acceptance-summary.json`.
   - Save paths to logs, subtitle output, and timing summary.
   - Return nonzero on any failed task or missing output.
 - [ ] The summary verifier must reject preflight-only, failed, partial, fake, or incomplete `acceptance-summary.json` files.
@@ -77,7 +79,8 @@ Expected now: fail with missing model files/license record.
 
 - [ ] Update release metadata to `0.40.0`.
 - [ ] Run focused tests.
-- [ ] Run the three-hour acceptance runner.
+- [x] Run the short-video smoke acceptance runner with `--source-language en --target-language zh`.
+- [ ] Run the 2-3 hour acceptance runner.
 - [ ] Run the completed acceptance summary verifier:
 
 ```powershell
@@ -99,4 +102,4 @@ python .\scripts\acceptance\verify-0-40-acceptance-summary.py --summary <evidenc
 
 ## Current Blockers
 
-- No three-hour source video has been selected for acceptance.
+- Full release-profile acceptance has not yet completed against a 2-3 hour source.

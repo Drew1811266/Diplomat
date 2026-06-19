@@ -62,14 +62,14 @@ function createMinimalFixture() {
       "Stage: 0.40",
       "## Objective",
       "## Acceptance Criteria",
-      "Do not merge 0.40 before real three-hour acceptance evidence exists.",
+      "Do not merge 0.40 before real two-to-three-hour acceptance evidence exists.",
       "Do not accept fake ASR or fake translation as 0.40 evidence."
     ].join("\n")
   );
   writeFixtureFile(
     fixture,
     "docs/development/0-40-three-hour-release-gate.md",
-    "0.40 can merge and tag only when real three-hour evidence exists.\n"
+    "0.40 can merge and tag only when real two-to-three-hour evidence exists.\n"
   );
 
   for (const plan of [
@@ -111,7 +111,7 @@ test("audits the current repository 0.4 stage process", () => {
   assert.match(result.stdout, /0\.40: in progress/);
 });
 
-test("accepts 0.40 in-progress gate blocked by missing three-hour evidence", () => {
+test("accepts 0.40 in-progress gate blocked by missing two-to-three-hour evidence", () => {
   const fixture = createMinimalFixture();
 
   const result = runVerifier(["--repo-root", fixture]);

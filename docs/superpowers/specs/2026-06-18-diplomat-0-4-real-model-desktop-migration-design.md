@@ -6,7 +6,7 @@ Target: 0.36 through 0.40
 
 ## Summary
 
-Diplomat 0.4 is the real-model desktop migration line. It moves the product from a repository-verified 0.35 stability release to a desktop workflow that can complete a representative three-hour course, lecture, or tutorial video using real local models.
+Diplomat 0.4 is the real-model desktop migration line. It moves the product from a repository-verified 0.35 stability release to a desktop workflow that can complete a representative 2-3 hour course, lecture, or tutorial video using real local models.
 
 The 0.4 release has three major goals:
 
@@ -14,7 +14,7 @@ The 0.4 release has three major goals:
 2. Integrate real local ASR and translation models through project-local model directories and release-safe manifests.
 3. Replace fixed-duration chunking with intelligent course-oriented segmentation, then verify that the full video-to-subtitle-to-translation-to-export workflow actually runs.
 
-The release is accepted only when a three-hour video can run end-to-end with recoverable ASR chunks, translation batches, model memory isolation, editable subtitles, and exported results.
+The release is accepted only when a 2-3 hour video can run end-to-end with recoverable ASR chunks, translation batches, model memory isolation, editable subtitles, and exported results.
 
 ## Accepted Model Direction
 
@@ -55,7 +55,7 @@ The target hardware is strong enough for 0.4, but VRAM must be treated as a cons
 - Do not make `tencent/Hy-MT2-30B-A3B` a 0.4 acceptance requirement.
 - Do not commit model weights to GitHub.
 - Do not require cloud ASR or cloud translation.
-- Do not require low-end CPU-only machines to process three-hour videos.
+- Do not require low-end CPU-only machines to process 2-3 hour videos.
 - Do not replace Diplomat with a full nonlinear video editor.
 - Do not make NVIDIA NeMo the only segmentation path unless it proves stable on the target machine.
 
@@ -67,7 +67,7 @@ The target hardware is strong enough for 0.4, but VRAM must be treated as a cons
 | 0.37 | Model directory and manifest system | Project-local development model folders, Git ignore rules, model manifests, license metadata, download checks, and runtime profile records are in place. |
 | 0.38 | Intelligent long-audio ASR | Three-hour media is segmented with speech-aware boundaries, transcribed with VibeVoice-ASR in isolated ASR execution, persisted chunk-by-chunk, and merged. |
 | 0.39 | Hunyuan translation pipeline | Hunyuan-MT-7B-fp8 translates subtitle batches with glossary, hotword, and context support after ASR memory is released. |
-| 0.40 | Three-hour release gate | The full desktop workflow is verified with a three-hour video, crash/resume evidence, memory evidence, export evidence, and a stage gate review. |
+| 0.40 | 2-3 hour release gate | The full desktop workflow is verified with a 2-3 hour video, crash/resume evidence, memory evidence, export evidence, and a stage gate review. |
 
 ## Desktop UI Direction
 
@@ -163,7 +163,7 @@ Experimental advanced path: NVIDIA NeMo diarization or segmentation.
 - Official docs: <https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/asr/speaker_diarization/intro.html>
 - Reason: stronger speech intelligence, diarization, speaker-aware segmentation, and research-grade pipelines.
 - Role: evaluate whether it produces better course-video boundaries on the target machine.
-- Gate: it can become default only if it completes representative media reliably without undermining the three-hour release target.
+- Gate: it can become default only if it completes representative media reliably without undermining the 2-3 hour release target.
 
 ### Layer 2: Boundary Scoring
 
@@ -239,7 +239,7 @@ The ASR stage:
 - writes raw model output, normalized segments, speaker labels when available, timestamps, hotword metadata, and diagnostics.
 - exits when all chunks are complete or when cancellation/failure is recorded.
 
-ASR chunk results must be reusable across retry. If chunk 9 fails in a three-hour video, retry must not rerun chunks 1-8 unless their outputs are invalid.
+ASR chunk results must be reusable across retry. If chunk 9 fails in a 2-3 hour video, retry must not rerun chunks 1-8 unless their outputs are invalid.
 
 The ASR provider must support hotwords for professional terms. Hotwords can come from:
 
@@ -336,7 +336,7 @@ They must not require:
 - real model downloads.
 - GPU.
 - network.
-- three-hour media.
+- 2-3 hour media.
 - Docker.
 - vLLM.
 
@@ -355,7 +355,7 @@ Opt-in acceptance tests verify real behavior:
 - VibeVoice-ASR smoke on a short clip.
 - Hunyuan-MT-7B-fp8 smoke on a short subtitle set.
 - one-hour course-video rehearsal.
-- three-hour course-video release gate.
+- 2-3 hour course-video release gate.
 - ASR interruption and retry.
 - translation interruption and retry.
 - GPU memory release after ASR process exit.
@@ -366,7 +366,7 @@ Opt-in acceptance tests verify real behavior:
 
 Diplomat 0.4 is accepted only when all of the following are true:
 
-- A representative three-hour course, lecture, or tutorial video completes the full workflow.
+- A representative 2-3 hour course, lecture, or tutorial video completes the full workflow.
 - The desktop app can run the workflow without manual terminal orchestration after required models are installed.
 - Speech-aware segmentation avoids obvious mid-speech boundaries in the acceptance video.
 - Any forced boundary is recorded and visible in diagnostics.

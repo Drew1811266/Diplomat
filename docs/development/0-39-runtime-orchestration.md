@@ -37,7 +37,7 @@ The Worker can call model/provider cleanup hooks at task boundaries and clear ac
 - Do not run VibeVoice ASR inference in 0.39.
 - Do not run Hunyuan MT FP8 inference in 0.39.
 - Do not implement a full process-isolated model worker in 0.39.
-- Do not claim final three-hour acceptance.
+- Do not claim final 2-3 hour acceptance.
 
 ## Acceptance Criteria
 

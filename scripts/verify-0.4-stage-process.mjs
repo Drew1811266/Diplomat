@@ -243,8 +243,8 @@ function validateFinalStage() {
   if (requireFile(finalStage.releaseGateDoc, "Missing 0.40 release gate document.")) {
     const releaseGate = readText(finalStage.releaseGateDoc);
     expect(
-      releaseGate.includes("0.40 can merge and tag only when real three-hour evidence exists"),
-      "0.40 release gate must explicitly block merge/tag before real three-hour evidence exists."
+      releaseGate.includes("0.40 can merge and tag only when real two-to-three-hour evidence exists"),
+      "0.40 release gate must explicitly block merge/tag before real two-to-three-hour evidence exists."
     );
   }
 
@@ -264,7 +264,7 @@ function validateFinalStage() {
 function validateAcceptedFinalGate() {
   const content = readText(finalStage.finalStageGate);
   expect(content.includes("Decision: Accepted"), "0.40 stage gate exists but is not accepted.");
-  expect(content.includes("three-hour"), "0.40 accepted stage gate must mention three-hour evidence.");
+  expect(content.includes("two-to-three-hour"), "0.40 accepted stage gate must mention two-to-three-hour evidence.");
 
   if (existsSync(rootPath("package.json"))) {
     const packageVersion = readJson("package.json").version;
@@ -275,8 +275,8 @@ function validateAcceptedFinalGate() {
 function validateInProgressFinalGate() {
   const acceptanceDoc = readText(finalStage.developmentDoc);
   expect(
-    acceptanceDoc.includes("Do not merge 0.40 before real three-hour acceptance evidence exists."),
-    "0.40 in-progress document must explicitly block merge before real three-hour acceptance evidence exists."
+    acceptanceDoc.includes("Do not merge 0.40 before real two-to-three-hour acceptance evidence exists."),
+    "0.40 in-progress document must explicitly block merge before real two-to-three-hour acceptance evidence exists."
   );
   expect(
     acceptanceDoc.includes("Do not accept fake ASR or fake translation as 0.40 evidence."),

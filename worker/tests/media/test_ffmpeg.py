@@ -9,8 +9,10 @@ def test_probe_video_parses_duration_and_audio_stream(monkeypatch, tmp_path: Pat
     source = tmp_path / "demo.mp4"
     source.write_bytes(b"fake")
 
-    def fake_run(command, capture_output, text, check):
+    def fake_run(command, capture_output, text, encoding, errors, check):
         assert "ffprobe" in command[0]
+        assert encoding == "utf-8"
+        assert errors == "replace"
         return subprocess.CompletedProcess(
             command,
             0,
@@ -38,8 +40,10 @@ def test_probe_video_detects_audio_stream_without_codec_name(monkeypatch, tmp_pa
     source = tmp_path / "demo.mp4"
     source.write_bytes(b"fake")
 
-    def fake_run(command, capture_output, text, check):
+    def fake_run(command, capture_output, text, encoding, errors, check):
         assert "ffprobe" in command[0]
+        assert encoding == "utf-8"
+        assert errors == "replace"
         return subprocess.CompletedProcess(
             command,
             0,
@@ -64,8 +68,10 @@ def test_probe_video_preserves_first_audio_stream_codec_name(monkeypatch, tmp_pa
     source = tmp_path / "demo.mp4"
     source.write_bytes(b"fake")
 
-    def fake_run(command, capture_output, text, check):
+    def fake_run(command, capture_output, text, encoding, errors, check):
         assert "ffprobe" in command[0]
+        assert encoding == "utf-8"
+        assert errors == "replace"
         return subprocess.CompletedProcess(
             command,
             0,
@@ -93,8 +99,10 @@ def test_probe_video_preserves_first_video_stream_codec_name(monkeypatch, tmp_pa
     source = tmp_path / "demo.mp4"
     source.write_bytes(b"fake")
 
-    def fake_run(command, capture_output, text, check):
+    def fake_run(command, capture_output, text, encoding, errors, check):
         assert "ffprobe" in command[0]
+        assert encoding == "utf-8"
+        assert errors == "replace"
         return subprocess.CompletedProcess(
             command,
             0,
@@ -122,3 +130,34 @@ def test_ffmpeg_check_reports_missing_source(tmp_path: Path) -> None:
 
     assert check.ok is False
     assert check.error_code == "SOURCE_NOT_FOUND"
+
+
+def test_probe_video_uses_utf8_for_non_ascii_paths(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "APEX Animation Basics： Beginner.mp4"
+    source.write_bytes(b"fake")
+
+    def fake_run(command, capture_output, text, encoding, errors, check):
+        assert str(source) in command
+        assert encoding == "utf-8"
+        assert errors == "replace"
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "format": {"duration": "600"},
+                    "streams": [
+                        {"codec_type": "video", "codec_name": "h264"},
+                        {"codec_type": "audio", "codec_name": "aac"},
+                    ],
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    probe = probe_video(source, ffprobe_path="ffprobe")
+
+    assert probe.duration_ms == 600_000
+    assert probe.video_codec == "h264"

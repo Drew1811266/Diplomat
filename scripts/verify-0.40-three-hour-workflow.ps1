@@ -10,17 +10,20 @@ param(
   [string]$FfmpegPath = "ffmpeg",
   [string]$FfprobePath = "ffprobe",
   [string]$SourceLanguage = "zh",
-  [string]$TargetLanguage = "en"
+  [string]$TargetLanguage = "en",
+  [ValidateSet("release", "smoke")]
+  [string]$AcceptanceProfile = "release"
 )
 
 $ErrorActionPreference = "Stop"
 
 function Show-Usage {
   Write-Host "Usage:"
-  Write-Host "  .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <three-hour-video> -AsrModelDir .\models\dev\asr\microsoft--VibeVoice-ASR -TranslationModelDir .\models\dev\translation\tencent--Hunyuan-MT-7B-fp8 -GlossaryPath .\glossary.json -OutputDir .\.dev\release-evidence\0.40"
-  Write-Host "  .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <three-hour-video> -PreflightOnly"
+  Write-Host "  .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <ten-minute-video> -AcceptanceProfile smoke -SourceLanguage en -TargetLanguage zh"
+  Write-Host "  .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <two-to-three-hour-video> -AcceptanceProfile release -AsrModelDir .\models\dev\asr\microsoft--VibeVoice-ASR -TranslationModelDir .\models\dev\translation\tencent--Hunyuan-MT-7B-fp8 -GlossaryPath .\glossary.json -OutputDir .\.dev\release-evidence\0.40"
+  Write-Host "  .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <video> -AcceptanceProfile smoke -PreflightOnly"
   Write-Host ""
-  Write-Host "Runs the Diplomat 0.40 three-hour acceptance workflow and writes acceptance-summary.json under OutputDir. Use -PreflightOnly to validate media and model readiness without starting ASR or translation."
+  Write-Host "Runs the Diplomat 0.40 acceptance workflow and writes acceptance-summary.json under OutputDir. Use -AcceptanceProfile smoke for short-video full workflow validation, release for the final 2-3 hour gate, and -PreflightOnly to validate media and model readiness without starting ASR or translation."
 }
 
 if ($Help) {
@@ -42,8 +45,9 @@ if (-not [string]::IsNullOrWhiteSpace($GlossaryPath)) {
 $resolvedOutputDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDir)
 New-Item -ItemType Directory -Force -Path $resolvedOutputDir | Out-Null
 
-Write-Host "Diplomat 0.40 three-hour workflow verification"
+Write-Host "Diplomat 0.40 workflow verification"
 Write-Host "  Media: $resolvedMedia"
+Write-Host "  Acceptance profile: $AcceptanceProfile"
 Write-Host "  ASR model dir: $resolvedAsrModelDir"
 Write-Host "  Translation model dir: $resolvedTranslationModelDir"
 if ($null -ne $resolvedGlossaryPath) {
@@ -58,7 +62,8 @@ $argsList = @(
   "--ffmpeg-path", $FfmpegPath,
   "--ffprobe-path", $FfprobePath,
   "--source-language", $SourceLanguage,
-  "--target-language", $TargetLanguage
+  "--target-language", $TargetLanguage,
+  "--acceptance-profile", $AcceptanceProfile
 )
 
 if ($null -ne $resolvedGlossaryPath) {

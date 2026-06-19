@@ -7,15 +7,17 @@ from pathlib import Path
 from typing import Any
 
 
-MIN_ACCEPTANCE_DURATION_MS = 3 * 60 * 60 * 1000
+RELEASE_MIN_ACCEPTANCE_DURATION_MS = 2 * 60 * 60 * 1000
+SMOKE_MIN_ACCEPTANCE_DURATION_MS = 5 * 60 * 1000
 SCHEMA_VERSION = "diplomat.0-40-acceptance.v1"
 ASR_MODEL_ID = "asr.microsoft.vibevoice-asr"
 TRANSLATION_MODEL_ID = "translation.tencent.hunyuan-mt-7b-fp8"
+REQUIRED_EXPORT_FORMATS = {"srt", "vtt", "ass"}
 
 
 def main() -> int:
     args = parse_args()
-    errors = verify_summary(args.summary)
+    errors = verify_summary(args.summary, acceptance_profile=args.acceptance_profile)
     if errors:
         print("0.40 acceptance summary verification failed:", file=sys.stderr)
         for error in errors:
@@ -28,13 +30,19 @@ def main() -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Verify that a Diplomat 0.40 acceptance summary proves the final three-hour gate."
+        description="Verify that a Diplomat 0.40 acceptance summary proves the final two-to-three-hour long-video gate."
     )
     parser.add_argument("--summary", required=True, type=Path, help="Path to acceptance-summary.json.")
+    parser.add_argument(
+        "--acceptance-profile",
+        choices=["release", "smoke"],
+        default="release",
+        help="Expected evidence profile. Release is the final 2-3 hour gate; smoke is the short-video workflow gate.",
+    )
     return parser.parse_args()
 
 
-def verify_summary(summary_path: Path) -> list[str]:
+def verify_summary(summary_path: Path, *, acceptance_profile: str) -> list[str]:
     errors: list[str] = []
     if not summary_path.is_file():
         return [f"summary file does not exist: {summary_path}"]
@@ -48,13 +56,14 @@ def verify_summary(summary_path: Path) -> list[str]:
         return ["summary root must be a JSON object."]
 
     expect_equal(payload.get("schemaVersion"), SCHEMA_VERSION, "schemaVersion", errors)
+    expect_equal(payload.get("acceptanceProfile"), acceptance_profile, "acceptanceProfile", errors)
     expect_equal(payload.get("status"), "passed", "status", errors)
     expect_equal(payload.get("preflightOnly"), False, "preflightOnly", errors)
     expect_existing_file(payload.get("sourceVideo"), "sourceVideo", errors)
     expect_existing_dir(payload.get("evidenceDir"), "evidenceDir", errors)
 
     video_probe = expect_dict(payload.get("videoProbe"), "videoProbe", errors)
-    source_duration_ms = verify_video_probe(video_probe, errors)
+    source_duration_ms = verify_video_probe(video_probe, acceptance_profile=acceptance_profile, errors=errors)
     verify_preflight_check(payload.get("checks"), errors)
     verify_development_models(payload.get("developmentModels"), errors)
     verify_glossary(payload.get("glossary"), errors)
@@ -70,17 +79,28 @@ def verify_summary(summary_path: Path) -> list[str]:
 
     verify_asr_chunks(payload.get("asrChunks"), analysis_task_id, source_duration_ms, errors)
     verify_subtitle(payload.get("subtitle"), errors)
+    verify_exports(payload.get("exports"), errors)
     return errors
 
 
-def verify_video_probe(video_probe: dict[str, Any], errors: list[str]) -> int | None:
+def verify_video_probe(
+    video_probe: dict[str, Any],
+    *,
+    acceptance_profile: str,
+    errors: list[str],
+) -> int | None:
     duration_ms = expect_int(video_probe.get("durationMs"), "videoProbe.durationMs", errors)
     minimum_duration_ms = expect_int(video_probe.get("minimumDurationMs"), "videoProbe.minimumDurationMs", errors)
+    expected_minimum_ms = minimum_duration_for_profile(acceptance_profile)
 
-    if duration_ms is not None and duration_ms < MIN_ACCEPTANCE_DURATION_MS:
-        errors.append("videoProbe.durationMs must be at least three hours.")
-    if minimum_duration_ms is not None and minimum_duration_ms != MIN_ACCEPTANCE_DURATION_MS:
-        errors.append("videoProbe.minimumDurationMs must equal the 0.40 three-hour minimum.")
+    if duration_ms is not None and duration_ms < expected_minimum_ms:
+        errors.append(
+            f"videoProbe.durationMs must be at least {profile_duration_label(acceptance_profile)}."
+        )
+    if minimum_duration_ms is not None and minimum_duration_ms != expected_minimum_ms:
+        errors.append(
+            f"videoProbe.minimumDurationMs must equal the 0.40 {profile_duration_label(acceptance_profile)} minimum."
+        )
     if video_probe.get("hasAudio") is not True:
         errors.append("videoProbe.hasAudio must be true.")
     if not non_empty_string(video_probe.get("audioCodec")):
@@ -89,6 +109,18 @@ def verify_video_probe(video_probe: dict[str, Any], errors: list[str]) -> int | 
         errors.append("videoProbe.videoCodec must be present.")
 
     return duration_ms
+
+
+def minimum_duration_for_profile(profile: str) -> int:
+    if profile == "smoke":
+        return SMOKE_MIN_ACCEPTANCE_DURATION_MS
+    return RELEASE_MIN_ACCEPTANCE_DURATION_MS
+
+
+def profile_duration_label(profile: str) -> str:
+    if profile == "smoke":
+        return "five minutes"
+    return "two hours"
 
 
 def verify_preflight_check(checks: Any, errors: list[str]) -> None:
@@ -223,6 +255,51 @@ def verify_subtitle(subtitle: Any, errors: list[str]) -> None:
             errors.append(f"subtitle.{field} must be 0.")
 
     expect_existing_file(payload.get("path"), "subtitle.path", errors)
+
+
+def verify_exports(exports: Any, errors: list[str]) -> None:
+    payload = expect_dict(exports, "exports", errors)
+    if payload.get("mode") != "bilingual":
+        errors.append("exports.mode must be bilingual.")
+
+    artifact_count = expect_int(payload.get("artifactCount"), "exports.artifactCount", errors)
+    if artifact_count is not None and artifact_count != len(REQUIRED_EXPORT_FORMATS):
+        errors.append(f"exports.artifactCount must be {len(REQUIRED_EXPORT_FORMATS)}.")
+
+    artifacts = payload.get("artifacts")
+    if not isinstance(artifacts, list):
+        errors.append("exports.artifacts must be a list.")
+        return
+
+    by_format: dict[str, dict[str, Any]] = {}
+    for index, artifact in enumerate(artifacts):
+        if not isinstance(artifact, dict):
+            errors.append(f"exports.artifacts[{index}] must be an object.")
+            continue
+        artifact_format = artifact.get("format")
+        if not non_empty_string(artifact_format):
+            errors.append(f"exports.artifacts[{index}].format must be present.")
+            continue
+        if artifact_format in by_format:
+            errors.append(f"exports.artifacts contains duplicate {artifact_format} artifact.")
+        by_format[artifact_format] = artifact
+
+    for export_format in sorted(REQUIRED_EXPORT_FORMATS):
+        artifact = by_format.get(export_format)
+        if artifact is None:
+            errors.append(f"exports.artifacts must include {export_format}.")
+            continue
+        if artifact.get("mode") != "bilingual":
+            errors.append(f"exports.artifacts.{export_format}.mode must be bilingual.")
+        path_value = artifact.get("path")
+        expect_existing_file(path_value, f"exports.artifacts.{export_format}.path", errors)
+        bytes_value = expect_int(artifact.get("bytes"), f"exports.artifacts.{export_format}.bytes", errors)
+        if bytes_value is not None and bytes_value <= 0:
+            errors.append(f"exports.artifacts.{export_format}.bytes must be greater than 0.")
+        if non_empty_string(path_value) and bytes_value is not None and Path(path_value).is_file():
+            actual_size = Path(path_value).stat().st_size
+            if actual_size != bytes_value:
+                errors.append(f"exports.artifacts.{export_format}.bytes must match the file size.")
 
 
 def expect_equal(actual: Any, expected: Any, label: str, errors: list[str]) -> None:

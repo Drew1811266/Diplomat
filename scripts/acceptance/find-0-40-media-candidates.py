@@ -14,7 +14,8 @@ if str(WORKER_ROOT) not in sys.path:
 from diplomat_worker.media.ffmpeg import probe_video  # noqa: E402
 
 
-MIN_ACCEPTANCE_DURATION_MS = 3 * 60 * 60 * 1000
+RELEASE_MIN_ACCEPTANCE_DURATION_MS = 2 * 60 * 60 * 1000
+SMOKE_MIN_ACCEPTANCE_DURATION_MS = 5 * 60 * 1000
 MEDIA_EXTENSIONS = {
     ".avi",
     ".flv",
@@ -33,6 +34,9 @@ MEDIA_EXTENSIONS = {
 
 def main() -> int:
     args = parse_args()
+    min_duration_ms = args.min_duration_ms
+    if min_duration_ms is None:
+        min_duration_ms = minimum_duration_for_profile(args.acceptance_profile)
     candidates = list(iter_media_paths(args.paths, recursive=args.recursive))
     eligible: list[dict] = []
     rejected: list[dict] = []
@@ -50,7 +54,11 @@ def main() -> int:
             "audioCodec": probe.audio_codec,
             "videoCodec": probe.video_codec,
         }
-        reason = rejection_reason(probe, min_duration_ms=args.min_duration_ms)
+        reason = rejection_reason(
+            probe,
+            min_duration_ms=min_duration_ms,
+            acceptance_profile=args.acceptance_profile,
+        )
         if reason is None:
             eligible.append(record)
         else:
@@ -58,7 +66,8 @@ def main() -> int:
 
     payload = {
         "schemaVersion": "diplomat.0-40-mediaCandidates.v1",
-        "minimumDurationMs": args.min_duration_ms,
+        "acceptanceProfile": args.acceptance_profile,
+        "minimumDurationMs": min_duration_ms,
         "recursive": args.recursive,
         "scannedCount": len(candidates),
         "eligibleCount": len(eligible),
@@ -70,11 +79,17 @@ def main() -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Find media files that satisfy Diplomat 0.40 acceptance prerequisites.")
+    parser = argparse.ArgumentParser(description="Find media files that satisfy Diplomat 0.40 long-video acceptance prerequisites.")
     parser.add_argument("paths", nargs="+", type=Path, help="Media files or directories to scan.")
     parser.add_argument("--recursive", action="store_true", help="Scan directories recursively.")
     parser.add_argument("--ffprobe-path", default="ffprobe")
-    parser.add_argument("--min-duration-ms", type=int, default=MIN_ACCEPTANCE_DURATION_MS)
+    parser.add_argument(
+        "--acceptance-profile",
+        choices=["release", "smoke"],
+        default="release",
+        help="Use release for the final 2-3 hour gate or smoke for a short-video full workflow run.",
+    )
+    parser.add_argument("--min-duration-ms", type=int)
     return parser.parse_args()
 
 
@@ -96,9 +111,17 @@ def is_media_path(path: Path) -> bool:
     return path.suffix.lower() in MEDIA_EXTENSIONS
 
 
-def rejection_reason(probe, *, min_duration_ms: int) -> str | None:
+def minimum_duration_for_profile(profile: str) -> int:
+    if profile == "smoke":
+        return SMOKE_MIN_ACCEPTANCE_DURATION_MS
+    return RELEASE_MIN_ACCEPTANCE_DURATION_MS
+
+
+def rejection_reason(probe, *, min_duration_ms: int, acceptance_profile: str) -> str | None:
     if probe.duration_ms < min_duration_ms:
-        return "shorter than three hours"
+        if acceptance_profile == "smoke":
+            return "shorter than five minutes"
+        return "shorter than two hours"
     if not probe.has_audio:
         return "missing audio stream"
     if probe.video_codec is None:

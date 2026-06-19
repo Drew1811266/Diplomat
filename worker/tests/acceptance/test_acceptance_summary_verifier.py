@@ -6,13 +6,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "scripts" / "acceptance" / "verify-0-40-acceptance-summary.py"
-MIN_DURATION_MS = 3 * 60 * 60 * 1000
+MIN_DURATION_MS = 2 * 60 * 60 * 1000
 
 
 def write_complete_summary(tmp_path: Path, **overrides) -> Path:
     evidence_dir = tmp_path / "evidence"
     evidence_dir.mkdir()
-    source_video = tmp_path / "three-hour.mp4"
+    source_video = tmp_path / "two-hour.mp4"
     source_video.write_bytes(b"video")
     asr_model_dir = tmp_path / "models" / "asr"
     translation_model_dir = tmp_path / "models" / "translation"
@@ -24,12 +24,27 @@ def write_complete_summary(tmp_path: Path, **overrides) -> Path:
     translation_log.write_text("Runtime cleanup: Closed runtime resource.\n", encoding="utf-8")
     manifest_path = evidence_dir / "manifest.json"
     subtitle_path = evidence_dir / "subtitle.diplomat.json"
+    export_dir = evidence_dir / "exports"
     manifest_path.write_text("{}", encoding="utf-8")
     subtitle_path.write_text("{}", encoding="utf-8")
+    export_dir.mkdir()
+    export_artifacts = []
+    for export_format in ["srt", "vtt", "ass"]:
+        export_path = export_dir / f"subtitle-bilingual.{export_format}"
+        export_path.write_text(f"{export_format} export", encoding="utf-8")
+        export_artifacts.append(
+            {
+                "format": export_format,
+                "mode": "bilingual",
+                "path": str(export_path),
+                "bytes": export_path.stat().st_size,
+            }
+        )
 
     summary = {
         "schemaVersion": "diplomat.0-40-acceptance.v1",
         "status": "passed",
+        "acceptanceProfile": "release",
         "sourceVideo": str(source_video),
         "evidenceDir": str(evidence_dir),
         "preflightOnly": False,
@@ -119,6 +134,11 @@ def write_complete_summary(tmp_path: Path, **overrides) -> Path:
             "translationQualityIssueCount": 0,
             "path": str(subtitle_path),
         },
+        "exports": {
+            "mode": "bilingual",
+            "artifactCount": 3,
+            "artifacts": export_artifacts,
+        },
     }
     summary.update(overrides)
 
@@ -128,13 +148,12 @@ def write_complete_summary(tmp_path: Path, **overrides) -> Path:
 
 
 def run_verifier(summary_path: Path) -> subprocess.CompletedProcess[str]:
+    return run_verifier_with_args(["--summary", str(summary_path)])
+
+
+def run_verifier_with_args(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [
-            sys.executable,
-            str(SCRIPT),
-            "--summary",
-            str(summary_path),
-        ],
+        [sys.executable, str(SCRIPT), *args],
         cwd=ROOT,
         text=True,
         capture_output=True,
@@ -187,3 +206,68 @@ def test_0_40_summary_verifier_rejects_subtitle_quality_failures(tmp_path: Path)
     assert result.returncode == 1
     assert "missingTranslationCount must be 0" in result.stderr
     assert "translationQualityIssueCount must be 0" in result.stderr
+
+
+def test_0_40_summary_verifier_rejects_missing_export_artifacts(tmp_path: Path) -> None:
+    summary_path = write_complete_summary(tmp_path)
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    missing_export = Path(summary["exports"]["artifacts"][0]["path"])
+    missing_export.unlink()
+    summary["exports"]["artifactCount"] = 2
+    summary["exports"]["artifacts"] = summary["exports"]["artifacts"][1:]
+    summary_path.write_text(json.dumps(summary), encoding="utf-8")
+
+    result = run_verifier(summary_path)
+
+    assert result.returncode == 1
+    assert "exports.artifactCount must be 3" in result.stderr
+    assert "exports.artifacts must include srt" in result.stderr
+
+
+def test_0_40_summary_verifier_accepts_smoke_profile_summary(tmp_path: Path) -> None:
+    summary_path = write_complete_summary(
+        tmp_path,
+        acceptanceProfile="smoke",
+        videoProbe={
+            "durationMs": 600_000,
+            "minimumDurationMs": 300_000,
+            "hasAudio": True,
+            "audioCodec": "aac",
+            "videoCodec": "h264",
+        },
+        asrChunks={
+            "taskId": "analysis-task",
+            "manifestPath": str(tmp_path / "evidence" / "manifest.json"),
+            "chunkCount": 2,
+            "completedChunkCount": 2,
+            "durationMs": 600_000,
+            "chunkMs": 300_000,
+            "overlapMs": 1_000,
+            "firstChunkStartMs": 0,
+            "lastChunkEndMs": 600_000,
+        },
+    )
+
+    result = run_verifier_with_args(["--summary", str(summary_path), "--acceptance-profile", "smoke"])
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_0_40_summary_verifier_rejects_smoke_summary_for_release_gate(tmp_path: Path) -> None:
+    summary_path = write_complete_summary(
+        tmp_path,
+        acceptanceProfile="smoke",
+        videoProbe={
+            "durationMs": 600_000,
+            "minimumDurationMs": 600_000,
+            "hasAudio": True,
+            "audioCodec": "aac",
+            "videoCodec": "h264",
+        },
+    )
+
+    result = run_verifier(summary_path)
+
+    assert result.returncode == 1
+    assert "acceptanceProfile must be release" in result.stderr
+    assert "videoProbe.durationMs must be at least two hours" in result.stderr

@@ -83,7 +83,7 @@ Observed results:
 - 0.37 does not run Hunyuan MT FP8 translation inference.
 - Hunyuan readiness is blocked until the local license acceptance record exists.
 - VibeVoice readiness reports missing expected files until the development model folder is populated.
-- The final 0.40 acceptance gate still requires a complete three-hour video run.
+- The final 0.40 acceptance gate still requires a complete 2-3 hour video run.
 
 ## Acceptance
 

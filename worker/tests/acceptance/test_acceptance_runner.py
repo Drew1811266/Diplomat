@@ -64,6 +64,7 @@ def test_0_40_runner_defaults_use_bfloat16_for_real_model_targets(monkeypatch) -
     assert args.translation_provider == "local-llm"
     assert args.translation_model_id == "translation.tencent.hunyuan-mt-7b-fp8"
     assert args.translation_compute_type == "bfloat16"
+    assert args.acceptance_profile == "release"
 
 
 def test_0_40_verify_wrapper_exposes_help() -> None:
@@ -155,7 +156,7 @@ def test_0_40_runner_rejects_short_source_before_model_preflight(tmp_path: Path)
     assert result.returncode == 1
     assert summary["status"] == "failed"
     assert summary["videoProbe"]["durationMs"] == 42_000
-    assert "shorter than three hours" in summary["error"]
+    assert "shorter than two hours" in summary["error"]
     assert summary["checks"] == []
 
 
@@ -242,12 +243,12 @@ def test_0_40_runner_preflight_only_stops_before_worker_execution(
 ) -> None:
     runner = load_acceptance_runner()
     evidence_dir = tmp_path / "evidence"
-    source = tmp_path / "three-hour.mp4"
+    source = tmp_path / "two-hour.mp4"
     source.write_bytes(b"fixture")
     ffprobe = write_fake_ffprobe(
         tmp_path,
         {
-            "format": {"duration": "10800"},
+            "format": {"duration": "7200"},
             "streams": [
                 {"codec_type": "video", "codec_name": "h264"},
                 {"codec_type": "audio", "codec_name": "aac"},
@@ -261,7 +262,7 @@ def test_0_40_runner_preflight_only_stops_before_worker_execution(
                 returncode=0,
                 stdout=json.dumps(
                     {
-                        "format": {"duration": "10800"},
+                        "format": {"duration": "7200"},
                         "streams": [
                             {"codec_type": "video", "codec_name": "h264"},
                             {"codec_type": "audio", "codec_name": "aac"},
@@ -302,11 +303,79 @@ def test_0_40_runner_preflight_only_stops_before_worker_execution(
     summary = json.loads((evidence_dir / "acceptance-summary.json").read_text(encoding="utf-8"))
     assert summary["status"] == "preflight-passed"
     assert summary["preflightOnly"] is True
-    assert summary["videoProbe"]["durationMs"] == 10_800_000
+    assert summary["videoProbe"]["durationMs"] == 7_200_000
     assert summary["videoProbe"]["hasAudio"] is True
     assert summary["checks"][0]["id"] == "preflight"
     assert "project" not in summary
     assert "analysisTask" not in summary
+
+
+def test_0_40_runner_smoke_profile_accepts_ten_minute_preflight(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    runner = load_acceptance_runner()
+    evidence_dir = tmp_path / "evidence"
+    source = tmp_path / "ten-minute.mp4"
+    source.write_bytes(b"fixture")
+    ffprobe = write_fake_ffprobe(
+        tmp_path,
+        {
+            "format": {"duration": "600"},
+            "streams": [
+                {"codec_type": "video", "codec_name": "h264"},
+                {"codec_type": "audio", "codec_name": "aac"},
+            ],
+        },
+    )
+
+    def fake_subprocess_run(command, *args, **kwargs):
+        if command and str(command[0]) == str(ffprobe):
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "format": {"duration": "600"},
+                        "streams": [
+                            {"codec_type": "video", "codec_name": "h264"},
+                            {"codec_type": "audio", "codec_name": "aac"},
+                        ],
+                    }
+                ),
+                stderr="",
+            )
+        return SimpleNamespace(returncode=0, stdout="preflight ok", stderr="")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_subprocess_run)
+    monkeypatch.setattr(
+        runner,
+        "resolve_development_model_paths",
+        lambda root, model_ids: {model_id: f"D:/models/{model_id}" for model_id in model_ids},
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run-0-40-three-hour.py",
+            "--source-video",
+            str(source),
+            "--evidence-dir",
+            str(evidence_dir),
+            "--ffprobe-path",
+            str(ffprobe),
+            "--preflight-only",
+            "--acceptance-profile",
+            "smoke",
+        ],
+    )
+
+    assert runner.main() == 0
+
+    summary = json.loads((evidence_dir / "acceptance-summary.json").read_text(encoding="utf-8"))
+    assert summary["acceptanceProfile"] == "smoke"
+    assert summary["videoProbe"]["durationMs"] == 600_000
+    assert summary["videoProbe"]["minimumDurationMs"] == 300_000
+    assert "project" not in summary
 
 
 def copy_model_layout(tmp_path: Path) -> Path:
@@ -576,6 +645,36 @@ def test_0_40_runner_summarizes_complete_subtitle_document(tmp_path: Path) -> No
         "translationQualityIssueCount": 0,
         "path": str(subtitle_path),
     }
+
+
+def test_0_40_runner_writes_subtitle_export_evidence(tmp_path: Path) -> None:
+    runner = load_acceptance_runner()
+    project_dir = tmp_path / "project"
+
+    evidence = runner.write_acceptance_export_artifacts(
+        make_acceptance_document(),
+        project_dir=project_dir,
+    )
+
+    assert evidence["mode"] == "bilingual"
+    assert evidence["artifactCount"] == 3
+    assert {artifact["format"] for artifact in evidence["artifacts"]} == {"srt", "vtt", "ass"}
+    for artifact in evidence["artifacts"]:
+        export_path = Path(artifact["path"])
+        assert export_path.is_file()
+        assert export_path.is_relative_to(project_dir / "exports" / "0-40-acceptance")
+        assert artifact["bytes"] == export_path.stat().st_size
+        assert artifact["bytes"] > 0
+
+    assert "Hello" in (project_dir / "exports" / "0-40-acceptance" / "subtitle-bilingual.srt").read_text(
+        encoding="utf-8"
+    )
+    assert (project_dir / "exports" / "0-40-acceptance" / "subtitle-bilingual.vtt").read_text(
+        encoding="utf-8"
+    ).startswith("WEBVTT")
+    assert "[Script Info]" in (
+        project_dir / "exports" / "0-40-acceptance" / "subtitle-bilingual.ass"
+    ).read_text(encoding="utf-8")
 
 
 def test_0_40_runner_rejects_partial_subtitle_translation(tmp_path: Path) -> None:
