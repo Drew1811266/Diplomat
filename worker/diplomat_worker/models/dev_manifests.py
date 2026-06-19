@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA_VERSION = "diplomat.modelManifest.v1"
+LICENSE_ACCEPTANCE_SCHEMA_VERSION = "diplomat.licenseAcceptance.v1"
+HUNYUAN_MODEL_ID = "translation.tencent.hunyuan-mt-7b-fp8"
 
 
 @dataclass(frozen=True)
@@ -89,10 +91,21 @@ def development_readiness(
 
     if manifest.license.acceptance_required:
         acceptance_record = manifest.license.acceptance_record
-        if acceptance_record is None or not _rooted_path(base, acceptance_record).is_file():
+        if acceptance_record is None:
             return DevelopmentModelReadiness(
                 usable=False,
                 reason="Model license acceptance is required.",
+            )
+        acceptance_path = _rooted_path(base, acceptance_record)
+        if not acceptance_path.is_file():
+            return DevelopmentModelReadiness(
+                usable=False,
+                reason="Model license acceptance is required.",
+            )
+        if not _valid_acceptance_record(acceptance_path, manifest):
+            return DevelopmentModelReadiness(
+                usable=False,
+                reason="Model license acceptance record is incomplete.",
             )
 
     missing_files = [
@@ -158,3 +171,26 @@ def _required_string(payload: dict[str, Any], key: str) -> str:
 
 def _rooted_path(root: Path, path: Path) -> Path:
     return path if path.is_absolute() else root / path
+
+
+def _valid_acceptance_record(path: Path, manifest: ModelDevelopmentManifest) -> bool:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    if payload.get("schemaVersion") != LICENSE_ACCEPTANCE_SCHEMA_VERSION:
+        return False
+    if payload.get("modelId") != manifest.model_id:
+        return False
+    if payload.get("licenseUrl") != manifest.license.url:
+        return False
+
+    if manifest.model_id == HUNYUAN_MODEL_ID:
+        return (
+            payload.get("restrictedLicenseAcknowledged") is True
+            and payload.get("permittedTerritoryConfirmed") is True
+            and payload.get("noRedistributionConfirmed") is True
+        )
+
+    return True

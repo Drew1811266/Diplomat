@@ -133,6 +133,25 @@ if (!existsSync(manifestDir)) {
         manifest.license.acceptanceRecord,
         `${filename}: license.acceptanceRecord`
       );
+      assertString(manifest.license.licenseType, `${filename}: license.licenseType is required.`);
+      if (manifest.license.sourceCodeLicenseCompatible !== true) {
+        fail(`${filename}: license.sourceCodeLicenseCompatible must be true.`);
+      }
+      if (manifest.license.redistributionAllowed !== false) {
+        fail(`${filename}: license.redistributionAllowed must be false for restricted models.`);
+      }
+      if (manifest.license.modelWeightsBundled !== false) {
+        fail(`${filename}: license.modelWeightsBundled must be false for restricted models.`);
+      }
+      if (manifest.license.userProvidedOnly !== true) {
+        fail(`${filename}: license.userProvidedOnly must be true for restricted models.`);
+      }
+      if (
+        !Array.isArray(manifest.license.excludedTerritories) ||
+        manifest.license.excludedTerritories.length === 0
+      ) {
+        fail(`${filename}: license.excludedTerritories must be a non-empty array.`);
+      }
     }
 
     if (manifest.weightsIgnoredByGit !== true) {

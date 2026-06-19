@@ -39,6 +39,26 @@ def test_development_manifests_load_approved_model_targets() -> None:
     assert len([item for item in vibevoice.expected_files if item.endswith(".safetensors")]) == 8
 
 
+def test_hunyuan_manifest_declares_restricted_external_model_policy() -> None:
+    payload = json.loads(
+        (repo_root() / "models" / "manifests" / "hunyuan-mt-7b-fp8.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    license_payload = payload["license"]
+    assert license_payload["licenseType"] == "restricted-external-model"
+    assert license_payload["sourceCodeLicenseCompatible"] is True
+    assert license_payload["redistributionAllowed"] is False
+    assert license_payload["modelWeightsBundled"] is False
+    assert license_payload["userProvidedOnly"] is True
+    assert license_payload["excludedTerritories"] == [
+        "European Union",
+        "United Kingdom",
+        "South Korea",
+    ]
+
+
 def test_missing_development_directory_returns_safe_readiness_reason(tmp_path: Path) -> None:
     copy_manifest_fixture(tmp_path, "vibevoice-asr.json", create_development_dir=False)
     manifest = get_development_manifest(
@@ -88,7 +108,19 @@ def test_license_required_model_is_blocked_until_acceptance_record_exists(tmp_pa
 
     acceptance_record = tmp_path / (manifest.license.acceptance_record or Path())
     acceptance_record.parent.mkdir(parents=True, exist_ok=True)
-    acceptance_record.write_text('{"accepted": true}', encoding="utf-8")
+    acceptance_record.write_text(
+        json.dumps(
+            {
+                "schemaVersion": "diplomat.licenseAcceptance.v1",
+                "modelId": manifest.model_id,
+                "licenseUrl": manifest.license.url,
+                "restrictedLicenseAcknowledged": True,
+                "permittedTerritoryConfirmed": True,
+                "noRedistributionConfirmed": True,
+            }
+        ),
+        encoding="utf-8",
+    )
     development_dir = tmp_path / manifest.development_path
     for expected_file in manifest.expected_files:
         (development_dir / expected_file).write_text("fixture", encoding="utf-8")
@@ -97,6 +129,22 @@ def test_license_required_model_is_blocked_until_acceptance_record_exists(tmp_pa
 
     assert ready.usable is True
     assert ready.reason is None
+
+
+def test_hunyuan_incomplete_acceptance_record_stays_blocked(tmp_path: Path) -> None:
+    copy_manifest_fixture(tmp_path, "hunyuan-mt-7b-fp8.json")
+    manifest = get_development_manifest(
+        "translation.tencent.hunyuan-mt-7b-fp8",
+        load_development_manifests(tmp_path),
+    )
+    acceptance_record = tmp_path / (manifest.license.acceptance_record or Path())
+    acceptance_record.parent.mkdir(parents=True, exist_ok=True)
+    acceptance_record.write_text('{"accepted": true}', encoding="utf-8")
+
+    readiness = development_readiness(manifest, tmp_path)
+
+    assert readiness.usable is False
+    assert readiness.reason == "Model license acceptance record is incomplete."
 
 
 def test_catalog_reports_development_model_readiness_without_installation(

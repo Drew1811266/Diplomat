@@ -222,7 +222,19 @@ def populate_ready_model(root: Path, manifest_filename: str) -> None:
     if acceptance_record:
         target = root / acceptance_record
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text('{"accepted": true}', encoding="utf-8")
+        target.write_text(
+            json.dumps(
+                {
+                    "schemaVersion": "diplomat.licenseAcceptance.v1",
+                    "modelId": manifest["modelId"],
+                    "licenseUrl": manifest["license"]["url"],
+                    "restrictedLicenseAcknowledged": True,
+                    "permittedTerritoryConfirmed": True,
+                    "noRedistributionConfirmed": True,
+                }
+            ),
+            encoding="utf-8",
+        )
 
 
 def test_0_40_runner_resolves_ready_development_model_paths(tmp_path: Path) -> None:
@@ -593,7 +605,9 @@ def test_0_40_prepare_requires_explicit_hunyuan_license_acceptance(tmp_path: Pat
     assert not (root / "models" / "licenses" / "accepted" / "tencent--Hunyuan-MT-7B-fp8.json").exists()
 
 
-def test_0_40_prepare_can_record_hunyuan_license_acceptance(tmp_path: Path) -> None:
+def test_0_40_prepare_requires_hunyuan_license_compliance_confirmations(
+    tmp_path: Path,
+) -> None:
     root = copy_model_layout(tmp_path)
 
     result = subprocess.run(
@@ -612,11 +626,48 @@ def test_0_40_prepare_can_record_hunyuan_license_acceptance(tmp_path: Path) -> N
         check=False,
     )
 
+    assert result.returncode == 1
+    assert "--confirm-hunyuan-restricted-license" in result.stdout
+    assert "--confirm-hunyuan-permitted-territory" in result.stdout
+    assert "--confirm-hunyuan-no-redistribution" in result.stdout
+    assert not (root / "models" / "licenses" / "accepted" / "tencent--Hunyuan-MT-7B-fp8.json").exists()
+
+
+def test_0_40_prepare_can_record_hunyuan_license_acceptance(tmp_path: Path) -> None:
+    root = copy_model_layout(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "acceptance" / "prepare-0-40-models.py"),
+            "--root",
+            str(root),
+            "--model-id",
+            "translation.tencent.hunyuan-mt-7b-fp8",
+            "--accept-hunyuan-license",
+            "--confirm-hunyuan-restricted-license",
+            "--confirm-hunyuan-permitted-territory",
+            "--confirm-hunyuan-no-redistribution",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
     acceptance_path = root / "models" / "licenses" / "accepted" / "tencent--Hunyuan-MT-7B-fp8.json"
     payload = json.loads(acceptance_path.read_text(encoding="utf-8"))
     assert result.returncode == 1
     assert payload["modelId"] == "translation.tencent.hunyuan-mt-7b-fp8"
     assert payload["licenseName"] == "Upstream License.txt"
+    assert payload["restrictedLicenseAcknowledged"] is True
+    assert payload["permittedTerritoryConfirmed"] is True
+    assert payload["noRedistributionConfirmed"] is True
+    assert payload["excludedTerritories"] == [
+        "European Union",
+        "United Kingdom",
+        "South Korea",
+    ]
     assert "model-00001-of-00002.safetensors" in result.stdout
 
 
@@ -651,6 +702,9 @@ def test_0_40_prepare_patches_hunyuan_fp8_config(tmp_path: Path) -> None:
             "--model-id",
             "translation.tencent.hunyuan-mt-7b-fp8",
             "--accept-hunyuan-license",
+            "--confirm-hunyuan-restricted-license",
+            "--confirm-hunyuan-permitted-territory",
+            "--confirm-hunyuan-no-redistribution",
         ],
         cwd=ROOT,
         text=True,

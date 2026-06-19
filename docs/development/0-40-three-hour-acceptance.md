@@ -32,6 +32,7 @@ Latest local check:
 - VibeVoice ASR GPU smoke completed on the local CUDA runtime and released CUDA memory after `close()`.
 - Hunyuan MT FP8 runtime dependencies are installed locally, including `compressed_tensors`.
 - Hunyuan MT FP8 provider code now uses the model's chat-template path and applies the FP8 config compatibility patch during model preparation.
+- Hunyuan MT FP8 is treated as a restricted user-provided external model: Diplomat does not bundle or redistribute its weights, and readiness requires a local acceptance record with restricted-license, permitted-territory, and no-redistribution confirmations.
 - The 0.40 runner probes the source media before model preflight and rejects short or silent media before any model execution.
 - The 0.40 runner passes manifest-verified `models/dev` paths as controlled local model paths for the acceptance runtime.
 - The 0.40 runner validates ASR chunk evidence after analysis, including the chunk manifest, source-duration coverage, and every chunk result file.
@@ -40,7 +41,7 @@ Latest local check:
 - The 0.40 runner validates the final subtitle document and fails acceptance on blank source lines, missing translations, failed translation states, incomplete translation states, timing corruption, or glossary quality issues.
 - `scripts/verify-0.40-three-hour-workflow.ps1` is available as the operator-facing wrapper for the Python acceptance runner.
 - `models/dev/translation/tencent--Hunyuan-MT-7B-fp8` still contains only `.gitkeep`.
-- `models/licenses/accepted/tencent--Hunyuan-MT-7B-fp8.json` is missing.
+- `models/licenses/accepted/tencent--Hunyuan-MT-7B-fp8.json` is missing and must be generated locally only after reviewing the upstream Hunyuan license and confirming the required compliance flags.
 
 Current readiness:
 
@@ -83,6 +84,17 @@ Preflight:
 ```powershell
 node .\scripts\verify-model-manifests.mjs
 python .\scripts\acceptance\check-0-40-readiness.py
+```
+
+Hunyuan local license acceptance, after upstream license review:
+
+```powershell
+python .\scripts\acceptance\prepare-0-40-models.py `
+  --model-id translation.tencent.hunyuan-mt-7b-fp8 `
+  --accept-hunyuan-license `
+  --confirm-hunyuan-restricted-license `
+  --confirm-hunyuan-permitted-territory `
+  --confirm-hunyuan-no-redistribution
 ```
 
 Acceptance:

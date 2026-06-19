@@ -14,8 +14,19 @@
   "license": {
     "name": "Upstream License.txt",
     "url": "https://huggingface.co/tencent/Hunyuan-MT-7B-fp8/blob/main/License.txt",
+    "licenseType": "restricted-external-model",
+    "sourceCodeLicenseCompatible": true,
+    "redistributionAllowed": false,
+    "modelWeightsBundled": false,
+    "userProvidedOnly": true,
+    "excludedTerritories": [
+      "European Union",
+      "United Kingdom",
+      "South Korea"
+    ],
     "acceptanceRequired": true,
-    "acceptanceRecord": "models/licenses/accepted/tencent--Hunyuan-MT-7B-fp8.json"
+    "acceptanceRecord": "models/licenses/accepted/tencent--Hunyuan-MT-7B-fp8.json",
+    "complianceNote": "Diplomat source code remains MIT licensed. Hunyuan MT 7B FP8 weights are not included, redistributed, or sublicensed by this repository and must be supplied by the user after reviewing Tencent's upstream terms."
   },
   "developmentPath": "models/dev/translation/tencent--Hunyuan-MT-7B-fp8",
   "expectedFiles": [

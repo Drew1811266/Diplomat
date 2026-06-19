@@ -24,6 +24,7 @@ VIBEVOICE_MODEL_ID = "asr.microsoft.vibevoice-asr"
 QWEN_TOKENIZER_PREFIX = "qwen-tokenizer/"
 QWEN_TOKENIZER_REPO_ID = "Qwen/Qwen2.5-7B"
 QWEN_TOKENIZER_REVISION = "d149729398750b98c0af14eb82c78cfe92750796"
+HUNYUAN_EXCLUDED_TERRITORIES = ["European Union", "United Kingdom", "South Korea"]
 
 
 def main() -> int:
@@ -85,6 +86,21 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Record local acceptance of the upstream Hunyuan MT FP8 license.",
     )
+    parser.add_argument(
+        "--confirm-hunyuan-restricted-license",
+        action="store_true",
+        help="Confirm Hunyuan is governed by Tencent's restricted upstream model license, not Diplomat's MIT license.",
+    )
+    parser.add_argument(
+        "--confirm-hunyuan-permitted-territory",
+        action="store_true",
+        help="Confirm local use is only in a territory permitted by the upstream Hunyuan license.",
+    )
+    parser.add_argument(
+        "--confirm-hunyuan-no-redistribution",
+        action="store_true",
+        help="Confirm Hunyuan model weights will not be redistributed with Diplomat.",
+    )
     parser.add_argument("--hf-token", default=os.environ.get("HF_TOKEN"))
     parser.add_argument("--min-free-gb", type=float, default=40.0)
     return parser.parse_args()
@@ -116,6 +132,9 @@ def _prepare_license(
         return None
 
     if manifest.model_id == HUNYUAN_MODEL_ID and args.accept_hunyuan_license:
+        confirmation_error = _hunyuan_confirmation_error(args)
+        if confirmation_error:
+            return confirmation_error
         acceptance_path.parent.mkdir(parents=True, exist_ok=True)
         acceptance_payload = {
             "schemaVersion": "diplomat.licenseAcceptance.v1",
@@ -127,6 +146,15 @@ def _prepare_license(
             "licenseUrl": manifest.license.url,
             "acceptedAt": datetime.now(UTC).isoformat(),
             "acceptedFor": "Diplomat 0.40 local development and acceptance testing",
+            "restrictedLicenseAcknowledged": True,
+            "permittedTerritoryConfirmed": True,
+            "noRedistributionConfirmed": True,
+            "excludedTerritories": HUNYUAN_EXCLUDED_TERRITORIES,
+            "notice": (
+                "Hunyuan model weights are user-provided external assets. "
+                "They are not included in, sublicensed by, or redistributed with "
+                "the MIT-licensed Diplomat source repository."
+            ),
         }
         acceptance_path.write_text(
             json.dumps(acceptance_payload, ensure_ascii=False, indent=2),
@@ -139,6 +167,22 @@ def _prepare_license(
         f"{manifest.model_id}: license acceptance is required. "
         "Review the upstream license and rerun with --accept-hunyuan-license if accepted."
     )
+
+
+def _hunyuan_confirmation_error(args: argparse.Namespace) -> str | None:
+    missing: list[str] = []
+    if not args.confirm_hunyuan_restricted_license:
+        missing.append("--confirm-hunyuan-restricted-license")
+    if not args.confirm_hunyuan_permitted_territory:
+        missing.append("--confirm-hunyuan-permitted-territory")
+    if not args.confirm_hunyuan_no_redistribution:
+        missing.append("--confirm-hunyuan-no-redistribution")
+    if missing:
+        return (
+            f"{HUNYUAN_MODEL_ID}: Hunyuan license acceptance requires explicit "
+            f"compliance confirmations: {', '.join(missing)}."
+        )
+    return None
 
 
 def _prepare_auxiliary_files(manifest: ModelDevelopmentManifest, target_dir: Path) -> None:
