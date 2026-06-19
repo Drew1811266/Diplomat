@@ -30,6 +30,7 @@ from diplomat_worker.models.registry import built_in_model_registry  # noqa: E40
 from diplomat_worker.storage.project_store import ProjectStore  # noqa: E402
 from diplomat_worker.tasks.analysis import AnalysisJobManager  # noqa: E402
 from diplomat_worker.tasks.translation import TranslationJobManager  # noqa: E402
+from diplomat_worker.schemas.subtitle import TranslationGlossaryEntry  # noqa: E402
 from diplomat_worker.translation.config import TranslationProviderConfig  # noqa: E402
 
 MIN_ACCEPTANCE_DURATION_MS = 3 * 60 * 60 * 1000
@@ -94,6 +95,11 @@ def main() -> int:
             [args.asr_model_id, args.translation_model_id],
         )
         summary["developmentModels"] = model_paths
+        glossary = load_acceptance_glossary(args.glossary_path)
+        summary["glossary"] = {
+            "path": str(args.glossary_path.resolve()) if args.glossary_path else None,
+            "termCount": len(glossary),
+        }
 
         data_dir = evidence_dir / "worker-data"
         runtime = WorkerRuntime(
@@ -161,6 +167,7 @@ def main() -> int:
                 compute_type=args.translation_compute_type,
                 batch_size=args.translation_batch_size,
             ),
+            glossary=glossary,
         )
         translation.run_pending_once()
         translation_result = runtime.store.get_task(translation_task.task_id)
@@ -243,6 +250,26 @@ def collect_runtime_cleanup_evidence(
         "acceleratorCacheCleared": accelerator_cache_cleared,
         "messages": messages,
     }
+
+
+def load_acceptance_glossary(path: Path | None) -> list[dict]:
+    if path is None:
+        return []
+    if not path.is_file():
+        raise AcceptanceError(f"Glossary file does not exist: {path}")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise AcceptanceError(f"Glossary file is not valid JSON: {exc}") from exc
+    if not isinstance(payload, list):
+        raise AcceptanceError("Glossary file must contain a JSON array.")
+    try:
+        return [
+            TranslationGlossaryEntry.model_validate(entry).model_dump(by_alias=True)
+            for entry in payload
+        ]
+    except Exception as exc:
+        raise AcceptanceError(f"Glossary file contains an invalid term: {exc}") from exc
 
 
 def validate_asr_chunk_evidence(project_dir: Path, task: dict, *, duration_ms: int) -> dict:
@@ -360,6 +387,8 @@ def validate_subtitle_acceptance(document, *, subtitle_path: Path) -> dict:
         failures.append(f"{incomplete_translation_status_count} incomplete translation status")
     if timing_issue_count:
         failures.append(f"{timing_issue_count} timing issue")
+    if translation_quality_issue_count:
+        failures.append(f"{translation_quality_issue_count} translation quality issue")
 
     if failures:
         raise AcceptanceError(f"Subtitle acceptance failed: {', '.join(failures)}.")
@@ -402,6 +431,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--translation-device", default="cuda")
     parser.add_argument("--translation-compute-type", default="bfloat16")
     parser.add_argument("--translation-batch-size", type=int, default=1)
+    parser.add_argument("--glossary-path", type=Path)
     return parser.parse_args()
 
 

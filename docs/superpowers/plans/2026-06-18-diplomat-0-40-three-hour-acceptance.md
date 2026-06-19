@@ -6,7 +6,7 @@
 
 **Hard Gate:** The current repository does not contain model weights and does not contain the Hunyuan license acceptance record. 0.40 execution is blocked until those local files exist.
 
-**Progress Note:** Preflight, model preparation, three-hour runner tooling, ASR chunk evidence checks, runtime-cleanup evidence checks, subtitle-completeness checks, the PowerShell verification wrapper, VibeVoice ASR runtime validation, and Hunyuan MT FP8 adapter preparation are implemented. Final 0.40 acceptance remains pending until Hunyuan license acceptance/model files are available, Hunyuan is validated against real local weights, a three-hour source video is selected, and the full acceptance run succeeds.
+**Progress Note:** Preflight, model preparation, three-hour runner tooling, ASR chunk evidence checks, glossary quality checks, runtime-cleanup evidence checks, subtitle-completeness checks, the PowerShell verification wrapper, VibeVoice ASR runtime validation, and Hunyuan MT FP8 adapter preparation are implemented. Final 0.40 acceptance remains pending until Hunyuan license acceptance/model files are available, Hunyuan is validated against real local weights, a three-hour source video is selected, and the full acceptance run succeeds.
 
 ## Files
 
@@ -58,10 +58,11 @@ Expected now: fail with missing model files/license record.
   - Fail acceptance if ASR chunk manifest is missing, duration coverage is incomplete, or any listed chunk result file is missing/corrupt.
   - Fail acceptance if ASR cleanup logs do not show the runtime resource was closed.
   - Start translation.
+  - Pass optional glossary terms into translation for terminology validation.
   - Wait for completion.
   - Fail acceptance if translation cleanup logs do not show the runtime resource was closed.
   - Fail acceptance for CUDA-mode tasks unless the diagnostic logs show CUDA accelerator cache cleanup.
-  - Fail acceptance if the final subtitle document has blank source lines, missing translations, failed translation states, incomplete translation states, or timing corruption.
+  - Fail acceptance if the final subtitle document has blank source lines, missing translations, failed translation states, incomplete translation states, timing corruption, or glossary quality issues.
   - Save paths to logs, subtitle output, and timing summary.
   - Return nonzero on any failed task or missing output.
 

@@ -35,8 +35,9 @@ Latest local check:
 - The 0.40 runner probes the source media before model preflight and rejects short or silent media before any model execution.
 - The 0.40 runner passes manifest-verified `models/dev` paths as controlled local model paths for the acceptance runtime.
 - The 0.40 runner validates ASR chunk evidence after analysis, including the chunk manifest, source-duration coverage, and every chunk result file.
+- The 0.40 runner accepts an optional glossary JSON file and passes it into translation for professional terminology checks.
 - The 0.40 runner reads ASR and translation diagnostic logs and fails acceptance if runtime resources are not closed or if CUDA-mode tasks do not report CUDA accelerator cache cleanup.
-- The 0.40 runner validates the final subtitle document and fails acceptance on blank source lines, missing translations, failed translation states, incomplete translation states, or timing corruption.
+- The 0.40 runner validates the final subtitle document and fails acceptance on blank source lines, missing translations, failed translation states, incomplete translation states, timing corruption, or glossary quality issues.
 - `scripts/verify-0.40-three-hour-workflow.ps1` is available as the operator-facing wrapper for the Python acceptance runner.
 - `models/dev/translation/tencent--Hunyuan-MT-7B-fp8` still contains only `.gitkeep`.
 - `models/licenses/accepted/tencent--Hunyuan-MT-7B-fp8.json` is missing.
@@ -70,7 +71,7 @@ Current readiness:
 - ASR chunk manifest covers the full source duration and every listed chunk has a valid result file.
 - No task remains failed, canceled, queued, or partially complete.
 - Subtitle document contains transcript and translated text for every source line in the completed run.
-- Subtitle document has no blank source lines, missing translations, failed translation states, incomplete translation states, or timing issues.
+- Subtitle document has no blank source lines, missing translations, failed translation states, incomplete translation states, timing issues, or glossary quality issues.
 - Runtime cleanup evidence is present in logs and in `acceptance-summary.json` for both ASR and translation.
 - CUDA-mode ASR and translation tasks record `Cleared CUDA accelerator cache.` before the final gate can pass.
 - Full repository verification passes after the acceptance run.
@@ -87,8 +88,8 @@ python .\scripts\acceptance\check-0-40-readiness.py
 Acceptance:
 
 ```powershell
-python .\scripts\acceptance\run-0-40-three-hour.py --source-video <path>
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <path>
+python .\scripts\acceptance\run-0-40-three-hour.py --source-video <path> --glossary-path <glossary.json>
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <path> -GlossaryPath <glossary.json>
 ```
 
 Full verification:

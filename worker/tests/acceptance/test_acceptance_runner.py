@@ -20,6 +20,7 @@ from diplomat_worker.schemas.subtitle import (
     SubtitleDocument,
     SubtitleLine,
     TranslationOrigin,
+    TranslationQualityIssue,
 )
 
 
@@ -88,6 +89,7 @@ def test_0_40_verify_wrapper_exposes_help() -> None:
 
     assert result.returncode == 0
     assert "verify-0.40-three-hour-workflow.ps1" in result.stdout
+    assert "GlossaryPath" in result.stdout
 
 
 def test_0_40_runner_writes_summary_for_missing_source(tmp_path: Path) -> None:
@@ -498,6 +500,74 @@ def test_0_40_runner_rejects_subtitle_timing_corruption(tmp_path: Path) -> None:
             document,
             subtitle_path=tmp_path / "subtitle.diplomat.json",
         )
+
+
+def test_0_40_runner_rejects_translation_quality_issues(tmp_path: Path) -> None:
+    document = make_acceptance_document(
+        [
+            make_acceptance_document().lines[0].model_copy(
+                update={
+                    "translation_quality_issues": [
+                        TranslationQualityIssue(
+                            code="glossary_term_missing",
+                            severity="warning",
+                            message='Expected translation for "GPU" to include "GPU".',
+                            termId="term-gpu",
+                        )
+                    ]
+                }
+            )
+        ]
+    )
+    runner = load_acceptance_runner()
+
+    with pytest.raises(runner.AcceptanceError, match="translation quality issue"):
+        runner.validate_subtitle_acceptance(
+            document,
+            subtitle_path=tmp_path / "subtitle.diplomat.json",
+        )
+
+
+def test_0_40_runner_loads_glossary_file(tmp_path: Path) -> None:
+    glossary_path = tmp_path / "glossary.json"
+    glossary_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "term-gpu",
+                    "sourceText": "GPU",
+                    "targetText": "GPU",
+                    "sourceLanguage": "zh",
+                    "targetLanguage": "en",
+                    "caseSensitive": False,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    runner = load_acceptance_runner()
+
+    glossary = runner.load_acceptance_glossary(glossary_path)
+
+    assert glossary == [
+        {
+            "id": "term-gpu",
+            "sourceText": "GPU",
+            "targetText": "GPU",
+            "sourceLanguage": "zh",
+            "targetLanguage": "en",
+            "caseSensitive": False,
+        }
+    ]
+
+
+def test_0_40_runner_rejects_invalid_glossary_file(tmp_path: Path) -> None:
+    glossary_path = tmp_path / "glossary.json"
+    glossary_path.write_text('{"id": "term-gpu"}', encoding="utf-8")
+    runner = load_acceptance_runner()
+
+    with pytest.raises(runner.AcceptanceError, match="Glossary file must contain a JSON array"):
+        runner.load_acceptance_glossary(glossary_path)
 
 
 def test_0_40_prepare_requires_explicit_hunyuan_license_acceptance(tmp_path: Path) -> None:
