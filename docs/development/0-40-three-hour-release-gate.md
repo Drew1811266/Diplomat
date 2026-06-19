@@ -40,6 +40,7 @@ The user can run a three-hour course, lecture, or tutorial video through intelli
 - Translation batch evidence exists.
 - Translation memory release evidence exists.
 - Export artifact evidence exists.
+- The final `acceptance-summary.json` passes the independent 0.40 summary verifier.
 - Crash or cancellation recovery is verified for at least one long-running stage.
 - Full repository verification passes.
 - `main` is pushed to GitHub.
@@ -61,6 +62,7 @@ Opt-in acceptance verification:
 python .\scripts\acceptance\find-0-40-media-candidates.py <file-or-directory> --recursive --ffprobe-path <ffprobe>
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <three-hour-video> -PreflightOnly
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <three-hour-video> -AsrModelDir .\models\dev\asr\microsoft--VibeVoice-ASR -TranslationModelDir .\models\dev\translation\tencent--Hunyuan-MT-7B-fp8 -OutputDir .\.dev\release-evidence\0.40
+python .\scripts\acceptance\verify-0-40-acceptance-summary.py --summary .\.dev\release-evidence\0.40\acceptance-summary.json
 ```
 
 The candidate scanner and preflight-only command validate media duration, video/audio stream presence, local model readiness, model paths, and glossary parsing without starting ASR or translation. They cannot replace the full three-hour acceptance run.

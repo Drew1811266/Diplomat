@@ -47,6 +47,7 @@ Latest local check:
 - The 0.40 runner accepts an optional glossary JSON file and passes it into translation for professional terminology checks.
 - The 0.40 runner reads ASR and translation diagnostic logs and fails acceptance if runtime resources are not closed or if CUDA-mode tasks do not report CUDA accelerator cache cleanup.
 - The 0.40 runner validates the final subtitle document and fails acceptance on blank source lines, missing translations, failed translation states, incomplete translation states, timing corruption, or glossary quality issues.
+- `scripts/acceptance/verify-0-40-acceptance-summary.py` verifies a completed `acceptance-summary.json` as final evidence and rejects preflight-only, failed, partial, fake, or incomplete summaries.
 - `scripts/verify-0.40-three-hour-workflow.ps1` is available as the operator-facing wrapper for the Python acceptance runner.
 - No representative three-hour lecture, course, or tutorial source video has been selected in this workspace yet.
 
@@ -84,6 +85,7 @@ Current readiness:
 - Subtitle document has no blank source lines, missing translations, failed translation states, incomplete translation states, timing issues, or glossary quality issues.
 - Runtime cleanup evidence is present in logs and in `acceptance-summary.json` for both ASR and translation.
 - CUDA-mode ASR and translation tasks record `Cleared CUDA accelerator cache.` before the final gate can pass.
+- `scripts/acceptance/verify-0-40-acceptance-summary.py --summary <acceptance-summary.json>` passes against the completed run evidence.
 - Full repository verification passes after the acceptance run.
 
 ## Verification
@@ -113,6 +115,7 @@ Acceptance:
 ```powershell
 python .\scripts\acceptance\run-0-40-three-hour.py --source-video <path> --glossary-path <glossary.json>
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <path> -GlossaryPath <glossary.json>
+python .\scripts\acceptance\verify-0-40-acceptance-summary.py --summary <evidence-dir>\acceptance-summary.json
 ```
 
 The media candidate scanner and `--preflight-only` / `-PreflightOnly` are not acceptance evidence. They prove the candidate media and local model setup are ready before the expensive three-hour run.

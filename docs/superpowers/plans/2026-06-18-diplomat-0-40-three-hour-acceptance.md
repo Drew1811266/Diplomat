@@ -6,7 +6,7 @@
 
 **Hard Gate:** The local development machine now has the Hunyuan license acceptance record and Hunyuan MT FP8 weights. 0.40 execution remains blocked until a representative three-hour source video is selected and the full real-model acceptance run succeeds.
 
-**Progress Note:** Preflight, model preparation, media candidate scanning, three-hour runner tooling, preflight-only media/model validation, ASR chunk evidence checks, glossary quality checks, runtime-cleanup evidence checks, subtitle-completeness checks, the PowerShell verification wrapper, VibeVoice ASR runtime validation, Hunyuan MT FP8 adapter preparation, and Hunyuan real-model smoke are implemented. Final 0.40 acceptance remains pending until a three-hour source video is selected and the full acceptance run succeeds.
+**Progress Note:** Preflight, model preparation, media candidate scanning, three-hour runner tooling, preflight-only media/model validation, ASR chunk evidence checks, glossary quality checks, runtime-cleanup evidence checks, subtitle-completeness checks, completed-summary verification, the PowerShell verification wrapper, VibeVoice ASR runtime validation, Hunyuan MT FP8 adapter preparation, and Hunyuan real-model smoke are implemented. Final 0.40 acceptance remains pending until a three-hour source video is selected and the full acceptance run succeeds.
 
 ## Files
 
@@ -15,6 +15,7 @@
 - Create: `scripts/acceptance/find-0-40-media-candidates.py`
 - Create: `scripts/acceptance/prepare-0-40-models.py`
 - Create: `scripts/acceptance/run-0-40-three-hour.py`
+- Create: `scripts/acceptance/verify-0-40-acceptance-summary.py`
 - Create: `docs/development/0-40-stage-gate-review.md`
 - Modify Worker model adapters as needed once real model APIs are validated locally.
 
@@ -49,6 +50,7 @@ Expected now: fail with missing model files/license record.
 ## Task 3: Three-Hour Acceptance Runner
 
 - [ ] Add `scripts/acceptance/run-0-40-three-hour.py`.
+- [ ] Add `scripts/acceptance/verify-0-40-acceptance-summary.py`.
 - [ ] The runner must:
   - Accept a real source video path.
   - Reject media shorter than three hours before model preflight.
@@ -69,12 +71,19 @@ Expected now: fail with missing model files/license record.
   - Fail acceptance if the final subtitle document has blank source lines, missing translations, failed translation states, incomplete translation states, timing corruption, or glossary quality issues.
   - Save paths to logs, subtitle output, and timing summary.
   - Return nonzero on any failed task or missing output.
+- [ ] The summary verifier must reject preflight-only, failed, partial, fake, or incomplete `acceptance-summary.json` files.
 
 ## Task 4: Version, Verification, Gate
 
 - [ ] Update release metadata to `0.40.0`.
 - [ ] Run focused tests.
 - [ ] Run the three-hour acceptance runner.
+- [ ] Run the completed acceptance summary verifier:
+
+```powershell
+python .\scripts\acceptance\verify-0-40-acceptance-summary.py --summary <evidence-dir>\acceptance-summary.json
+```
+
 - [ ] Run full verification:
 
 ```powershell

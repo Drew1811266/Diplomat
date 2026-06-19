@@ -55,6 +55,7 @@ const finalStage = {
     "scripts/acceptance/find-0-40-media-candidates.py",
     "scripts/acceptance/prepare-0-40-models.py",
     "scripts/acceptance/run-0-40-three-hour.py",
+    "scripts/acceptance/verify-0-40-acceptance-summary.py",
     "scripts/verify-0.40-three-hour-workflow.ps1"
   ]
 };
