@@ -1,6 +1,6 @@
 # Diplomat 0.40 Three-Hour Acceptance
 
-Date: 2026-06-18
+Date: 2026-06-19
 
 Stage: 0.40
 
@@ -33,6 +33,11 @@ Latest local check:
 - Hunyuan MT FP8 runtime dependencies are installed locally, including `compressed_tensors`.
 - Hunyuan MT FP8 provider code now uses the model's chat-template path and applies the FP8 config compatibility patch during model preparation.
 - Hunyuan MT FP8 is treated as a restricted user-provided external model: Diplomat does not bundle or redistribute its weights, and readiness requires a local acceptance record with restricted-license, permitted-territory, and no-redistribution confirmations.
+- Local Hunyuan license acceptance was recorded after user confirmation of the upstream Hunyuan license. The acceptance record is local-only and ignored by Git.
+- `models/dev/translation/tencent--Hunyuan-MT-7B-fp8` is populated locally with the pinned FP8 manifest files. The weights are local-only and ignored by Git.
+- Hunyuan MT FP8 real-model smoke completed on the local CUDA runtime with `NVIDIA GeForce RTX 5090 D v2`:
+  - source text: `本节课介绍深度学习中的注意力机制和长视频字幕翻译流程。`
+  - translated text: `This lesson introduces the attention mechanism in deep learning and the process of translating subtitles for long videos.`
 - The 0.40 runner probes the source media before model preflight and rejects short or silent media before any model execution.
 - The 0.40 runner passes manifest-verified `models/dev` paths as controlled local model paths for the acceptance runtime.
 - The 0.40 runner validates ASR chunk evidence after analysis, including the chunk manifest, source-duration coverage, and every chunk result file.
@@ -40,13 +45,13 @@ Latest local check:
 - The 0.40 runner reads ASR and translation diagnostic logs and fails acceptance if runtime resources are not closed or if CUDA-mode tasks do not report CUDA accelerator cache cleanup.
 - The 0.40 runner validates the final subtitle document and fails acceptance on blank source lines, missing translations, failed translation states, incomplete translation states, timing corruption, or glossary quality issues.
 - `scripts/verify-0.40-three-hour-workflow.ps1` is available as the operator-facing wrapper for the Python acceptance runner.
-- `models/dev/translation/tencent--Hunyuan-MT-7B-fp8` still contains only `.gitkeep`.
-- `models/licenses/accepted/tencent--Hunyuan-MT-7B-fp8.json` is missing and must be generated locally only after reviewing the upstream Hunyuan license and confirming the required compliance flags.
+- No representative three-hour lecture, course, or tutorial source video has been selected in this workspace yet.
 
 Current readiness:
 
 - `asr.microsoft.vibevoice-asr`: usable for 0.40 development verification.
-- `translation.tencent.hunyuan-mt-7b-fp8`: blocked by missing license acceptance and local model files.
+- `translation.tencent.hunyuan-mt-7b-fp8`: usable for 0.40 development verification.
+- Final 0.40 acceptance is still blocked until a real three-hour source video completes ASR, translation, cleanup verification, subtitle validation, and full repository verification.
 
 ## Scope
 
