@@ -39,6 +39,7 @@ Latest local check:
   - source text: `本节课介绍深度学习中的注意力机制和长视频字幕翻译流程。`
   - translated text: `This lesson introduces the attention mechanism in deep learning and the process of translating subtitles for long videos.`
 - The 0.40 runner probes the source media before model preflight and rejects short or silent media before any model execution.
+- The 0.40 runner also rejects audio-only containers before model preflight; final 0.40 evidence must come from a real video stream with an audio stream.
 - The 0.40 runner supports `--preflight-only` so an operator can validate a candidate three-hour source, model readiness, model paths, and glossary before starting ASR or translation.
 - The 0.40 runner passes manifest-verified `models/dev` paths as controlled local model paths for the acceptance runtime.
 - The 0.40 runner validates ASR chunk evidence after analysis, including the chunk manifest, source-duration coverage, and every chunk result file.
@@ -74,6 +75,7 @@ Current readiness:
 
 - VibeVoice ASR model readiness is usable.
 - Hunyuan MT FP8 model readiness is usable.
+- Source media is a real video file with both video and audio streams.
 - Three-hour source video completes ASR and translation.
 - ASR chunk manifest covers the full source duration and every listed chunk has a valid result file.
 - No task remains failed, canceled, queued, or partially complete.

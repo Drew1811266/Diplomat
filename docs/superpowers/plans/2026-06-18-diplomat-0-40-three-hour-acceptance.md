@@ -51,6 +51,7 @@ Expected now: fail with missing model files/license record.
   - Accept a real source video path.
   - Reject media shorter than three hours before model preflight.
   - Reject media with no audio stream before model preflight.
+  - Reject audio-only containers with no video stream before model preflight.
   - Support a preflight-only mode that validates media, model readiness, model paths, and glossary parsing without starting ASR or translation.
   - Resolve manifest-verified `models/dev` paths for the selected real models.
   - Create a project.

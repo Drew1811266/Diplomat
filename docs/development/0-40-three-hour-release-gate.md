@@ -33,7 +33,7 @@ The user can run a three-hour course, lecture, or tutorial video through intelli
 ## Acceptance Criteria
 
 - Version metadata is 0.40.0.
-- A representative three-hour video completes the full workflow.
+- A representative three-hour video with both video and audio streams completes the full workflow.
 - Segmentation evidence exists.
 - ASR chunk evidence exists.
 - ASR memory release evidence exists.

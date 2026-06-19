@@ -72,6 +72,8 @@ def main() -> int:
             )
         if not probe.has_audio:
             raise AcceptanceError("Source video has no audio stream.")
+        if probe.video_codec is None:
+            raise AcceptanceError("Source video has no video stream.")
 
         preflight = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "acceptance" / "check-0-40-readiness.py")],

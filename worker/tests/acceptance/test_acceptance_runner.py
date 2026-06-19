@@ -197,6 +197,45 @@ def test_0_40_runner_rejects_silent_source_before_model_preflight(tmp_path: Path
     assert summary["checks"] == []
 
 
+def test_0_40_runner_rejects_audio_only_source_before_model_preflight(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    source = tmp_path / "audio-only.m4a"
+    source.write_bytes(b"fixture")
+    ffprobe = write_fake_ffprobe(
+        tmp_path,
+        {
+            "format": {"duration": "10800"},
+            "streams": [{"codec_type": "audio", "codec_name": "aac"}],
+        },
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "acceptance" / "run-0-40-three-hour.py"),
+            "--source-video",
+            str(source),
+            "--evidence-dir",
+            str(evidence_dir),
+            "--ffprobe-path",
+            str(ffprobe),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    summary = json.loads((evidence_dir / "acceptance-summary.json").read_text(encoding="utf-8"))
+    assert result.returncode == 1
+    assert summary["status"] == "failed"
+    assert summary["videoProbe"]["durationMs"] == 10_800_000
+    assert summary["videoProbe"]["hasAudio"] is True
+    assert summary["videoProbe"]["videoCodec"] is None
+    assert "no video stream" in summary["error"]
+    assert summary["checks"] == []
+
+
 def test_0_40_runner_preflight_only_stops_before_worker_execution(
     monkeypatch,
     tmp_path: Path,
