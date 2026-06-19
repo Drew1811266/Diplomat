@@ -6,12 +6,13 @@
 
 **Hard Gate:** The local development machine now has the Hunyuan license acceptance record and Hunyuan MT FP8 weights. 0.40 execution remains blocked until a representative three-hour source video is selected and the full real-model acceptance run succeeds.
 
-**Progress Note:** Preflight, model preparation, three-hour runner tooling, preflight-only media/model validation, ASR chunk evidence checks, glossary quality checks, runtime-cleanup evidence checks, subtitle-completeness checks, the PowerShell verification wrapper, VibeVoice ASR runtime validation, Hunyuan MT FP8 adapter preparation, and Hunyuan real-model smoke are implemented. Final 0.40 acceptance remains pending until a three-hour source video is selected and the full acceptance run succeeds.
+**Progress Note:** Preflight, model preparation, media candidate scanning, three-hour runner tooling, preflight-only media/model validation, ASR chunk evidence checks, glossary quality checks, runtime-cleanup evidence checks, subtitle-completeness checks, the PowerShell verification wrapper, VibeVoice ASR runtime validation, Hunyuan MT FP8 adapter preparation, and Hunyuan real-model smoke are implemented. Final 0.40 acceptance remains pending until a three-hour source video is selected and the full acceptance run succeeds.
 
 ## Files
 
 - Modify: version metadata files from `0.39.0` to `0.40.0` only after preflight requirements are satisfied.
 - Create: `scripts/acceptance/check-0-40-readiness.py`
+- Create: `scripts/acceptance/find-0-40-media-candidates.py`
 - Create: `scripts/acceptance/prepare-0-40-models.py`
 - Create: `scripts/acceptance/run-0-40-three-hour.py`
 - Create: `docs/development/0-40-stage-gate-review.md`
@@ -20,6 +21,7 @@
 ## Task 1: Preflight Tooling
 
 - [ ] Add `scripts/acceptance/check-0-40-readiness.py`.
+- [ ] Add `scripts/acceptance/find-0-40-media-candidates.py`.
 - [ ] Check:
   - VibeVoice expected files exist.
   - Hunyuan expected files exist.

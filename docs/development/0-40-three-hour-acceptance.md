@@ -40,6 +40,7 @@ Latest local check:
   - translated text: `This lesson introduces the attention mechanism in deep learning and the process of translating subtitles for long videos.`
 - The 0.40 runner probes the source media before model preflight and rejects short or silent media before any model execution.
 - The 0.40 runner also rejects audio-only containers before model preflight; final 0.40 evidence must come from a real video stream with an audio stream.
+- `scripts/acceptance/find-0-40-media-candidates.py` can scan files or directories and report which local media files satisfy the three-hour video/audio prerequisites.
 - The 0.40 runner supports `--preflight-only` so an operator can validate a candidate three-hour source, model readiness, model paths, and glossary before starting ASR or translation.
 - The 0.40 runner passes manifest-verified `models/dev` paths as controlled local model paths for the acceptance runtime.
 - The 0.40 runner validates ASR chunk evidence after analysis, including the chunk manifest, source-duration coverage, and every chunk result file.
@@ -92,6 +93,7 @@ Preflight:
 ```powershell
 node .\scripts\verify-model-manifests.mjs
 python .\scripts\acceptance\check-0-40-readiness.py
+python .\scripts\acceptance\find-0-40-media-candidates.py <file-or-directory> --recursive --ffprobe-path <ffprobe>
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <path> -PreflightOnly
 ```
 
@@ -113,7 +115,7 @@ python .\scripts\acceptance\run-0-40-three-hour.py --source-video <path> --gloss
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <path> -GlossaryPath <glossary.json>
 ```
 
-`--preflight-only` / `-PreflightOnly` is not acceptance evidence. It proves the candidate media and local model setup are ready before the expensive three-hour run.
+The media candidate scanner and `--preflight-only` / `-PreflightOnly` are not acceptance evidence. They prove the candidate media and local model setup are ready before the expensive three-hour run.
 
 Full verification:
 

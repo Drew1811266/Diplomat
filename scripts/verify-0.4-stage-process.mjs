@@ -52,6 +52,7 @@ const finalStage = {
   finalStageGate: "docs/development/0-40-stage-gate-review.md",
   requiredScripts: [
     "scripts/acceptance/check-0-40-readiness.py",
+    "scripts/acceptance/find-0-40-media-candidates.py",
     "scripts/acceptance/prepare-0-40-models.py",
     "scripts/acceptance/run-0-40-three-hour.py",
     "scripts/verify-0.40-three-hour-workflow.ps1"

@@ -84,6 +84,7 @@ function createMinimalFixture() {
 
   for (const scriptPath of [
     "scripts/acceptance/check-0-40-readiness.py",
+    "scripts/acceptance/find-0-40-media-candidates.py",
     "scripts/acceptance/prepare-0-40-models.py",
     "scripts/acceptance/run-0-40-three-hour.py",
     "scripts/verify-0.40-three-hour-workflow.ps1"
@@ -120,6 +121,16 @@ test("fails when a required stage implementation plan is missing", () => {
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Missing implementation plan for 0\.39/);
+});
+
+test("fails when the 0.40 media candidate scanner is missing", () => {
+  const fixture = createMinimalFixture();
+  removeFixtureFile(fixture, "scripts/acceptance/find-0-40-media-candidates.py");
+
+  const result = runVerifier(["--repo-root", fixture]);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /find-0-40-media-candidates\.py/);
 });
 
 test("release asset verification runs the 0.4 stage process audit", () => {

@@ -58,11 +58,12 @@ node .\scripts\verify-release-assets.mjs
 Opt-in acceptance verification:
 
 ```powershell
+python .\scripts\acceptance\find-0-40-media-candidates.py <file-or-directory> --recursive --ffprobe-path <ffprobe>
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <three-hour-video> -PreflightOnly
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-0.40-three-hour-workflow.ps1 -MediaPath <three-hour-video> -AsrModelDir .\models\dev\asr\microsoft--VibeVoice-ASR -TranslationModelDir .\models\dev\translation\tencent--Hunyuan-MT-7B-fp8 -OutputDir .\.dev\release-evidence\0.40
 ```
 
-The preflight-only command validates media duration, audio presence, local model readiness, model paths, and glossary parsing without starting ASR or translation. It cannot replace the full three-hour acceptance run.
+The candidate scanner and preflight-only command validate media duration, video/audio stream presence, local model readiness, model paths, and glossary parsing without starting ASR or translation. They cannot replace the full three-hour acceptance run.
 
 ## Stage Gate
 
