@@ -6,6 +6,13 @@ export const WEB_PORT = 1420;
 export const WORKER_HEALTH_URL = `http://127.0.0.1:${WORKER_PORT}/health`;
 export const WEB_DEV_URL = `http://localhost:${WEB_PORT}`;
 export const COMPATIBLE_RUST_TOOLCHAIN = "1.92.0-x86_64-pc-windows-msvc";
+const DEVELOPMENT_FFMPEG_BIN = path.join(
+  ".dev",
+  "tools",
+  "ffmpeg-release-essentials",
+  "ffmpeg-8.1.1-essentials_build",
+  "bin"
+);
 
 export function parseLauncherArgs(argv) {
   const options = {
@@ -110,6 +117,29 @@ export function selectDevelopmentModelRoot(repoRoot) {
   return resolvedRoot;
 }
 
+function configuredToolPath(env, name) {
+  const value = env?.[name];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function developmentToolPath(repoRoot, fileName) {
+  const candidate = path.join(path.resolve(repoRoot), DEVELOPMENT_FFMPEG_BIN, fileName);
+  return existsSync(candidate) ? candidate : null;
+}
+
+export function selectDevelopmentMediaTools(repoRoot, env = process.env) {
+  return {
+    ffmpegPath:
+      configuredToolPath(env, "DIPLOMAT_FFMPEG_PATH") ??
+      developmentToolPath(repoRoot, "ffmpeg.exe") ??
+      "ffmpeg",
+    ffprobePath:
+      configuredToolPath(env, "DIPLOMAT_FFPROBE_PATH") ??
+      developmentToolPath(repoRoot, "ffprobe.exe") ??
+      "ffprobe"
+  };
+}
+
 export function selectRustToolchain({ requested, installedToolchains }) {
   const trimmedRequest = requested?.trim();
   if (trimmedRequest) {
@@ -152,7 +182,11 @@ export function isSafeDiplomatDevProcess(processInfo, repoRoot) {
   return false;
 }
 
-export function buildWorkerLaunch({ repoRoot, modelRoot }) {
+export function buildWorkerLaunch({
+  repoRoot,
+  modelRoot,
+  mediaTools = selectDevelopmentMediaTools(repoRoot)
+}) {
   const resolvedRepoRoot = path.resolve(repoRoot);
   const resolvedModelRoot = path.resolve(modelRoot);
 
@@ -172,7 +206,9 @@ export function buildWorkerLaunch({ repoRoot, modelRoot }) {
     cwd: resolvedRepoRoot,
     env: {
       DIPLOMAT_DEVELOPMENT_MODEL_ROOT: resolvedModelRoot,
-      DIPLOMAT_MODELS_DIR: path.join(resolvedModelRoot, "models")
+      DIPLOMAT_MODELS_DIR: path.join(resolvedModelRoot, "models"),
+      DIPLOMAT_FFMPEG_PATH: mediaTools.ffmpegPath,
+      DIPLOMAT_FFPROBE_PATH: mediaTools.ffprobePath
     }
   };
 }

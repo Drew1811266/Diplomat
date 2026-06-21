@@ -234,6 +234,7 @@ function stubMatchMedia(matches: boolean) {
 
 type ActiveProjectFetchOptions = {
   projectError?: { status: number; detail: string };
+  mediaUpdateError?: { status: number; detail: string };
   subtitleError?: { status: number; detail: string };
   saveError?: { status: number; detail: string };
   analysisError?: { status: number; detail: string };
@@ -302,6 +303,10 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
     }
 
     if (url.endsWith("/projects/project-demo/media/source") && init?.method === "PUT") {
+      if (options.mediaUpdateError) {
+        return errorResponse(options.mediaUpdateError);
+      }
+
       const body = JSON.parse(String(init.body)) as { sourceVideoPath: string };
       const importedAt = "2026-06-14T00:00:00+00:00";
       const currentAssets = currentProject.mediaAssets ?? [];
@@ -906,6 +911,41 @@ describe("WorkbenchPage", () => {
         })
       )
     );
+  });
+
+  it("shows media import errors directly on the empty project import surface", async () => {
+    const user = userEvent.setup();
+    const emptyProject: ProjectResponse = {
+      ...projectFixture,
+      sourceVideoPath: null,
+      mediaAssets: [],
+      durationMs: 0,
+      diagnostics: {
+        ...projectFixture.diagnostics,
+        sourceVideoExists: false,
+        warnings: []
+      }
+    };
+    desktopMock.pickVideoFile.mockResolvedValue("D:/media/onboarding-source.mp4");
+    stubActiveProjectFetch({
+      project: emptyProject,
+      waveform: null,
+      mediaUpdateError: {
+        status: 400,
+        detail: "Unable to probe source video: FFprobe executable not found: ffprobe"
+      }
+    });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await screen.findByTestId("workbench-media-start");
+    const mediaBin = await screen.findByRole("region", { name: "Project media" });
+    await user.click(within(mediaBin).getByRole("button", { name: "Import video" }));
+
+    expect(
+      await screen.findByText("Unable to probe source video: FFprobe executable not found: ffprobe")
+    ).toBeVisible();
+    expect(screen.getByTestId("workbench-media-start")).toBeInTheDocument();
   });
 
   it("imports a selected video into the current project from the workbench", async () => {

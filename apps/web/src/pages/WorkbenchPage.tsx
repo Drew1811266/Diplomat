@@ -287,6 +287,24 @@ function ErrorMessage({
   );
 }
 
+function displayMediaImportError(error: unknown, fallback: string) {
+  const message = getErrorMessage(error);
+  if (!message) {
+    return null;
+  }
+
+  const workerDetail = message.match(/^Local runtime request failed:\s*\d+:\s*(.+)$/)?.[1]?.trim();
+  if (
+    workerDetail &&
+    (workerDetail.startsWith("Unable to probe source video:") ||
+      workerDetail === "Source video does not contain an audio stream")
+  ) {
+    return displayRuntimeMessage(workerDetail);
+  }
+
+  return displayWorkbenchErrorMessage(error, fallback);
+}
+
 function CurrentProjectSettingsPanel({
   translationConfig,
   exportMode,
@@ -1544,6 +1562,12 @@ export function WorkbenchPage() {
   const dataNotice = renderDataNotice();
   const projectContextTitle = project.data?.name ?? t("workbench.noProject");
   const projectContextSource = projectSourceVideoPath ?? t("workbench.noSourceVideo");
+  const mediaImportErrorMessage = updateSourceMedia.error
+    ? displayMediaImportError(
+        updateSourceMedia.error,
+        t("workbench.errors.mediaImportFailed")
+      )
+    : null;
   const taskStatusAction =
     observedTask || taskOperationPending ? (
       <Group gap={6} wrap="nowrap">
@@ -1924,6 +1948,13 @@ export function WorkbenchPage() {
                 {t("workbench.noSourceVideo")}
               </Text>
             </Box>
+            {mediaImportErrorMessage ? (
+              <StatusNotice
+                title={t("workbench.errors.mediaImportFailed")}
+                message={mediaImportErrorMessage}
+                tone="error"
+              />
+            ) : null}
             {projectMediaBin}
           </Stack>
         </Box>

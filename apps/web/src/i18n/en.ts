@@ -292,6 +292,7 @@ export const en = {
       subtitleLoadFailed: "Subtitle document could not be loaded.",
       saveFailed: "Could not save subtitles.",
       saveFailedHint: "Your local edits are still kept in this session.",
+      mediaImportFailed: "Could not import video.",
       analysisFailed: "Could not start transcription.",
       translationFailed: "Could not start translation.",
       styleFailed: "Could not update subtitle style.",

@@ -12,6 +12,7 @@ import {
   parseLauncherArgs,
   resolveNativeCommand,
   selectDevelopmentModelRoot,
+  selectDevelopmentMediaTools,
   selectRustToolchain
 } from "./dev-launch-utils.mjs";
 
@@ -123,19 +124,66 @@ test("isSafeDiplomatDevProcess only matches known Diplomat development processes
 });
 
 test("buildWorkerLaunch points the worker at the selected project model directory", () => {
-  const repoRoot = path.resolve("D:/Software Project/Diplomat");
-  const modelRoot = path.resolve("D:/Software Project/Diplomat");
-  const launch = buildWorkerLaunch({ repoRoot, modelRoot });
+  const repoRoot = tempWorkspace();
+  const modelRoot = repoRoot;
+  try {
+    const launch = buildWorkerLaunch({ repoRoot, modelRoot });
 
-  assert.deepEqual(launch.args.slice(0, 4), [
-    "-m",
-    "uvicorn",
-    "diplomat_worker.api.app:app",
-    "--app-dir"
-  ]);
-  assert.equal(launch.cwd, repoRoot);
-  assert.equal(launch.env.DIPLOMAT_DEVELOPMENT_MODEL_ROOT, modelRoot);
-  assert.equal(launch.env.DIPLOMAT_MODELS_DIR, path.join(modelRoot, "models"));
+    assert.deepEqual(launch.args.slice(0, 4), [
+      "-m",
+      "uvicorn",
+      "diplomat_worker.api.app:app",
+      "--app-dir"
+    ]);
+    assert.equal(launch.cwd, repoRoot);
+    assert.equal(launch.env.DIPLOMAT_DEVELOPMENT_MODEL_ROOT, modelRoot);
+    assert.equal(launch.env.DIPLOMAT_MODELS_DIR, path.join(modelRoot, "models"));
+    assert.equal(launch.env.DIPLOMAT_FFMPEG_PATH, "ffmpeg");
+    assert.equal(launch.env.DIPLOMAT_FFPROBE_PATH, "ffprobe");
+  } finally {
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test("selectDevelopmentMediaTools uses configured ffmpeg paths before fallbacks", () => {
+  const repoRoot = path.resolve("D:/Software Project/Diplomat");
+
+  assert.deepEqual(
+    selectDevelopmentMediaTools(repoRoot, {
+      DIPLOMAT_FFMPEG_PATH: "C:/Tools/ffmpeg.exe",
+      DIPLOMAT_FFPROBE_PATH: "C:/Tools/ffprobe.exe"
+    }),
+    {
+      ffmpegPath: "C:/Tools/ffmpeg.exe",
+      ffprobePath: "C:/Tools/ffprobe.exe"
+    }
+  );
+});
+
+test("selectDevelopmentMediaTools prefers project-local ffmpeg tools when present", () => {
+  const repoRoot = tempWorkspace();
+  try {
+    const toolDir = path.join(
+      repoRoot,
+      ".dev",
+      "tools",
+      "ffmpeg-release-essentials",
+      "ffmpeg-8.1.1-essentials_build",
+      "bin"
+    );
+    mkdirSync(toolDir, { recursive: true });
+    const ffmpegPath = path.join(toolDir, "ffmpeg.exe");
+    const ffprobePath = path.join(toolDir, "ffprobe.exe");
+    writeFileSync(ffmpegPath, "");
+    writeFileSync(ffprobePath, "");
+
+    assert.deepEqual(selectDevelopmentMediaTools(repoRoot, {}), {
+      ffmpegPath,
+      ffprobePath
+    });
+  } finally {
+    rmSync(repoRoot, { recursive: true, force: true });
+  }
 });
 
 test("isDiplomatWorkerHealthPayload recognizes the local runtime health payload", () => {

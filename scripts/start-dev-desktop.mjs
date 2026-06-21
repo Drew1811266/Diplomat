@@ -15,6 +15,7 @@ import {
   parseLauncherArgs,
   resolveNativeCommand,
   selectDevelopmentModelRoot,
+  selectDevelopmentMediaTools,
   selectRustToolchain
 } from "./dev-launch-utils.mjs";
 
@@ -229,6 +230,7 @@ async function main() {
   ensureLogDir();
 
   const modelRoot = selectDevelopmentModelRoot(repoRoot);
+  const mediaTools = selectDevelopmentMediaTools(repoRoot);
   const rustToolchain = selectRustToolchain({
     requested: process.env.DIPLOMAT_RUST_TOOLCHAIN ?? process.env.RUSTUP_TOOLCHAIN ?? "",
     installedToolchains: getInstalledRustToolchains()
@@ -244,6 +246,8 @@ async function main() {
   log(`Process cleanup root: ${processRoot}`);
   log(`Model root: ${modelRoot}`);
   log(`Models dir: ${path.join(modelRoot, "models")}`);
+  log(`FFmpeg: ${mediaTools.ffmpegPath}`);
+  log(`FFprobe: ${mediaTools.ffprobePath}`);
   log(`Logs: ${logDir}`);
   if (rustToolchain) {
     log(`Rust toolchain: ${rustToolchain}`);
@@ -259,13 +263,15 @@ async function main() {
     ...process.env,
     DIPLOMAT_DEVELOPMENT_MODEL_ROOT: modelRoot,
     DIPLOMAT_MODELS_DIR: path.join(modelRoot, "models"),
+    DIPLOMAT_FFMPEG_PATH: mediaTools.ffmpegPath,
+    DIPLOMAT_FFPROBE_PATH: mediaTools.ffprobePath,
     CARGO_TARGET_DIR: cargoTargetDir
   };
   if (rustToolchain) {
     baseEnv.RUSTUP_TOOLCHAIN = rustToolchain;
   }
 
-  const workerLaunch = buildWorkerLaunch({ repoRoot, modelRoot });
+  const workerLaunch = buildWorkerLaunch({ repoRoot, modelRoot, mediaTools });
   const worker = spawnLoggedProcess({
     command: workerLaunch.command,
     args: workerLaunch.args,

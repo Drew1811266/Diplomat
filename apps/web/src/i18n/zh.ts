@@ -287,6 +287,7 @@ export const zh = {
       subtitleLoadFailed: "字幕文档暂时无法加载。",
       saveFailed: "无法保存字幕。",
       saveFailedHint: "本次会话中的本地编辑仍会保留。",
+      mediaImportFailed: "无法导入视频。",
       analysisFailed: "无法开始转写。",
       translationFailed: "无法开始翻译。",
       styleFailed: "无法更新字幕样式。",
