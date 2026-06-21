@@ -798,7 +798,7 @@ describe("WorkbenchPage", () => {
       "http://127.0.0.1:8765/projects/project-demo/media/source"
     );
     expect(screen.getByTestId("workbench-preview-inspector-grid")).toHaveStyle({
-      gridTemplateColumns: "minmax(0, 1fr) 336px"
+      gridTemplateColumns: "minmax(0, 1fr) 420px"
     });
     expect(screen.getByRole("tablist", { name: "Workbench inspector tabs" })).toBeVisible();
     expect(screen.getByRole("tab", { name: "Subtitles" })).toHaveAttribute("aria-selected", "true");
@@ -1179,7 +1179,7 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     const media = (await screen.findByLabelText("Video preview media")) as HTMLVideoElement;
-    await user.click(await screen.findByRole("button", { name: "Select line line-1" }));
+    await user.click(await screen.findByRole("button", { name: "Select line 1" }));
 
     expect(screen.getByLabelText("Source text")).toHaveValue("查询字幕文本");
     expect(media.currentTime).toBe(1);
@@ -1242,7 +1242,7 @@ describe("WorkbenchPage", () => {
 
     const toolbar = screen.getByRole("toolbar", { name: "Project tools" });
     expect(within(toolbar).getByRole("button", { name: "Save" })).toBeEnabled();
-    expect(screen.getByText("00:01.250")).toBeInTheDocument();
+    expect(screen.getByText("00:01.150")).toBeInTheDocument();
   });
 
   it("renders a professional timeline ruler, track header, and readable subtitle clips", async () => {
@@ -1276,7 +1276,7 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
-      gridTemplateRows: "minmax(0, 1fr) auto 210px"
+      gridTemplateRows: "minmax(0, 1fr) auto 240px"
     });
     expect(screen.getByTestId("subtitle-grid-body")).toHaveStyle({ overflow: "auto" });
     expect(screen.getByTestId("inspector-body")).toHaveStyle({ overflow: "auto" });
@@ -1311,9 +1311,9 @@ describe("WorkbenchPage", () => {
     fireEvent.pointerMove(inspectorResize, { clientX: 960, pointerId: 1 });
     fireEvent.pointerUp(inspectorResize, { pointerId: 1 });
 
-    expect(useUiStore.getState().workspaceLayouts.translation.inspectorWidth).toBe(376);
+    expect(useUiStore.getState().workspaceLayouts.translation.inspectorWidth).toBe(460);
     expect(screen.getByTestId("workbench-preview-inspector-grid")).toHaveStyle({
-      gridTemplateColumns: "minmax(0, 1fr) 376px"
+      gridTemplateColumns: "minmax(0, 1fr) 460px"
     });
 
     const timelineResize = screen.getByRole("separator", { name: "Resize timeline panel" });
@@ -1321,9 +1321,9 @@ describe("WorkbenchPage", () => {
     fireEvent.pointerMove(timelineResize, { clientY: 660, pointerId: 1 });
     fireEvent.pointerUp(timelineResize, { pointerId: 1 });
 
-    expect(useUiStore.getState().workspaceLayouts.translation.bottomDockHeight).toBe(250);
+    expect(useUiStore.getState().workspaceLayouts.translation.bottomDockHeight).toBe(280);
     expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
-      gridTemplateRows: "minmax(0, 1fr) auto 250px"
+      gridTemplateRows: "minmax(0, 1fr) auto 280px"
     });
   });
 
@@ -1337,9 +1337,9 @@ describe("WorkbenchPage", () => {
     fireEvent.pointerDown(inspectorResize, { clientX: 1000, pointerId: 1 });
     fireEvent.pointerMove(inspectorResize, { clientX: 960, pointerId: 1 });
 
-    expect(useUiStore.getState().workspaceLayouts.translation.inspectorWidth).toBe(376);
+    expect(useUiStore.getState().workspaceLayouts.translation.inspectorWidth).toBe(460);
     expect(screen.getByTestId("workbench-preview-inspector-grid")).toHaveStyle({
-      gridTemplateColumns: "minmax(0, 1fr) 376px"
+      gridTemplateColumns: "minmax(0, 1fr) 460px"
     });
     expect(localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY)).toBeNull();
 
@@ -1348,7 +1348,7 @@ describe("WorkbenchPage", () => {
     expect(
       JSON.parse(localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY) ?? "{}").translation
         .inspectorWidth
-    ).toBe(376);
+    ).toBe(460);
 
     localStorage.removeItem(WORKSPACE_LAYOUT_STORAGE_KEY);
 
@@ -1356,9 +1356,9 @@ describe("WorkbenchPage", () => {
     fireEvent.pointerDown(timelineResize, { clientY: 700, pointerId: 1 });
     fireEvent.pointerMove(timelineResize, { clientY: 660, pointerId: 1 });
 
-    expect(useUiStore.getState().workspaceLayouts.translation.bottomDockHeight).toBe(250);
+    expect(useUiStore.getState().workspaceLayouts.translation.bottomDockHeight).toBe(280);
     expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
-      gridTemplateRows: "minmax(0, 1fr) auto 250px"
+      gridTemplateRows: "minmax(0, 1fr) auto 280px"
     });
     expect(localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY)).toBeNull();
 
@@ -1367,7 +1367,7 @@ describe("WorkbenchPage", () => {
     expect(
       JSON.parse(localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY) ?? "{}").translation
         .bottomDockHeight
-    ).toBe(250);
+    ).toBe(280);
   });
 
   it("restores default panel dimensions when resize handles are double clicked", () => {
@@ -1381,15 +1381,15 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     fireEvent.doubleClick(screen.getByRole("separator", { name: "Resize inspector panel" }));
-    expect(useUiStore.getState().workspaceLayouts.translation.inspectorWidth).toBe(336);
+    expect(useUiStore.getState().workspaceLayouts.translation.inspectorWidth).toBe(420);
     expect(screen.getByTestId("workbench-preview-inspector-grid")).toHaveStyle({
-      gridTemplateColumns: "minmax(0, 1fr) 336px"
+      gridTemplateColumns: "minmax(0, 1fr) 420px"
     });
 
     fireEvent.doubleClick(screen.getByRole("separator", { name: "Resize timeline panel" }));
-    expect(useUiStore.getState().workspaceLayouts.translation.bottomDockHeight).toBe(210);
+    expect(useUiStore.getState().workspaceLayouts.translation.bottomDockHeight).toBe(240);
     expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
-      gridTemplateRows: "minmax(0, 1fr) auto 210px"
+      gridTemplateRows: "minmax(0, 1fr) auto 240px"
     });
   });
 
@@ -1431,7 +1431,7 @@ describe("WorkbenchPage", () => {
 
     await user.click(await screen.findByRole("tab", { name: "Subtitles" }));
     await expectTextVisibleAtLeastOnce("查询字幕文本");
-    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Select line 1" }));
 
     expect(screen.getByRole("heading", { name: "Subtitle line" })).toBeInTheDocument();
     expect(screen.getByLabelText("Source text")).toHaveValue("查询字幕文本");
@@ -1623,9 +1623,10 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     await expectTextVisibleAtLeastOnce("查询字幕文本");
-    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Select line 1" }));
     await user.clear(screen.getByLabelText("Source text"));
     await user.type(screen.getByLabelText("Source text"), "Edited source");
+    fireEvent.blur(screen.getByLabelText("Source text"));
 
     const toolbar = screen.getByRole("toolbar", { name: "Project tools" });
     const toolbarSave = within(toolbar).getByRole("button", { name: "Save" });
@@ -1654,11 +1655,12 @@ describe("WorkbenchPage", () => {
 
     await expectTextVisibleAtLeastOnce("查询字幕文本");
 
-    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Select line 1" }));
     expect(screen.getByLabelText("Source text")).toHaveValue("查询字幕文本");
 
     await user.clear(screen.getByLabelText("Source text"));
     await user.type(screen.getByLabelText("Source text"), "Edited from query");
+    fireEvent.blur(screen.getByLabelText("Source text"));
 
     const toolbar = screen.getByRole("toolbar", { name: "Project tools" });
     await user.click(within(toolbar).getByRole("button", { name: "Save" }));
@@ -1694,7 +1696,7 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByText("Autosaved draft")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Restore draft" }));
-    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Select line 1" }));
 
     expect(screen.getByLabelText("Source text")).toHaveValue("Recovered server draft");
     expect(within(screen.getByRole("toolbar", { name: "Project tools" })).getByRole("button", { name: "Save" })).toBeEnabled();
@@ -1706,10 +1708,11 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     await expectTextVisibleAtLeastOnce("查询字幕文本");
-    fireEvent.click(screen.getByRole("button", { name: "Select line line-1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select line 1" }));
     fireEvent.change(screen.getByLabelText("Source text"), {
       target: { value: "Autosaved source" }
     });
+    fireEvent.blur(screen.getByLabelText("Source text"));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -1729,10 +1732,11 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     await expectTextVisibleAtLeastOnce("查询字幕文本");
-    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Select line 1" }));
     fireEvent.change(screen.getByLabelText("Source text"), {
       target: { value: "Stable saved source" }
     });
+    fireEvent.blur(screen.getByLabelText("Source text"));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -1764,10 +1768,11 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     await expectTextVisibleAtLeastOnce("查询字幕文本");
-    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Select line 1" }));
     fireEvent.change(screen.getByLabelText("Source text"), {
       target: { value: "Undo target" }
     });
+    fireEvent.blur(screen.getByLabelText("Source text"));
 
     expect(screen.getByLabelText("Source text")).toHaveValue("Undo target");
     await user.click(screen.getByRole("button", { name: "Undo" }));
@@ -1783,10 +1788,10 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     await expectTextVisibleAtLeastOnce("查询字幕文本");
-    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Select line 1" }));
     await user.click(screen.getByRole("button", { name: "Split line" }));
 
-    expect(await screen.findByRole("button", { name: "Select line line-1-split-1" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Select line 2" })).toBeInTheDocument();
   });
 
   it("merges the next subtitle line from the command bar", async () => {
@@ -1796,10 +1801,10 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     await expectTextVisibleAtLeastOnce("First subtitle text");
-    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Select line 1" }));
     await user.click(screen.getByRole("button", { name: "Merge next" }));
 
-    expect(screen.queryByRole("button", { name: "Select line line-2" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Select line 2" })).not.toBeInTheDocument();
   });
 
   it("creates a batch timing snapshot before applying an offset", async () => {
@@ -1809,7 +1814,7 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     await expectTextVisibleAtLeastOnce("查询字幕文本");
-    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Select line 1" }));
     const offsetInput = screen.getByRole("textbox", { name: "Offset milliseconds" });
     await user.clear(offsetInput);
     await user.type(offsetInput, "250");
@@ -1860,7 +1865,7 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByText("Snapshots")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Restore snapshot Manual checkpoint" }));
-    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Select line 1" }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -1877,12 +1882,12 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     await expectTextVisibleAtLeastOnce("查询字幕文本");
-    fireEvent.click(screen.getByRole("button", { name: "Select line line-1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select line 1" }));
     fireEvent.keyDown(screen.getByLabelText("Source text"), { key: "s", code: "KeyS" });
-    expect(screen.queryByRole("button", { name: "Select line line-1-split-1" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Select line 2" })).not.toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "s", code: "KeyS" });
-    expect(await screen.findByRole("button", { name: "Select line line-1-split-1" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Select line 2" })).toBeInTheDocument();
   });
 
   it("uses keyboard undo and redo outside editable fields", async () => {
@@ -1891,10 +1896,11 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     await expectTextVisibleAtLeastOnce("查询字幕文本");
-    fireEvent.click(screen.getByRole("button", { name: "Select line line-1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select line 1" }));
     fireEvent.change(screen.getByLabelText("Source text"), {
       target: { value: "Keyboard undo target" }
     });
+    fireEvent.blur(screen.getByLabelText("Source text"));
 
     fireEvent.keyDown(document, { key: "z", code: "KeyZ", ctrlKey: true });
     expect(screen.getByLabelText("Source text")).toHaveValue("查询字幕文本");
@@ -1915,9 +1921,10 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     await expectTextVisibleAtLeastOnce("查询字幕文本");
-    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Select line 1" }));
     await user.clear(screen.getByLabelText("Source text"));
     await user.type(screen.getByLabelText("Source text"), "Local draft survives refetch");
+    fireEvent.blur(screen.getByLabelText("Source text"));
 
     openWorkbenchInspector("analysis");
     await user.selectOptions(
@@ -1938,7 +1945,7 @@ describe("WorkbenchPage", () => {
     );
 
     await user.click(screen.getByRole("tab", { name: "Subtitles" }));
-    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Select line 1" }));
     expect(screen.getByLabelText("Source text")).toHaveValue("Local draft survives refetch");
     expect(screen.queryByText("Server refreshed subtitle")).not.toBeInTheDocument();
   });
@@ -1950,9 +1957,10 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     await expectTextVisibleAtLeastOnce("查询字幕文本");
-    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Select line 1" }));
     await user.clear(screen.getByLabelText("Source text"));
     await user.type(screen.getByLabelText("Source text"), "Unsaved after failed PUT");
+    fireEvent.blur(screen.getByLabelText("Source text"));
 
     const toolbar = screen.getByRole("toolbar", { name: "Project tools" });
     const toolbarSave = within(toolbar).getByRole("button", { name: "Save" });

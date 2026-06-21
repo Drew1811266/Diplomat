@@ -17,6 +17,8 @@ type VideoPreviewPanelProps = {
   mediaUrl?: string | null;
   sourceVideoPath?: string | null;
   selectedLine: SubtitleLine | null;
+  activeLine?: SubtitleLine | null;
+  playing?: boolean;
   previewStyle?: SubtitleStyle | null;
   showSafeArea?: boolean;
   currentTimeMs?: number;
@@ -46,6 +48,8 @@ export function VideoPreviewPanel({
   mediaUrl,
   sourceVideoPath,
   selectedLine,
+  activeLine = null,
+  playing: controlledPlaying,
   previewStyle = null,
   showSafeArea = false,
   currentTimeMs = 0,
@@ -58,8 +62,10 @@ export function VideoPreviewPanel({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [localTimeMs, setLocalTimeMs] = useState(currentTimeMs);
   const [localDurationMs, setLocalDurationMs] = useState(durationMs);
-  const [playing, setPlaying] = useState(false);
+  const [localPlaying, setLocalPlaying] = useState(false);
   const [fitMode, setFitMode] = useState<PreviewFitMode>("fit");
+  const playing = controlledPlaying ?? localPlaying;
+  const previewLine = playing ? activeLine : selectedLine ?? activeLine;
   const resolvedMediaUrl = mediaUrl ?? sourceVideoPath ?? null;
   const normalizedStyle = subtitleStyleWithDefaults(previewStyle);
   const displayedDurationMs = Math.max(durationMs, localDurationMs, 0);
@@ -68,12 +74,12 @@ export function VideoPreviewPanel({
     normalizedStyle.bilingualLayout.replace("-", "_") === "target_top" ||
     normalizedStyle.bilingualLayout === "target-above-source"
       ? [
-          { key: "target", text: selectedLine?.translatedText ?? "", color: normalizedStyle.secondaryColor },
-          { key: "source", text: selectedLine?.sourceText ?? "", color: normalizedStyle.primaryColor }
+          { key: "target", text: previewLine?.translatedText ?? "", color: normalizedStyle.secondaryColor },
+          { key: "source", text: previewLine?.sourceText ?? "", color: normalizedStyle.primaryColor }
         ]
       : [
-          { key: "source", text: selectedLine?.sourceText ?? "", color: normalizedStyle.primaryColor },
-          { key: "target", text: selectedLine?.translatedText ?? "", color: normalizedStyle.secondaryColor }
+          { key: "source", text: previewLine?.sourceText ?? "", color: normalizedStyle.primaryColor },
+          { key: "target", text: previewLine?.translatedText ?? "", color: normalizedStyle.secondaryColor }
         ];
 
   useEffect(() => {
@@ -101,14 +107,14 @@ export function VideoPreviewPanel({
     if (video.paused) {
       try {
         await video.play();
-        setPlaying(true);
+        setLocalPlaying(true);
       } catch {
-        setPlaying(false);
+        setLocalPlaying(false);
       }
       return;
     }
     video.pause();
-    setPlaying(false);
+    setLocalPlaying(false);
   }
 
   function seekTo(nextTimeMs: number) {
@@ -149,8 +155,8 @@ export function VideoPreviewPanel({
               : durationMs;
             setLocalDurationMs(nextDurationMs);
           }}
-          onPlay={() => setPlaying(true)}
-          onPause={() => setPlaying(false)}
+          onPlay={() => setLocalPlaying(true)}
+          onPause={() => setLocalPlaying(false)}
           onTimeUpdate={(event) => {
             const nextTimeMs = Math.round(event.currentTarget.currentTime * 1000);
             setLocalTimeMs(nextTimeMs);
@@ -191,7 +197,7 @@ export function VideoPreviewPanel({
 
       {showSafeArea ? <Box data-testid="subtitle-safe-area" style={safeAreaStyle(normalizedStyle)} /> : null}
 
-      {selectedLine ? (
+      {previewLine ? (
         <Box
           style={{
             position: "absolute",

@@ -57,6 +57,10 @@ export function SubtitleGrid({
     () => (filter === "missing" ? lines.filter(isMissingTranslation) : lines),
     [filter, lines]
   );
+  const displayIndexByLineId = useMemo(
+    () => new Map(lines.map((line, index) => [line.id, index + 1])),
+    [lines]
+  );
   const shouldVirtualize = visibleLines.length > virtualizedRowThreshold;
   const [virtualStartIndex, setVirtualStartIndex] = useState(0);
   const visibleWindowSize = shouldVirtualize ? virtualizedWindowSize : visibleLines.length;
@@ -163,23 +167,21 @@ export function SubtitleGrid({
             verticalSpacing={4}
             horizontalSpacing="xs"
             fz="xs"
-            style={{ minWidth: 840 }}
+            style={{ minWidth: 620, tableLayout: "fixed" }}
           >
             <Table.Thead>
               <Table.Tr>
-                <Table.Th w={116}>{t("subtitleGrid.columns.id")}</Table.Th>
-                <Table.Th w={92}>{t("subtitleGrid.columns.start")}</Table.Th>
-                <Table.Th w={92}>{t("subtitleGrid.columns.end")}</Table.Th>
+                <Table.Th w={44}>{t("subtitleGrid.columns.id")}</Table.Th>
                 <Table.Th>{t("subtitleGrid.columns.source")}</Table.Th>
                 <Table.Th>{t("subtitleGrid.columns.translation")}</Table.Th>
-                <Table.Th w={92}>{t("subtitleGrid.columns.review")}</Table.Th>
-                <Table.Th w={118}>{t("subtitleGrid.columns.status")}</Table.Th>
+                <Table.Th w={82}>{t("subtitleGrid.columns.start")}</Table.Th>
+                <Table.Th w={82}>{t("subtitleGrid.columns.end")}</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {topSpacerHeight > 0 ? (
                 <Table.Tr aria-hidden="true" style={{ height: topSpacerHeight }}>
-                  <Table.Td colSpan={7} p={0} style={{ border: 0 }} />
+                  <Table.Td colSpan={5} p={0} style={{ border: 0 }} />
                 </Table.Tr>
               ) : null}
               {renderedLines.map((line) => {
@@ -188,6 +190,7 @@ export function SubtitleGrid({
                 const timingIssues = timingIssuesByLineId[line.id] ?? [];
                 const qualityIssues = line.translationQualityIssues;
                 const hasIssues = timingIssues.length > 0 || qualityIssues.length > 0;
+                const displayIndex = displayIndexByLineId.get(line.id) ?? 0;
 
                 return (
                   <Table.Tr
@@ -219,38 +222,41 @@ export function SubtitleGrid({
                         size="compact-xs"
                         variant="subtle"
                         color={selected ? "teal" : "gray"}
-                        aria-label={t("subtitleGrid.selectLine", { id: line.id })}
+                        aria-label={t("subtitleGrid.selectLine", { id: displayIndex })}
                         onClick={(event) => {
                           event.stopPropagation();
                           onSelectLine(line.id);
                         }}
                       >
-                        {line.id}
+                        {displayIndex}
                       </Button>
                     </Table.Td>
-                    <Table.Td ff="monospace">{formatTimestamp(line.startMs)}</Table.Td>
-                    <Table.Td ff="monospace">{formatTimestamp(line.endMs)}</Table.Td>
-                    <Table.Td style={{ maxWidth: 280, overflowWrap: "anywhere" }}>
-                      {line.sourceText || t("subtitleGrid.noSourceText")}
-                    </Table.Td>
-                    <Table.Td c={line.translatedText ? undefined : "dimmed"} style={{ maxWidth: 280, overflowWrap: "anywhere" }}>
-                      {line.translatedText || t("subtitleGrid.noTranslatedText")}
-                    </Table.Td>
-                    <Table.Td>
-                      <Badge size="xs" variant="light" color="gray">
-                        {t(`subtitleGrid.reviewStatus.${line.reviewStatus}`)}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap={4} wrap="wrap">
-                        <Badge size="xs" variant="light" color={translationStatusColor[line.translationStatus]}>
-                          {t(`subtitleGrid.translationStatus.${line.translationStatus}`)}
+                    <Table.Td style={{ overflowWrap: "anywhere" }}>
+                      <Text size="xs" lineClamp={2}>
+                        {line.sourceText || t("subtitleGrid.noSourceText")}
+                      </Text>
+                      <Group gap={4} wrap="wrap" mt={4}>
+                        <Badge size="xs" variant="light" color="gray">
+                          {t(`subtitleGrid.reviewStatus.${line.reviewStatus}`)}
                         </Badge>
                         {timingIssues.length ? (
                           <Badge size="xs" variant="light" color="red">
                             {t("subtitleGrid.timingIssueCount", { count: timingIssues.length })}
                           </Badge>
                         ) : null}
+                      </Group>
+                    </Table.Td>
+                    <Table.Td
+                      c={line.translatedText ? undefined : "dimmed"}
+                      style={{ overflowWrap: "anywhere" }}
+                    >
+                      <Text size="xs" lineClamp={2}>
+                        {line.translatedText || t("subtitleGrid.noTranslatedText")}
+                      </Text>
+                      <Group gap={4} wrap="wrap" mt={4}>
+                        <Badge size="xs" variant="light" color={translationStatusColor[line.translationStatus]}>
+                          {t(`subtitleGrid.translationStatus.${line.translationStatus}`)}
+                        </Badge>
                         {qualityIssues.length ? (
                           <Badge size="xs" variant="light" color="orange">
                             {t("subtitleGrid.translationQualityIssueCount", {
@@ -260,12 +266,14 @@ export function SubtitleGrid({
                         ) : null}
                       </Group>
                     </Table.Td>
+                    <Table.Td ff="monospace">{formatTimestamp(line.startMs)}</Table.Td>
+                    <Table.Td ff="monospace">{formatTimestamp(line.endMs)}</Table.Td>
                   </Table.Tr>
                 );
               })}
               {bottomSpacerHeight > 0 ? (
                 <Table.Tr aria-hidden="true" style={{ height: bottomSpacerHeight }}>
-                  <Table.Td colSpan={7} p={0} style={{ border: 0 }} />
+                  <Table.Td colSpan={5} p={0} style={{ border: 0 }} />
                 </Table.Tr>
               ) : null}
             </Table.Tbody>

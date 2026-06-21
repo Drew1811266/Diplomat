@@ -100,17 +100,20 @@ describe("SubtitleGrid", () => {
     const table = screen.getByRole("table", { name: "Subtitle Grid" });
     expect(table).toBeInTheDocument();
     expect(within(table).getByRole("columnheader", { name: "ID" })).toBeInTheDocument();
-    expect(within(table).getByRole("columnheader", { name: "Start" })).toBeInTheDocument();
-    expect(within(table).getByRole("columnheader", { name: "End" })).toBeInTheDocument();
     expect(within(table).getByRole("columnheader", { name: "Source" })).toBeInTheDocument();
     expect(within(table).getByRole("columnheader", { name: "Translation" })).toBeInTheDocument();
-    expect(within(table).getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "Start" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "End" })).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "Review" })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "Status" })).not.toBeInTheDocument();
     expect(screen.getByText("原始字幕文本")).toBeInTheDocument();
     expect(screen.getByText("Second subtitle line")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select line 1" })).toHaveTextContent("1");
+    expect(screen.queryByText("line-1")).not.toBeInTheDocument();
     expect(screen.getByTestId("subtitle-row-line-2")).toHaveAttribute("aria-selected", "true");
     expect(screen.getByTestId("subtitle-row-line-1")).toHaveAttribute("data-active", "true");
 
-    await user.click(screen.getByRole("button", { name: "Select line line-1" }));
+    await user.click(screen.getByRole("button", { name: "Select line 1" }));
 
     expect(onSelectLine).toHaveBeenCalledWith("line-1");
   });

@@ -100,6 +100,31 @@ function expect(condition, message) {
   }
 }
 
+function parseSemver(version) {
+  const match = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
+  if (!match) {
+    return null;
+  }
+  return match.slice(1).map((part) => Number(part));
+}
+
+function isVersionAtLeast(version, minimumVersion) {
+  const parsed = parseSemver(version);
+  const minimum = parseSemver(minimumVersion);
+  if (!parsed || !minimum) {
+    return false;
+  }
+  for (let index = 0; index < parsed.length; index += 1) {
+    if (parsed[index] > minimum[index]) {
+      return true;
+    }
+    if (parsed[index] < minimum[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function requireFile(relativePath, message) {
   const exists = existsSync(rootPath(relativePath));
   expect(exists, message ?? `Missing required file: ${relativePath}`);
@@ -268,7 +293,10 @@ function validateAcceptedFinalGate() {
 
   if (existsSync(rootPath("package.json"))) {
     const packageVersion = readJson("package.json").version;
-    expect(packageVersion === "0.40.0", "0.40 accepted gate requires package.json version 0.40.0.");
+    expect(
+      isVersionAtLeast(packageVersion, "0.40.0"),
+      "0.40 accepted gate requires package.json version 0.40.0 or later."
+    );
   }
 }
 

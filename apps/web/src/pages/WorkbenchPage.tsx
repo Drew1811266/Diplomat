@@ -63,6 +63,7 @@ import { TimelineEditor } from "../components/TimelineEditor";
 import { TimelineStrip } from "../components/TimelineStrip";
 import { TopToolbar } from "../components/TopToolbar";
 import { VideoPreviewPanel } from "../components/VideoPreviewPanel";
+import { findActiveSubtitle } from "../editor/playback/activeSubtitle";
 import {
   isEditableShortcutTarget,
   mergeSubtitleLine,
@@ -431,6 +432,7 @@ export function WorkbenchPage() {
   const [draftDocument, setDraftDocument] = useState<SubtitleDocument | null>(null);
   const [historyPast, setHistoryPast] = useState<SubtitleDocument[]>([]);
   const [historyFuture, setHistoryFuture] = useState<SubtitleDocument[]>([]);
+  const [historyMergeKey, setHistoryMergeKey] = useState<string | null>(null);
   const [subtitleFilter, setSubtitleFilter] = useState<SubtitleGridFilter>("all");
   const [offsetMs, setOffsetMs] = useState(0);
   const [offsetScope, setOffsetScope] = useState<OffsetScope>("selected");
@@ -550,13 +552,11 @@ export function WorkbenchPage() {
     () => subtitleLines.find((line) => line.id === selectedLineId) ?? null,
     [selectedLineId, subtitleLines]
   );
-  const activeLineId = useMemo(
-    () =>
-      subtitleLines.find(
-        (line) => currentTimeMs >= line.startMs && currentTimeMs < line.endMs
-      )?.id ?? null,
+  const activeLine = useMemo(
+    () => findActiveSubtitle(subtitleLines, currentTimeMs),
     [currentTimeMs, subtitleLines]
   );
+  const activeLineId = activeLine?.id ?? null;
   const mediaUrl = activeProjectId && projectSourceVideoPath ? projectMediaUrl(activeProjectId) : null;
   const timelineDurationMs = subtitleDocument?.durationMs ?? project.data?.durationMs ?? 0;
   const canEditSubtitle = Boolean(subtitleDocument && hasSubtitleRows && !saveSubtitle.isPending);
@@ -575,6 +575,7 @@ export function WorkbenchPage() {
     setDraftDocument(null);
     setHistoryPast([]);
     setHistoryFuture([]);
+    setHistoryMergeKey(null);
     setOffsetMs(0);
     setOffsetScope("selected");
     setShortcutsOpen(false);
@@ -705,6 +706,7 @@ export function WorkbenchPage() {
   function resetEditingHistory() {
     setHistoryPast([]);
     setHistoryFuture([]);
+    setHistoryMergeKey(null);
   }
 
   function setPresentDocument(nextDocument: SubtitleDocument) {
@@ -716,7 +718,7 @@ export function WorkbenchPage() {
     setDraftDocument(nextDocument);
   }
 
-  function commitDraftDocument(nextDocument: SubtitleDocument) {
+  function commitDraftDocument(nextDocument: SubtitleDocument, mergeKey: string | null = null) {
     if (!subtitleDocument || nextDocument === subtitleDocument) {
       return;
     }
@@ -725,12 +727,15 @@ export function WorkbenchPage() {
       {
         past: historyPast,
         present: subtitleDocument,
-        future: historyFuture
+        future: historyFuture,
+        mergeKey: historyMergeKey
       },
-      nextDocument
+      nextDocument,
+      { mergeKey }
     );
     setHistoryPast(nextHistory.past);
     setHistoryFuture(nextHistory.future);
+    setHistoryMergeKey(nextHistory.mergeKey ?? null);
     setDraftDocument(nextHistory.present);
   }
 
@@ -739,10 +744,20 @@ export function WorkbenchPage() {
       return;
     }
 
-    commitDraftDocument({
-      ...subtitleDocument,
-      lines: subtitleDocument.lines.map((line) => (line.id === nextLine.id ? nextLine : line))
-    });
+    commitDraftDocument(
+      {
+        ...subtitleDocument,
+        lines: subtitleDocument.lines.map((line) => (line.id === nextLine.id ? nextLine : line))
+      },
+      `line:${nextLine.id}`
+    );
+  }
+
+  function documentWithUpdatedLine(document: SubtitleDocument, nextLine: SubtitleLine) {
+    return {
+      ...document,
+      lines: document.lines.map((line) => (line.id === nextLine.id ? nextLine : line))
+    };
   }
 
   function handleUndo() {
@@ -753,10 +768,12 @@ export function WorkbenchPage() {
     const nextHistory = undoHistory({
       past: historyPast,
       present: subtitleDocument,
-      future: historyFuture
+      future: historyFuture,
+      mergeKey: historyMergeKey
     });
     setHistoryPast(nextHistory.past);
     setHistoryFuture(nextHistory.future);
+    setHistoryMergeKey(nextHistory.mergeKey ?? null);
     setPresentDocument(nextHistory.present);
   }
 
@@ -768,10 +785,12 @@ export function WorkbenchPage() {
     const nextHistory = redoHistory({
       past: historyPast,
       present: subtitleDocument,
-      future: historyFuture
+      future: historyFuture,
+      mergeKey: historyMergeKey
     });
     setHistoryPast(nextHistory.past);
     setHistoryFuture(nextHistory.future);
+    setHistoryMergeKey(nextHistory.mergeKey ?? null);
     setPresentDocument(nextHistory.present);
   }
 
@@ -972,18 +991,29 @@ export function WorkbenchPage() {
     }
   }
 
-  async function handleSave() {
-    if (!draftDocument || !activeProjectId) {
+  async function handleSave(pendingLine?: SubtitleLine) {
+    if (!activeProjectId) {
+      return;
+    }
+
+    const documentToSave =
+      pendingLine && subtitleDocument
+        ? documentWithUpdatedLine(subtitleDocument, pendingLine)
+        : draftDocument;
+    if (!documentToSave) {
       return;
     }
 
     try {
-      await saveSubtitle.mutateAsync(draftDocument);
+      await saveSubtitle.mutateAsync(documentToSave);
       lastAutosavedDraftRef.current = null;
       setDraftDocument(null);
       resetEditingHistory();
       void subtitle.refetch();
     } catch {
+      if (pendingLine) {
+        setDraftDocument(documentToSave);
+      }
       // Keep the draft in place so the user can retry a failed save.
     }
   }
@@ -1023,7 +1053,7 @@ export function WorkbenchPage() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [activeLineId, currentTimeMs, historyFuture, historyPast, selectedLineId, subtitleDocument]);
+  }, [activeLineId, currentTimeMs, historyFuture, historyMergeKey, historyPast, selectedLineId, subtitleDocument]);
 
   async function handleStartAnalysis() {
     if (!activeProjectId) {
@@ -1339,7 +1369,7 @@ export function WorkbenchPage() {
             line={selectedLine}
             busy={saveSubtitle.isPending}
             onChangeLine={updateLine}
-            onSave={() => void handleSave()}
+            onSave={(pendingLine) => void handleSave(pendingLine)}
           />
         </Stack>
       );
@@ -2084,6 +2114,7 @@ export function WorkbenchPage() {
                   }
                   mediaUrl={mediaUrl}
                   selectedLine={selectedLine}
+                  activeLine={activeLine}
                   previewStyle={styleDraft}
                   showSafeArea={showSafeArea}
                   currentTimeMs={currentTimeMs}

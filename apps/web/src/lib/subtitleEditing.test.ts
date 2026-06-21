@@ -56,6 +56,26 @@ describe("subtitle editing helpers", () => {
     expect(next.lines[1]?.sourceText).toBe("第二句");
   });
 
+  it("splits Chinese subtitle text without requiring spaces", () => {
+    const original = documentWith([
+      line({
+        id: "line-1",
+        startMs: 1000,
+        endMs: 5000,
+        sourceText: "这是第一句话这是第二句话",
+        translatedText: "This is the first sentence. This is the second sentence."
+      })
+    ]);
+
+    const next = splitSubtitleLine(original, "line-1", 3000);
+
+    expect(next.lines).toHaveLength(2);
+    expect(next.lines[0]?.sourceText).toBe("这是第一句话");
+    expect(next.lines[1]?.sourceText).toBe("这是第二句话");
+    expect(next.lines[0]?.translatedText).toBe("This is the first sentence.");
+    expect(next.lines[1]?.translatedText).toBe("This is the second sentence.");
+  });
+
   it("merges with the next line", () => {
     const original = documentWith([
       line({ id: "line-1", startMs: 1000, endMs: 1600, sourceText: "First" }),
@@ -71,6 +91,30 @@ describe("subtitle editing helpers", () => {
       endMs: 2500,
       sourceText: "First Second"
     });
+  });
+
+  it("merges Chinese text without inserting English spaces", () => {
+    const original = documentWith([
+      line({
+        id: "line-1",
+        startMs: 1000,
+        endMs: 1600,
+        sourceText: "你好",
+        translatedText: "hello"
+      }),
+      line({
+        id: "line-2",
+        startMs: 1600,
+        endMs: 2500,
+        sourceText: "世界",
+        translatedText: "world"
+      })
+    ]);
+
+    const next = mergeSubtitleLine(original, "line-1", "next");
+
+    expect(next.lines[0]?.sourceText).toBe("你好世界");
+    expect(next.lines[0]?.translatedText).toBe("hello world");
   });
 
   it("offsets only lines after the playhead", () => {

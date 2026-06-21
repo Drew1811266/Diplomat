@@ -81,6 +81,45 @@ describe("VideoPreviewPanel", () => {
     expect(screen.getByText("Selected subtitle")).toBeVisible();
   });
 
+  it("shows the active line while playing and selected line while paused", () => {
+    const selectedLine = {
+      ...analyzedDocumentFixture.lines[0]!,
+      id: "selected",
+      sourceText: "Selected source",
+      translatedText: "Selected target"
+    };
+    const activeLine = {
+      ...analyzedDocumentFixture.lines[0]!,
+      id: "active",
+      sourceText: "Active source",
+      translatedText: "Active target"
+    };
+
+    const { rerender } = renderWithProviders(
+      <VideoPreviewPanel
+        mediaUrl="http://worker.test/projects/project-1/media/source"
+        selectedLine={selectedLine}
+        activeLine={activeLine}
+        playing
+      />
+    );
+
+    expect(screen.getByText("Active source")).toBeVisible();
+    expect(screen.queryByText("Selected source")).not.toBeInTheDocument();
+
+    rerender(
+      <VideoPreviewPanel
+        mediaUrl="http://worker.test/projects/project-1/media/source"
+        selectedLine={selectedLine}
+        activeLine={activeLine}
+        playing={false}
+      />
+    );
+
+    expect(screen.getByText("Selected source")).toBeVisible();
+    expect(screen.queryByText("Active source")).not.toBeInTheDocument();
+  });
+
   it("renders styled subtitle preview and safe area overlay", () => {
     const style = {
       ...analyzedDocumentFixture.styles[0]!,

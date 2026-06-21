@@ -44,7 +44,7 @@ import { useDesktopRuntimeStatusQuery } from "../queries/workerQueries";
 import { useUiStore, type SystemSettingsCategory } from "../state/uiStore";
 
 const DEFAULT_WORKER_BASE_URL = "http://127.0.0.1:8765";
-const APP_VERSION = "0.41.0";
+const APP_VERSION = "0.42.0";
 const SHORTCUT_BINDINGS_STORAGE_KEY = "diplomat.shortcutBindings";
 const SHORTCUT_CONFIG_VERSION = 1;
 const everydaySettingsCategories: SystemSettingsCategory[] = [

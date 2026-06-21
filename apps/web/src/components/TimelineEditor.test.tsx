@@ -39,6 +39,17 @@ const waveform: WaveformResponse = {
   ]
 };
 
+function makeManyLines(count: number): SubtitleLine[] {
+  return Array.from({ length: count }, (_, index) =>
+    line({
+      id: `line-${index + 1}`,
+      startMs: index * 1000,
+      endMs: index * 1000 + 600,
+      sourceText: `Subtitle ${index + 1}`
+    })
+  );
+}
+
 function renderTimeline(overrides: Partial<Parameters<typeof TimelineEditor>[0]> = {}) {
   const props = {
     durationMs: 5000,
@@ -97,7 +108,7 @@ describe("TimelineEditor", () => {
       pointerId: 1
     });
 
-    expect(props.onSeek).toHaveBeenCalledWith(2500);
+    expect(props.onSeek).toHaveBeenCalledWith(3150);
   });
 
   it("selects and moves subtitle blocks with snapped drag deltas", () => {
@@ -106,11 +117,16 @@ describe("TimelineEditor", () => {
 
     fireEvent.pointerDown(block, { clientX: 200, pointerId: 1 });
     fireEvent.pointerMove(screen.getByTestId("timeline-track"), { clientX: 220, pointerId: 1 });
+    fireEvent.pointerMove(screen.getByTestId("timeline-track"), { clientX: 240, pointerId: 1 });
+
+    expect(props.onChangeLine).not.toHaveBeenCalled();
+
     fireEvent.pointerUp(screen.getByTestId("timeline-track"), { clientX: 220, pointerId: 1 });
 
     expect(props.onSelectLine).toHaveBeenCalledWith("line-1");
+    expect(props.onChangeLine).toHaveBeenCalledTimes(1);
     expect(props.onChangeLine).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "line-1", startMs: 1100, endMs: 2100 })
+      expect.objectContaining({ id: "line-1", startMs: 1250, endMs: 2250 })
     );
   });
 
@@ -133,11 +149,31 @@ describe("TimelineEditor", () => {
 
     expect(props.onChangeLine).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ id: "line-1", startMs: 1100, endMs: 2000 })
+      expect.objectContaining({ id: "line-1", startMs: 1150, endMs: 2000 })
     );
     expect(props.onChangeLine).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ id: "line-1", startMs: 1000, endMs: 2100 })
+      expect.objectContaining({ id: "line-1", startMs: 1000, endMs: 2150 })
     );
+  });
+
+  it("renders only the subtitle blocks near the visible timeline viewport", () => {
+    renderTimeline({
+      durationMs: 60_000,
+      currentTimeMs: 0,
+      lines: makeManyLines(100),
+      waveform: null,
+      selectedLineId: null,
+      activeLineId: null
+    });
+
+    const track = screen.getByTestId("timeline-track");
+    Object.defineProperty(track, "scrollLeft", { value: 0, configurable: true });
+
+    fireEvent.scroll(track);
+
+    expect(screen.getByTestId("timeline-block-line-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("timeline-block-line-80")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId(/^timeline-block-/)).toHaveLength(9);
   });
 });

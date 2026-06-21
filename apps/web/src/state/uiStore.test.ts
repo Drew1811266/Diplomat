@@ -113,27 +113,27 @@ describe("uiStore", () => {
   });
 
   it("stores panel layout independently for each editor workspace", () => {
-    expect(useUiStore.getState().workspaceLayouts.translation.inspectorWidth).toBe(336);
+    expect(useUiStore.getState().workspaceLayouts.translation.inspectorWidth).toBe(420);
 
     useUiStore.getState().setWorkspaceLayout("translation", {
-      inspectorWidth: 384,
+      inspectorWidth: 420,
       bottomDockHeight: 260,
       inspectorCollapsed: true
     });
 
     expect(useUiStore.getState().workspaceLayouts.translation).toMatchObject({
-      inspectorWidth: 384,
+      inspectorWidth: 420,
       bottomDockHeight: 260,
       inspectorCollapsed: true
     });
     expect(useUiStore.getState().workspaceLayouts.transcription).toMatchObject({
-      inspectorWidth: 336,
-      bottomDockHeight: 210,
+      inspectorWidth: 420,
+      bottomDockHeight: 240,
       inspectorCollapsed: false
     });
     expect(JSON.parse(localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY) ?? "{}")).toMatchObject({
       translation: {
-        inspectorWidth: 384,
+        inspectorWidth: 420,
         bottomDockHeight: 260,
         inspectorCollapsed: true
       }
@@ -164,7 +164,7 @@ describe("uiStore", () => {
       inspectorCollapsed: false,
       bottomCollapsed: true
     });
-    expect(useUiStore.getState().workspaceLayouts.transcription.inspectorWidth).toBe(336);
+    expect(useUiStore.getState().workspaceLayouts.transcription.inspectorWidth).toBe(420);
     expect(useUiStore.getState().workspaceLayouts.delivery.bottomCollapsed).toBe(false);
   });
 
@@ -179,14 +179,14 @@ describe("uiStore", () => {
     useUiStore.getState().resetWorkspaceLayouts();
 
     expect(useUiStore.getState().workspaceLayouts.translation).toEqual({
-      inspectorWidth: 336,
-      bottomDockHeight: 210,
+      inspectorWidth: 420,
+      bottomDockHeight: 240,
       inspectorCollapsed: false,
       bottomCollapsed: false
     });
     expect(useUiStore.getState().workspaceLayouts.transcription).toEqual({
-      inspectorWidth: 336,
-      bottomDockHeight: 210,
+      inspectorWidth: 420,
+      bottomDockHeight: 240,
       inspectorCollapsed: false,
       bottomCollapsed: false
     });

@@ -120,6 +120,25 @@ test("accepts 0.40 in-progress gate blocked by missing two-to-three-hour evidenc
   assert.match(result.stdout, /0\.40: in progress/);
 });
 
+test("accepts later release versions after the 0.40 final gate is accepted", () => {
+  const fixture = createMinimalFixture();
+  writeFixtureFile(
+    fixture,
+    "docs/development/0-40-stage-gate-review.md",
+    [
+      "Decision: Accepted",
+      "## Full Verification",
+      "The two-to-three-hour evidence is complete."
+    ].join("\n")
+  );
+  writeFixtureFile(fixture, "package.json", JSON.stringify({ version: "0.42.0" }));
+
+  const result = runVerifier(["--repo-root", fixture]);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /0\.40: accepted/);
+});
+
 test("fails when a required stage implementation plan is missing", () => {
   const fixture = createMinimalFixture();
   removeFixtureFile(

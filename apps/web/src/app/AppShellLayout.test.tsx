@@ -57,7 +57,7 @@ describe("AppShellLayout", () => {
       vi.fn<typeof fetch>(async (input) => {
         const url = String(input);
         if (url.endsWith("/health")) {
-          return jsonResponse({ name: "diplomat-worker", status: "ok", version: "0.41.0" });
+          return jsonResponse({ name: "diplomat-worker", status: "ok", version: "0.42.0" });
         }
         if (url.endsWith("/tasks")) {
           return jsonResponse({ tasks: [] });
@@ -100,7 +100,7 @@ describe("AppShellLayout", () => {
           return jsonResponse({
             name: "diplomat-worker",
             status: "ok",
-            version: "0.41.0"
+            version: "0.42.0"
           });
         }
         if (url.endsWith("/tasks")) {

@@ -1,4 +1,5 @@
 import { Badge, Button, Group, NumberInput, Stack, Text, Textarea } from "@mantine/core";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SubtitleLine } from "@diplomat/shared";
 
@@ -6,7 +7,7 @@ type LineInspectorProps = {
   line: SubtitleLine | null;
   busy: boolean;
   onChangeLine: (line: SubtitleLine) => void;
-  onSave: () => void;
+  onSave: (pendingLine?: SubtitleLine) => void;
 };
 
 function toInteger(value: number | string, fallback: number) {
@@ -16,6 +17,63 @@ function toInteger(value: number | string, fallback: number) {
 
 export function LineInspector({ line, busy, onChangeLine, onSave }: LineInspectorProps) {
   const { t } = useTranslation();
+  const [sourceDraft, setSourceDraft] = useState(line?.sourceText ?? "");
+  const [translatedDraft, setTranslatedDraft] = useState(line?.translatedText ?? "");
+  const committedDraftRef = useRef({
+    lineId: line?.id ?? null,
+    sourceText: line?.sourceText ?? "",
+    translatedText: line?.translatedText ?? ""
+  });
+
+  useEffect(() => {
+    setSourceDraft(line?.sourceText ?? "");
+    setTranslatedDraft(line?.translatedText ?? "");
+    committedDraftRef.current = {
+      lineId: line?.id ?? null,
+      sourceText: line?.sourceText ?? "",
+      translatedText: line?.translatedText ?? ""
+    };
+  }, [line?.id, line?.sourceText, line?.translatedText]);
+
+  function pendingTextLine() {
+    if (!line) {
+      return null;
+    }
+
+    const committed = committedDraftRef.current;
+    const sourceChanged = sourceDraft !== committed.sourceText;
+    const translationChanged = translatedDraft !== committed.translatedText;
+    if (!sourceChanged && !translationChanged) {
+      return null;
+    }
+
+    return {
+      ...line,
+      sourceText: sourceDraft,
+      translatedText: translatedDraft,
+      translationStatus: translationChanged ? "edited" : line.translationStatus,
+      translationError: translationChanged ? null : line.translationError
+    };
+  }
+
+  function commitTextDrafts() {
+    const nextLine = pendingTextLine();
+    if (!nextLine) {
+      return null;
+    }
+
+    committedDraftRef.current = {
+      lineId: nextLine.id,
+      sourceText: nextLine.sourceText,
+      translatedText: nextLine.translatedText
+    };
+    onChangeLine(nextLine);
+    return nextLine;
+  }
+
+  function handleSave() {
+    onSave(commitTextDrafts() ?? undefined);
+  }
 
   if (!line) {
     return (
@@ -71,28 +129,23 @@ export function LineInspector({ line, busy, onChangeLine, onSave }: LineInspecto
       <Textarea
         label={t("fields.sourceText")}
         minRows={5}
-        value={line.sourceText}
+        value={sourceDraft}
         disabled={busy}
-        onChange={(event) => onChangeLine({ ...line, sourceText: event.currentTarget.value })}
+        onBlur={commitTextDrafts}
+        onChange={(event) => setSourceDraft(event.currentTarget.value)}
       />
 
       <Textarea
         label={t("fields.translatedText")}
         minRows={5}
-        value={line.translatedText}
+        value={translatedDraft}
         disabled={busy}
-        onChange={(event) =>
-          onChangeLine({
-            ...line,
-            translatedText: event.currentTarget.value,
-            translationStatus: "edited",
-            translationError: null
-          })
-        }
+        onBlur={commitTextDrafts}
+        onChange={(event) => setTranslatedDraft(event.currentTarget.value)}
       />
 
       <Group justify="flex-end">
-        <Button type="button" size="xs" color="teal" onClick={onSave} disabled={busy}>
+        <Button type="button" size="xs" color="teal" onClick={handleSave} disabled={busy}>
           {t("actions.save")}
         </Button>
       </Group>
