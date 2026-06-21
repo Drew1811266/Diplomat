@@ -3,6 +3,9 @@ import type { SubtitleLine, WaveformResponse } from "@diplomat/shared";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { workstationSurfaces } from "../app/theme";
+import { TimelineClock } from "../editor/timeline/TimelineClock";
+import { buildTimelineTicks } from "../editor/timeline/timelineTicks";
+import { getVisibleSubtitleLineEntries } from "../editor/timeline/visibleSubtitleRange";
 import type { TimingIssue } from "../lib/timingValidation";
 
 type InteractionMode = "move" | "resize-start" | "resize-end";
@@ -10,7 +13,13 @@ type InteractionMode = "move" | "resize-start" | "resize-end";
 type TimelineInteraction = {
   mode: InteractionMode;
   line: SubtitleLine;
+  previewLine: SubtitleLine;
   startClientX: number;
+};
+
+type TimelineViewport = {
+  scrollLeft: number;
+  width: number;
 };
 
 type TimelineEditorProps = {
@@ -31,6 +40,7 @@ const pixelsPerMillisecond = 0.16;
 const snapMs = 50;
 const minDurationMs = 300;
 const trackHeaderWidth = 112;
+const subtitleRenderOverscanMs = 2000;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -65,19 +75,28 @@ export function TimelineEditor({
   const { t } = useTranslation();
   const [zoom, setZoom] = useState(1);
   const [interaction, setInteraction] = useState<TimelineInteraction | null>(null);
+  const [timelineViewport, setTimelineViewport] = useState<TimelineViewport>({ scrollLeft: 0, width: 0 });
   const safeDurationMs = Math.max(1, durationMs);
   const trackWidth = Math.max(minTrackWidth, safeDurationMs * pixelsPerMillisecond * zoom);
+  const timelineClock = useMemo(
+    () => new TimelineClock({ durationMs: safeDurationMs, contentWidthPx: trackWidth }),
+    [safeDurationMs, trackWidth]
+  );
   const playheadPercent = clamp((currentTimeMs / safeDurationMs) * 100, 0, 100);
   const rulerTicks = useMemo(() => {
-    const tickCount = 8;
-    return Array.from({ length: tickCount + 1 }, (_, index) => {
-      const timeMs = Math.round((safeDurationMs / tickCount) * index);
-      return {
-        timeMs,
-        left: `${(timeMs / safeDurationMs) * 100}%`
-      };
+    return buildTimelineTicks({ durationMs: safeDurationMs, contentWidthPx: trackWidth });
+  }, [safeDurationMs, trackWidth]);
+  const visibleSubtitleEntries = useMemo(() => {
+    if (timelineViewport.width <= 0) {
+      return lines.map((line, originalIndex) => ({ line, originalIndex }));
+    }
+
+    return getVisibleSubtitleLineEntries(lines, {
+      startMs: timelineClock.xToTime(timelineViewport.scrollLeft),
+      endMs: timelineClock.xToTime(timelineViewport.scrollLeft + timelineViewport.width),
+      overscanMs: subtitleRenderOverscanMs
     });
-  }, [safeDurationMs]);
+  }, [lines, timelineClock, timelineViewport.scrollLeft, timelineViewport.width]);
 
   const waveformBars = useMemo(() => {
     if (!waveform?.peaks.length) {
@@ -94,9 +113,8 @@ export function TimelineEditor({
 
   function timeFromClientX(clientX: number, element: HTMLElement) {
     const rect = element.getBoundingClientRect();
-    const coordinateWidth = Math.max(1, trackWidth, rect.width);
-    const offset = clamp(clientX - rect.left + (element.scrollLeft ?? 0), 0, coordinateWidth);
-    return snap((offset / coordinateWidth) * safeDurationMs);
+    const offset = clamp(clientX - rect.left + (element.scrollLeft ?? 0), 0, trackWidth);
+    return snap(timelineClock.xToTime(offset));
   }
 
   function capturePointer(element: Element, pointerId: number) {
@@ -105,35 +123,74 @@ export function TimelineEditor({
     }
   }
 
-  function deltaFromClientX(clientX: number, element: HTMLElement) {
-    const rect = element.getBoundingClientRect();
+  function deltaFromClientX(clientX: number) {
     const deltaPx = clientX - interaction!.startClientX;
-    return snap((deltaPx / Math.max(1, rect.width)) * safeDurationMs);
+    return snap(timelineClock.deltaPxToMs(deltaPx));
   }
 
-  function updateInteraction(clientX: number, element: HTMLElement) {
+  function updateTimelineViewport(element: HTMLElement) {
+    const rect = element.getBoundingClientRect();
+    const nextViewport = {
+      scrollLeft: element.scrollLeft ?? 0,
+      width: rect.width
+    };
+
+    setTimelineViewport((currentViewport) => {
+      if (
+        currentViewport.scrollLeft === nextViewport.scrollLeft &&
+        currentViewport.width === nextViewport.width
+      ) {
+        return currentViewport;
+      }
+      return nextViewport;
+    });
+  }
+
+  function interactionPreviewLine(line: SubtitleLine) {
+    return interaction?.line.id === line.id ? interaction.previewLine : line;
+  }
+
+  function hasTimingChange(first: SubtitleLine, second: SubtitleLine) {
+    return first.startMs !== second.startMs || first.endMs !== second.endMs;
+  }
+
+  function updateInteraction(clientX: number) {
     if (!interaction) {
       return;
     }
-    const deltaMs = deltaFromClientX(clientX, element);
+    const deltaMs = deltaFromClientX(clientX);
     const { line } = interaction;
+    let previewLine: SubtitleLine;
     if (interaction.mode === "move") {
       const duration = line.endMs - line.startMs;
       const nextStart = clamp(line.startMs + deltaMs, 0, Math.max(0, safeDurationMs - duration));
-      onChangeLine({ ...line, startMs: nextStart, endMs: nextStart + duration });
+      previewLine = { ...line, startMs: nextStart, endMs: nextStart + duration };
+      setInteraction({ ...interaction, previewLine });
       return;
     }
     if (interaction.mode === "resize-start") {
-      onChangeLine({
+      previewLine = {
         ...line,
         startMs: clamp(line.startMs + deltaMs, 0, line.endMs - minDurationMs)
-      });
+      };
+      setInteraction({ ...interaction, previewLine });
       return;
     }
-    onChangeLine({
+    previewLine = {
       ...line,
       endMs: clamp(line.endMs + deltaMs, line.startMs + minDurationMs, safeDurationMs)
-    });
+    };
+    setInteraction({ ...interaction, previewLine });
+  }
+
+  function finishInteraction() {
+    if (!interaction) {
+      return;
+    }
+    if (hasTimingChange(interaction.line, interaction.previewLine)) {
+      onChangeLine(interaction.previewLine);
+    }
+    setInteraction(null);
   }
 
   return (
@@ -209,13 +266,15 @@ export function TimelineEditor({
 
         <Box
           data-testid="timeline-track"
+          onScroll={(event) => updateTimelineViewport(event.currentTarget)}
           onPointerDown={(event) => {
             if (event.currentTarget === event.target) {
+              updateTimelineViewport(event.currentTarget);
               onSeek(timeFromClientX(event.clientX, event.currentTarget));
             }
           }}
-          onPointerMove={(event) => updateInteraction(event.clientX, event.currentTarget)}
-          onPointerUp={() => setInteraction(null)}
+          onPointerMove={(event) => updateInteraction(event.clientX)}
+          onPointerUp={finishInteraction}
           style={{
             minHeight: 128,
             overflowX: "auto",
@@ -244,9 +303,10 @@ export function TimelineEditor({
               {rulerTicks.map((tick) => (
                 <Box
                   key={tick.timeMs}
+                  data-testid="timeline-ruler-tick"
                   style={{
                     position: "absolute",
-                    left: tick.left,
+                    left: tick.x,
                     top: 0,
                     bottom: 0,
                     width: 1,
@@ -318,16 +378,17 @@ export function TimelineEditor({
               />
             </Box>
 
-            {lines.map((line, index) => {
+            {visibleSubtitleEntries.map(({ line, originalIndex }) => {
+              const previewLine = interactionPreviewLine(line);
               const selected = line.id === selectedLineId;
               const active = line.id === activeLineId;
               const issues = timingIssuesByLineId[line.id] ?? [];
-              const left = `${(line.startMs / safeDurationMs) * 100}%`;
+              const left = `${(previewLine.startMs / safeDurationMs) * 100}%`;
               const width = `${Math.max(
                 0.4,
-                ((line.endMs - line.startMs) / safeDurationMs) * 100
+                ((previewLine.endMs - previewLine.startMs) / safeDurationMs) * 100
               )}%`;
-              const top = 74 + (index % 2) * 24;
+              const top = 74 + (originalIndex % 2) * 24;
               return (
                 <Box
                   key={line.id}
@@ -342,11 +403,16 @@ export function TimelineEditor({
                     event.stopPropagation();
                     capturePointer(event.currentTarget, event.pointerId);
                     onSelectLine(line.id);
-                    setInteraction({ mode: "move", line, startClientX: event.clientX });
+                    setInteraction({
+                      mode: "move",
+                      line,
+                      previewLine: line,
+                      startClientX: event.clientX
+                    });
                   }}
                   onClick={(event) => {
                     event.stopPropagation();
-                    onSeek(line.startMs);
+                    onSeek(previewLine.startMs);
                   }}
                   style={{
                     position: "absolute",
@@ -378,6 +444,7 @@ export function TimelineEditor({
                       setInteraction({
                         mode: "resize-start",
                         line,
+                        previewLine: line,
                         startClientX: event.clientX
                       });
                     }}
@@ -403,7 +470,7 @@ export function TimelineEditor({
                     lh="26px"
                     style={{ pointerEvents: "none" }}
                   >
-                    {line.sourceText.trim() || line.id}
+                    {previewLine.sourceText.trim() || line.id}
                   </Text>
                   {issues.length ? (
                     <Badge
@@ -431,6 +498,7 @@ export function TimelineEditor({
                       setInteraction({
                         mode: "resize-end",
                         line,
+                        previewLine: line,
                         startClientX: event.clientX
                       });
                     }}

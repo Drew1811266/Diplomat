@@ -69,6 +69,7 @@ describe("LineInspector", () => {
     await user.type(screen.getByLabelText("Source text"), "Updated source");
     await user.clear(screen.getByLabelText("Translated text"));
     await user.type(screen.getByLabelText("Translated text"), "Updated translation");
+    fireEvent.blur(screen.getByLabelText("Translated text"));
 
     expect(screen.getByLabelText("Start ms")).toHaveValue("1200");
     expect(screen.getByLabelText("End ms")).toHaveValue("2600");
@@ -81,6 +82,49 @@ describe("LineInspector", () => {
         translationError: null
       })
     );
+  });
+
+  it("keeps text edits local until blur or save", async () => {
+    const user = userEvent.setup();
+    const onChangeLine = vi.fn();
+    const onSave = vi.fn();
+
+    renderWithProviders(
+      <LineInspector line={selectedLine} busy={false} onChangeLine={onChangeLine} onSave={onSave} />
+    );
+
+    await user.clear(screen.getByLabelText("Source text"));
+    await user.type(screen.getByLabelText("Source text"), "Draft source");
+
+    expect(screen.getByLabelText("Source text")).toHaveValue("Draft source");
+    expect(onChangeLine).not.toHaveBeenCalled();
+
+    fireEvent.blur(screen.getByLabelText("Source text"));
+
+    expect(onChangeLine).toHaveBeenCalledTimes(1);
+    expect(onChangeLine).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sourceText: "Draft source"
+      })
+    );
+
+    onChangeLine.mockClear();
+    await user.clear(screen.getByLabelText("Translated text"));
+    await user.type(screen.getByLabelText("Translated text"), "Draft translation");
+
+    expect(onChangeLine).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onChangeLine).toHaveBeenCalledTimes(1);
+    expect(onChangeLine).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        translatedText: "Draft translation",
+        translationStatus: "edited",
+        translationError: null
+      })
+    );
+    expect(onSave).toHaveBeenCalledTimes(1);
   });
 
   it("saves the selected line and disables controls while busy", async () => {

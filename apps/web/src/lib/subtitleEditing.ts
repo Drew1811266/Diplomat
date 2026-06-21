@@ -1,13 +1,15 @@
 import type { SubtitleDocument, SubtitleLine } from "@diplomat/shared";
+import {
+  redoEditorHistory,
+  undoEditorHistory,
+  updateEditorHistory,
+  type EditorHistory
+} from "../editor/commands/EditorHistory";
 
 export type MergeDirection = "previous" | "next";
 export type OffsetScope = "selected" | "all" | "after_playhead";
 
-export type SubtitleHistory = {
-  past: SubtitleDocument[];
-  present: SubtitleDocument;
-  future: SubtitleDocument[];
-};
+export type SubtitleHistory = EditorHistory<SubtitleDocument>;
 
 export type OffsetSubtitleLinesOptions = {
   scope: OffsetScope;
@@ -18,6 +20,8 @@ export type OffsetSubtitleLinesOptions = {
 
 const minDurationMs = 300;
 const snapMs = 50;
+const cjkBoundaryPattern =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -27,13 +31,42 @@ function snap(value: number) {
   return Math.round(value / snapMs) * snapMs;
 }
 
+type SegmenterCtor = new (
+  locales?: string | string[],
+  options?: { granularity?: "grapheme" | "word" | "sentence" }
+) => {
+  segment(input: string): Iterable<{ segment: string }>;
+};
+
+function splitGraphemes(value: string) {
+  const Segmenter = (Intl as unknown as { Segmenter?: SegmenterCtor }).Segmenter;
+  if (!Segmenter) {
+    return Array.from(value);
+  }
+  return Array.from(new Segmenter(undefined, { granularity: "grapheme" }).segment(value), (part) => part.segment);
+}
+
 function splitText(value: string): [string, string] {
-  const parts = value.trim().split(/\s+/).filter(Boolean);
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return [value, ""];
+  }
+
+  if (/\s/.test(trimmed)) {
+    const parts = trimmed.split(/\s+/).filter(Boolean);
+    if (parts.length <= 1) {
+      return [value, ""];
+    }
+    const midpoint = Math.ceil(parts.length / 2);
+    return [parts.slice(0, midpoint).join(" "), parts.slice(midpoint).join(" ")];
+  }
+
+  const parts = splitGraphemes(trimmed);
   if (parts.length <= 1) {
     return [value, ""];
   }
   const midpoint = Math.ceil(parts.length / 2);
-  return [parts.slice(0, midpoint).join(" "), parts.slice(midpoint).join(" ")];
+  return [parts.slice(0, midpoint).join(""), parts.slice(midpoint).join("")];
 }
 
 function nextSplitLineId(lines: SubtitleLine[], lineId: string) {
@@ -47,8 +80,28 @@ function nextSplitLineId(lines: SubtitleLine[], lineId: string) {
   return candidate;
 }
 
+function shouldJoinWithoutSpace(left: string, right: string) {
+  const leftTrimmed = left.trim();
+  const rightTrimmed = right.trim();
+  if (!leftTrimmed || !rightTrimmed) {
+    return false;
+  }
+  return (
+    cjkBoundaryPattern.test(leftTrimmed.at(-1) ?? "") &&
+    cjkBoundaryPattern.test(rightTrimmed.at(0) ?? "")
+  );
+}
+
 function joinText(...values: string[]) {
-  return values.map((value) => value.trim()).filter(Boolean).join(" ");
+  return values
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .reduce((joined, value) => {
+      if (!joined) {
+        return value;
+      }
+      return shouldJoinWithoutSpace(joined, value) ? `${joined}${value}` : `${joined} ${value}`;
+    }, "");
 }
 
 export function splitSubtitleLine(
@@ -182,37 +235,18 @@ export function offsetSubtitleLines(
 
 export function updateHistory(
   history: SubtitleHistory,
-  nextDocument: SubtitleDocument
+  nextDocument: SubtitleDocument,
+  options: { mergeKey?: string | null; limit?: number } = {}
 ): SubtitleHistory {
-  return {
-    past: [...history.past, history.present],
-    present: nextDocument,
-    future: []
-  };
+  return updateEditorHistory(history, nextDocument, options);
 }
 
 export function undoHistory(history: SubtitleHistory): SubtitleHistory {
-  const previous = history.past.at(-1);
-  if (!previous) {
-    return history;
-  }
-  return {
-    past: history.past.slice(0, -1),
-    present: previous,
-    future: [history.present, ...history.future]
-  };
+  return undoEditorHistory(history);
 }
 
 export function redoHistory(history: SubtitleHistory): SubtitleHistory {
-  const next = history.future[0];
-  if (!next) {
-    return history;
-  }
-  return {
-    past: [...history.past, history.present],
-    present: next,
-    future: history.future.slice(1)
-  };
+  return redoEditorHistory(history);
 }
 
 export function isEditableShortcutTarget(target: EventTarget | null): boolean {

@@ -70,16 +70,16 @@ const defaultProjectDefaults: ProjectDefaults = {
 };
 
 export const defaultWorkspaceLayout: WorkspaceLayout = {
-  inspectorWidth: 336,
-  bottomDockHeight: 210,
+  inspectorWidth: 420,
+  bottomDockHeight: 240,
   inspectorCollapsed: false,
   bottomCollapsed: false
 };
 
 const workspaceLayoutBounds = {
   inspectorWidth: {
-    min: 280,
-    max: 480
+    min: 360,
+    max: 560
   },
   bottomDockHeight: {
     min: 120,
