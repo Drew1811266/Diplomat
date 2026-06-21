@@ -35,6 +35,22 @@ def test_default_runtime_uses_configured_ffmpeg_paths(monkeypatch, tmp_path: Pat
     assert calls == [(source, ffprobe_path)]
 
 
+def test_default_runtime_uses_configured_development_model_root(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    model_root = tmp_path / "repo"
+    models_dir = model_root / "models"
+    monkeypatch.setenv("DIPLOMAT_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("DIPLOMAT_DEVELOPMENT_MODEL_ROOT", str(model_root))
+    monkeypatch.setenv("DIPLOMAT_MODELS_DIR", str(models_dir))
+
+    runtime = runtime_module.create_default_runtime()
+
+    assert runtime.development_model_root == model_root
+    assert runtime.store.models_root() == models_dir
+
+
 def test_default_tool_path_ignores_blank_env_values(monkeypatch) -> None:
     monkeypatch.setenv("DIPLOMAT_FFMPEG_PATH", "  ")
 

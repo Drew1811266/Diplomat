@@ -26,7 +26,9 @@ from diplomat_worker.api.schemas import (
     ProjectDiagnosticsResponse,
     ProjectImportRequest,
     ProjectMaintenanceResponse,
+    ProjectMediaAssetResponse,
     ProjectResponse,
+    ProjectSourceMediaRequest,
     ReleaseReadinessCheckResponse,
     ReleaseReadinessResponse,
     ProjectWarningResponse,
@@ -71,7 +73,7 @@ from diplomat_worker.pipeline.core import CorePipelineInput, run_core_pipeline
 from diplomat_worker.release.readiness import build_release_readiness_report
 from diplomat_worker.release.readiness import ReleaseReadinessReport
 from diplomat_worker.schemas.subtitle import SubtitleDocument
-from diplomat_worker.schemas.task import TaskResponse
+from diplomat_worker.schemas.task import TaskListResponse, TaskResponse
 from diplomat_worker.storage.project_store import ModelInstallationRecord
 from diplomat_worker.storage.project_store import SubtitleDraftRecord
 from diplomat_worker.storage.project_store import SubtitleSnapshotRecord
@@ -101,10 +103,11 @@ def cors_origins() -> list[str]:
 
 def project_response(project, runtime: WorkerRuntime) -> ProjectResponse:
     diagnostics = runtime.store.project_diagnostics(project)
+    media_assets = runtime.store.project_media_assets(project.project_id)
     return ProjectResponse(
         project_id=project.project_id,
         name=project.name,
-        source_video_path=str(project.source_video_path),
+        source_video_path=str(project.source_video_path) if project.source_video_path is not None else None,
         project_dir=str(project.project_dir),
         duration_ms=project.duration_ms,
         source_language=project.source_language,
@@ -112,6 +115,19 @@ def project_response(project, runtime: WorkerRuntime) -> ProjectResponse:
         created_at=project.created_at,
         updated_at=project.updated_at,
         has_subtitle_document=runtime.store.has_subtitle_document(project.project_id),
+        media_assets=[
+            ProjectMediaAssetResponse(
+                asset_id=asset.asset_id,
+                name=asset.name,
+                source_video_path=str(asset.source_video_path),
+                kind="video",
+                duration_ms=asset.duration_ms,
+                imported_at=asset.imported_at,
+                active=asset.active,
+                exists=asset.exists,
+            )
+            for asset in media_assets
+        ],
         diagnostics=ProjectDiagnosticsResponse(
             status=diagnostics.status,
             warnings=[
@@ -612,6 +628,31 @@ def create_app(
     @app.post("/projects", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
     def create_project(request: CreateProjectRequest) -> ProjectResponse:
         active_runtime = get_runtime()
+        duration_ms = 0
+        if request.source_video_path is not None:
+            try:
+                probe = active_runtime.probe_video_fn(request.source_video_path)
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=f"Unable to probe source video: {exc}") from exc
+            if not probe.has_audio:
+                raise HTTPException(status_code=400, detail="Source video does not contain an audio stream")
+            duration_ms = probe.duration_ms
+
+        project = active_runtime.store.create_project(
+            name=request.name,
+            source_video_path=request.source_video_path,
+            duration_ms=duration_ms,
+            source_language=request.source_language,
+            target_language=request.target_language,
+        )
+        return project_response(project, active_runtime)
+
+    @app.put("/projects/{project_id}/media/source", response_model=ProjectResponse)
+    def update_project_source_media(
+        project_id: str,
+        request: ProjectSourceMediaRequest,
+    ) -> ProjectResponse:
+        active_runtime = get_runtime()
         try:
             probe = active_runtime.probe_video_fn(request.source_video_path)
         except Exception as exc:
@@ -619,13 +660,23 @@ def create_app(
         if not probe.has_audio:
             raise HTTPException(status_code=400, detail="Source video does not contain an audio stream")
 
-        project = active_runtime.store.create_project(
-            name=request.name,
-            source_video_path=request.source_video_path,
-            duration_ms=probe.duration_ms,
-            source_language=request.source_language,
-            target_language=request.target_language,
-        )
+        try:
+            project = active_runtime.store.update_project_source_media(
+                project_id,
+                source_video_path=request.source_video_path,
+                duration_ms=probe.duration_ms,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project not found") from exc
+        return project_response(project, active_runtime)
+
+    @app.delete("/projects/{project_id}/media/assets/{asset_id}", response_model=ProjectResponse)
+    def delete_project_media_asset(project_id: str, asset_id: str) -> ProjectResponse:
+        active_runtime = get_runtime()
+        try:
+            project = active_runtime.store.delete_project_media_asset(project_id, asset_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Project media asset not found") from exc
         return project_response(project, active_runtime)
 
     @app.post("/projects/import", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -695,6 +746,8 @@ def create_app(
             project = active_runtime.store.get_project(project_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
+        if project.source_video_path is None:
+            raise HTTPException(status_code=400, detail="Import a source video before analysis")
 
         result = run_core_pipeline(
             CorePipelineInput(
@@ -730,6 +783,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="Project not found") from exc
         except AsrConfigurationError as exc:
             raise HTTPException(status_code=409, detail=exc.message) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return task_response(task)
 
     @app.get("/projects/{project_id}/media/source")
@@ -738,7 +793,7 @@ def create_app(
             project = get_runtime().store.get_project(project_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
-        if not project.source_video_path.exists():
+        if project.source_video_path is None or not project.source_video_path.exists():
             raise HTTPException(status_code=404, detail="Source media not found")
         return FileResponse(project.source_video_path)
 
@@ -763,6 +818,8 @@ def create_app(
             task = get_waveform_jobs().create_waveform_job(project_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Project not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return task_response(task)
 
     @app.get("/projects/{project_id}/translation-settings", response_model=TranslationSettingsResponse)
@@ -842,6 +899,11 @@ def create_app(
             return task_response(get_runtime().store.get_task(task_id))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Task not found") from exc
+
+    @app.get("/tasks", response_model=TaskListResponse)
+    def list_tasks() -> TaskListResponse:
+        tasks = [task_response(task) for task in get_runtime().store.list_tasks()]
+        return TaskListResponse(tasks=tasks)
 
     @app.post("/tasks/{task_id}/cancel", response_model=TaskResponse)
     def cancel_task(task_id: str) -> TaskResponse:

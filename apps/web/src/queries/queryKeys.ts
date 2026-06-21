@@ -15,5 +15,6 @@ export const queryKeys = {
   waveform: (projectId: string) => ["projects", projectId, "waveform"] as const,
   translationSettings: (projectId: string) =>
     ["projects", projectId, "translation-settings"] as const,
+  tasks: ["tasks"] as const,
   task: (taskId: string) => ["tasks", taskId] as const
 };

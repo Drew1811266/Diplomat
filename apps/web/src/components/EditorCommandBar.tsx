@@ -9,6 +9,7 @@ import {
 } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { workstationSurfaces } from "../app/theme";
 import type { OffsetScope } from "../lib/subtitleEditing";
 
 type EditorCommandBarProps = {
@@ -78,11 +79,11 @@ export function EditorCommandBar({
     <Box
       role="toolbar"
       aria-label={t("editorCommands.toolbar")}
-      bg="#ffffff"
+      bg={workstationSurfaces.panelAlt}
       px="sm"
       py={6}
       style={{
-        borderBottom: "1px solid #dbe3ec",
+        borderBottom: `1px solid ${workstationSurfaces.outline}`,
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",

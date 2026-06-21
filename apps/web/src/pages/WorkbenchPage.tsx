@@ -1,21 +1,56 @@
-import { Box, Button, Group, Kbd, Modal, Stack, Text } from "@mantine/core";
+import {
+  ActionIcon,
+  Badge,
+  Box,
+  Button,
+  Group,
+  Kbd,
+  Modal,
+  NativeSelect,
+  Stack,
+  Text,
+  TextInput,
+  VisuallyHidden
+} from "@mantine/core";
 import type {
   AnalysisJobRequest,
   BurnInExportRequest,
+  ProjectMediaAsset,
   SubtitleExportFormat,
   SubtitleExportMode,
   SubtitleExportResponse,
   SubtitleDocument,
   SubtitleLine,
   TaskResponse,
-  TranslationJobRequest
+  TranslationJobRequest,
+  TranslationSettingsResponse
 } from "@diplomat/shared";
 import { useMediaQuery } from "@mantine/hooks";
-import { IconFileText, IconPlayerStop, IconRefresh, IconWaveSine } from "@tabler/icons-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  IconChevronDown,
+  IconChevronLeft,
+  IconChevronRight,
+  IconChevronUp,
+  IconFileText,
+  IconFolderOpen,
+  IconMovie,
+  IconPlayerPlay,
+  IconPlayerStop,
+  IconRefresh,
+  IconSettings,
+  IconTrash,
+  IconWaveSine
+} from "@tabler/icons-react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { projectMediaUrl } from "../api";
-import { openPathInFileManager } from "../desktop";
+import {
+  listenForDroppedVideoFiles,
+  openPathInFileManager,
+  pickVideoFile,
+  pickVideoFiles
+} from "../desktop";
+import { workstationSurfaces } from "../app/theme";
 import { InspectorPanel } from "../components/InspectorPanel";
 import { EditorCommandBar } from "../components/EditorCommandBar";
 import { AnalysisInspector } from "../components/inspectors/AnalysisInspector";
@@ -44,10 +79,23 @@ import {
   hasBlockingTimingIssues,
   subtitleStyleWithDefaults
 } from "../lib/subtitleStyles";
+import {
+  displayRuntimeErrorMessage as displayWorkbenchErrorMessage,
+  displayRuntimeMessage,
+  getErrorMessage,
+  isTechnicalRuntimeErrorMessage
+} from "../lib/runtimeMessages";
+import { createLanguageSelectData } from "../lib/languageOptions";
 import { validateSubtitleTiming } from "../lib/timingValidation";
 import { useSubtitleExportMutation } from "../queries/exportQueries";
 import { useModelsQuery } from "../queries/modelQueries";
-import { useProjectQuery } from "../queries/projectQueries";
+import {
+  useDeleteProjectMediaAssetMutation,
+  useProjectQuery,
+  useSaveTranslationSettingsMutation,
+  useTranslationSettingsQuery,
+  useUpdateProjectSourceMediaMutation
+} from "../queries/projectQueries";
 import {
   useApplyStylePresetMutation,
   useCreateStylePresetMutation,
@@ -78,7 +126,14 @@ import {
   useCreateWaveformJobMutation,
   useWaveformQuery
 } from "../queries/waveformQueries";
-import { useUiStore } from "../state/uiStore";
+import {
+  defaultWorkspaceLayout,
+  useUiStore,
+  type EditorWorkspace,
+  type HelpTopic,
+  type InspectorMode,
+  type ProjectDefaults
+} from "../state/uiStore";
 
 const defaultAnalysisConfig: AnalysisJobRequest = {
   provider: "faster-whisper",
@@ -105,10 +160,75 @@ const defaultTranslationConfig: TranslationJobRequest = {
   glossary: []
 };
 
-const emptySubtitleLines: SubtitleLine[] = [];
+const workspaceInspectorModes: Record<EditorWorkspace, InspectorMode> = {
+  transcription: "analysis",
+  translation: "translation",
+  timing: "line",
+  style: "style",
+  delivery: "export"
+};
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : null;
+function normalizeLanguageCode(value: string, fallback: string) {
+  const trimmed = value.trim();
+  return trimmed.length >= 2 ? trimmed : fallback;
+}
+
+function fileNameFromPath(sourcePath: string) {
+  return sourcePath.replace(/\\/g, "/").split("/").pop() || sourcePath;
+}
+
+function translationConfigFromDefaults(defaults: ProjectDefaults): TranslationJobRequest {
+  return {
+    ...defaultTranslationConfig,
+    sourceLanguage: normalizeLanguageCode(defaults.sourceLanguage, defaultTranslationConfig.sourceLanguage),
+    targetLanguage: normalizeLanguageCode(defaults.targetLanguage, defaultTranslationConfig.targetLanguage)
+  };
+}
+
+const emptySubtitleLines: SubtitleLine[] = [];
+const collapsedDockSize = 32;
+const inspectorResizeBounds = {
+  min: 280,
+  max: 480
+} as const;
+const timelineResizeBounds = {
+  min: 120,
+  max: 360
+} as const;
+
+const inspectorHelpTopicByMode: Record<
+  "line" | "analysis" | "translation" | "style" | "export" | "settings-lite",
+  HelpTopic
+> = {
+  line: "timingQa",
+  analysis: "transcription",
+  translation: "translation",
+  style: "style",
+  export: "export",
+  "settings-lite": "projectsMedia"
+};
+
+function clampPanelSize(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function capturePointer(element: Element, pointerId: number) {
+  const target = element as Element & { setPointerCapture?: (pointerId: number) => void };
+  target.setPointerCapture?.(pointerId);
+}
+
+function releasePointer(element: Element, pointerId: number) {
+  const target = element as Element & { releasePointerCapture?: (pointerId: number) => void };
+  target.releasePointerCapture?.(pointerId);
+}
+
+function translationSettingsToConfig(settings: TranslationSettingsResponse): TranslationJobRequest {
+  const { projectId: _projectId, updatedAt: _updatedAt, ...config } = settings;
+  return config;
+}
+
+function serializeTranslationConfig(config: TranslationJobRequest) {
+  return JSON.stringify(config);
 }
 
 function StatusNotice({
@@ -124,13 +244,13 @@ function StatusNotice({
     <Box
       role={tone === "error" ? "alert" : "status"}
       p="sm"
-      bg={tone === "error" ? "#fef2f2" : "#f8fafc"}
+      bg={tone === "error" ? "rgba(190, 18, 60, 0.12)" : workstationSurfaces.panelAlt}
       style={{
-        borderTop: "1px solid #cbd5e1",
-        borderBottom: "1px solid #e2e8f0"
+        borderTop: `1px solid ${workstationSurfaces.outline}`,
+        borderBottom: `1px solid ${workstationSurfaces.outline}`
       }}
     >
-      <Text size="sm" fw={800} c={tone === "error" ? "red" : "#334155"}>
+      <Text size="sm" fw={800} c={tone === "error" ? "red" : workstationSurfaces.text}>
         {title}
       </Text>
       {message ? (
@@ -142,34 +262,142 @@ function StatusNotice({
   );
 }
 
-function ErrorMessage({ error }: { error: unknown }) {
+function ErrorMessage({
+  error,
+  fallbackTitle,
+  fallbackMessage
+}: {
+  error: unknown;
+  fallbackTitle?: string;
+  fallbackMessage?: string;
+}) {
   const message = getErrorMessage(error);
+  const technical = message ? isTechnicalRuntimeErrorMessage(message) : false;
 
-  return message ? <StatusNotice title={message} tone="error" /> : null;
+  if (!message) {
+    return null;
+  }
+
+  return (
+    <StatusNotice
+      title={technical && fallbackTitle ? fallbackTitle : displayRuntimeMessage(message)}
+      message={technical ? fallbackMessage : null}
+      tone="error"
+    />
+  );
+}
+
+function CurrentProjectSettingsPanel({
+  translationConfig,
+  exportMode,
+  busy,
+  onTranslationConfigChange,
+  onExportModeChange
+}: {
+  translationConfig: TranslationJobRequest;
+  exportMode: SubtitleExportMode;
+  busy: boolean;
+  onTranslationConfigChange: (config: TranslationJobRequest) => void;
+  onExportModeChange: (mode: SubtitleExportMode) => void;
+}) {
+  const { t } = useTranslation();
+  const languageOptions = createLanguageSelectData(t, [
+    translationConfig.sourceLanguage,
+    translationConfig.targetLanguage
+  ]);
+
+  function updateSourceLanguage(value: string) {
+    onTranslationConfigChange({
+      ...translationConfig,
+      sourceLanguage: value,
+      glossary: translationConfig.glossary.map((entry) => ({
+        ...entry,
+        sourceLanguage: value
+      }))
+    });
+  }
+
+  function updateTargetLanguage(value: string) {
+    onTranslationConfigChange({
+      ...translationConfig,
+      targetLanguage: value,
+      glossary: translationConfig.glossary.map((entry) => ({
+        ...entry,
+        targetLanguage: value
+      }))
+    });
+  }
+
+  return (
+    <Stack gap="sm">
+      <Text size="sm" c={workstationSurfaces.textMuted}>
+        {t("inspector.projectSettingsDescription")}
+      </Text>
+      <Group grow gap="xs" align="flex-start">
+        <NativeSelect
+          label={t("fields.sourceLanguage")}
+          value={translationConfig.sourceLanguage}
+          data={languageOptions}
+          disabled={busy}
+          onChange={(event) => updateSourceLanguage(event.currentTarget.value)}
+        />
+        <NativeSelect
+          label={t("fields.targetLanguage")}
+          value={translationConfig.targetLanguage}
+          data={languageOptions}
+          disabled={busy}
+          onChange={(event) => updateTargetLanguage(event.currentTarget.value)}
+        />
+      </Group>
+      <NativeSelect
+        label={t("fields.exportMode")}
+        value={exportMode}
+        disabled={busy}
+        data={[
+          { label: t("exportModes.source"), value: "source" },
+          { label: t("exportModes.target"), value: "target" },
+          { label: t("exportModes.bilingual"), value: "bilingual" }
+        ]}
+        onChange={(event) => onExportModeChange(event.currentTarget.value as SubtitleExportMode)}
+      />
+    </Stack>
+  );
 }
 
 export function WorkbenchPage() {
   const { t } = useTranslation();
   const isNarrow = useMediaQuery("(max-width: 900px)");
   const activeProjectId = useUiStore((state) => state.activeProjectId);
-  const setPage = useUiStore((state) => state.setPage);
   const inspectorMode = useUiStore((state) => state.inspectorMode);
+  const editorWorkspace = useUiStore((state) => state.editorWorkspace);
+  const workspaceLayouts = useUiStore((state) => state.workspaceLayouts);
+  const setWorkspaceLayout = useUiStore((state) => state.setWorkspaceLayout);
+  const setEditorWorkspace = useUiStore((state) => state.setEditorWorkspace);
   const setInspectorMode = useUiStore((state) => state.setInspectorMode);
   const selectedLineId = useUiStore((state) => state.selectedLineId);
   const setSelectedLineId = useUiStore((state) => state.setSelectedLineId);
+  const projectDefaults = useUiStore((state) => state.projectDefaults);
+  const setHelpTopic = useUiStore((state) => state.setHelpTopic);
+  const setPage = useUiStore((state) => state.setPage);
   const project = useProjectQuery(activeProjectId);
-  const subtitle = useSubtitleDocumentQuery(activeProjectId);
-  const subtitleDraft = useSubtitleDraftQuery(activeProjectId);
-  const subtitleSnapshots = useSubtitleSnapshotsQuery(activeProjectId);
+  const projectSourceVideoPath = project.data?.sourceVideoPath ?? null;
+  const projectMediaProjectId = activeProjectId && projectSourceVideoPath ? activeProjectId : null;
+  const subtitle = useSubtitleDocumentQuery(projectMediaProjectId);
+  const subtitleDraft = useSubtitleDraftQuery(projectMediaProjectId);
+  const subtitleSnapshots = useSubtitleSnapshotsQuery(projectMediaProjectId);
   const models = useModelsQuery(Boolean(activeProjectId));
   const saveSubtitle = useSaveSubtitleDocumentMutation(activeProjectId);
   const saveDraft = useSaveSubtitleDraftMutation(activeProjectId);
   const deleteDraft = useDeleteSubtitleDraftMutation(activeProjectId);
   const createSnapshot = useCreateSubtitleSnapshotMutation(activeProjectId);
   const restoreSnapshot = useRestoreSubtitleSnapshotMutation(activeProjectId);
+  const updateSourceMedia = useUpdateProjectSourceMediaMutation(activeProjectId);
+  const deleteMediaAsset = useDeleteProjectMediaAssetMutation(activeProjectId);
+  const translationSettings = useTranslationSettingsQuery(activeProjectId);
+  const saveTranslationSettings = useSaveTranslationSettingsMutation(activeProjectId);
   const createAnalysisJob = useCreateAnalysisJobMutation(activeProjectId);
   const createTranslationJob = useCreateTranslationJobMutation(activeProjectId);
-  const waveform = useWaveformQuery(activeProjectId);
+  const waveform = useWaveformQuery(projectMediaProjectId);
   const createWaveformJob = useCreateWaveformJobMutation(activeProjectId);
   const cancelTask = useCancelTaskMutation();
   const retryTask = useRetryTaskMutation();
@@ -188,9 +416,11 @@ export function WorkbenchPage() {
   const [offsetScope, setOffsetScope] = useState<OffsetScope>("selected");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [analysisConfig, setAnalysisConfig] = useState(defaultAnalysisConfig);
-  const [translationConfig, setTranslationConfig] = useState(defaultTranslationConfig);
+  const [translationConfig, setTranslationConfig] = useState(() =>
+    translationConfigFromDefaults(projectDefaults)
+  );
   const [exportFormat, setExportFormat] = useState<SubtitleExportFormat>("srt");
-  const [exportMode, setExportMode] = useState<SubtitleExportMode>("bilingual");
+  const [exportMode, setExportMode] = useState<SubtitleExportMode>(() => projectDefaults.exportMode);
   const [exportResult, setExportResult] = useState<SubtitleExportResponse | null>(null);
   const [styleDraft, setStyleDraft] = useState(defaultSubtitleStyle);
   const [showSafeArea, setShowSafeArea] = useState(false);
@@ -199,13 +429,18 @@ export function WorkbenchPage() {
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
   const [seekRequestMs, setSeekRequestMs] = useState<number | null>(null);
   const task = useTaskQuery(latestTaskId);
+  const projectDefaultsRef = useRef(projectDefaults);
   const refetchedTaskId = useRef<string | null>(null);
   const lastAutosavedDraftRef = useRef<string | null>(null);
+  const lastSavedTranslationSettingsRef = useRef<string | null>(null);
+  const inspectorResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const timelineResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const polledTask = task.data;
   const serverDraft = subtitleDraft.data ?? null;
   const snapshotSummaries = subtitleSnapshots.data?.snapshots ?? [];
   const subtitleDocument = draftDocument ?? subtitle.data ?? null;
   const subtitleLines = subtitleDocument?.lines ?? emptySubtitleLines;
+  const projectMediaAssets = project.data?.mediaAssets ?? [];
   const modelCatalog = models.data?.models ?? [];
   const stylePresetList = stylePresets.data?.presets ?? [];
   const activeStylePreset =
@@ -216,6 +451,14 @@ export function WorkbenchPage() {
   const hasUnresolvedDraft = hasUnsavedChanges || Boolean(serverDraft);
   const recoveryPanelVisible = Boolean(serverDraft || snapshotSummaries.length > 0);
   const layout = isNarrow ? "stacked" : "split";
+  const workspaceLayout = workspaceLayouts[editorWorkspace];
+  const productionStageInspectorMode = workspaceInspectorModes[editorWorkspace];
+  const inspectorColumnWidth = workspaceLayout.inspectorCollapsed
+    ? collapsedDockSize
+    : workspaceLayout.inspectorWidth;
+  const timelineDockHeight = workspaceLayout.bottomCollapsed
+    ? collapsedDockSize
+    : workspaceLayout.bottomDockHeight;
   const hasSubtitleRows = subtitleLines.length > 0;
   const timingValidation = useMemo(() => validateSubtitleTiming(subtitleLines), [subtitleLines]);
   const hasTimingExportErrors = hasBlockingTimingIssues(timingValidation);
@@ -227,6 +470,7 @@ export function WorkbenchPage() {
     createTranslationJob.isPending ||
     createWaveformJob.isPending ||
     createBurnInExportJob.isPending ||
+    deleteMediaAsset.isPending ||
     taskOperationPending;
   const canCancelTask = Boolean(observedTask && isTaskActive(observedTask) && !cancelTask.isPending);
   const canRetryCurrentTask = Boolean(
@@ -244,6 +488,10 @@ export function WorkbenchPage() {
     : t("status.ready");
   const taskStatusError =
     observedTask?.errorMessage ??
+    getErrorMessage(updateSourceMedia.error) ??
+    getErrorMessage(deleteMediaAsset.error) ??
+    getErrorMessage(translationSettings.error) ??
+    getErrorMessage(saveTranslationSettings.error) ??
     getErrorMessage(task.error) ??
     getErrorMessage(createWaveformJob.error) ??
     getErrorMessage(createBurnInExportJob.error) ??
@@ -251,7 +499,12 @@ export function WorkbenchPage() {
     getErrorMessage(retryTask.error);
   const hasProjectError = project.isError;
   const hasSubtitleError = subtitle.isError;
-  const dataBlocked = project.isPending || subtitle.isPending || hasProjectError || hasSubtitleError;
+  const subtitleQueryActive = Boolean(projectMediaProjectId);
+  const dataBlocked =
+    project.isPending ||
+    (subtitleQueryActive && subtitle.isPending) ||
+    hasProjectError ||
+    (subtitleQueryActive && hasSubtitleError);
   const canExport = Boolean(
     activeProjectId &&
       subtitleDocument &&
@@ -285,7 +538,7 @@ export function WorkbenchPage() {
       )?.id ?? null,
     [currentTimeMs, subtitleLines]
   );
-  const mediaUrl = activeProjectId ? projectMediaUrl(activeProjectId) : null;
+  const mediaUrl = activeProjectId && projectSourceVideoPath ? projectMediaUrl(activeProjectId) : null;
   const timelineDurationMs = subtitleDocument?.durationMs ?? project.data?.durationMs ?? 0;
   const canEditSubtitle = Boolean(subtitleDocument && hasSubtitleRows && !saveSubtitle.isPending);
   const recoveryBusy =
@@ -294,6 +547,10 @@ export function WorkbenchPage() {
     deleteDraft.isPending ||
     createSnapshot.isPending ||
     restoreSnapshot.isPending;
+
+  useEffect(() => {
+    projectDefaultsRef.current = projectDefaults;
+  }, [projectDefaults]);
 
   useEffect(() => {
     setDraftDocument(null);
@@ -313,10 +570,41 @@ export function WorkbenchPage() {
     setLatestTask(null);
     setLatestTaskId(null);
     refetchedTaskId.current = null;
-    setTranslationConfig(defaultTranslationConfig);
+    lastSavedTranslationSettingsRef.current = null;
+    setTranslationConfig(translationConfigFromDefaults(projectDefaultsRef.current));
+    setExportMode(projectDefaultsRef.current.exportMode);
     setCurrentTimeMs(0);
     setSeekRequestMs(null);
   }, [activeProjectId]);
+
+  useEffect(() => {
+    if (!translationSettings.data) {
+      return;
+    }
+
+    const nextConfig = translationSettingsToConfig(translationSettings.data);
+    lastSavedTranslationSettingsRef.current = serializeTranslationConfig(nextConfig);
+    setTranslationConfig(nextConfig);
+  }, [translationSettings.data]);
+
+  useEffect(() => {
+    if (!activeProjectId || !translationSettings.data) {
+      return undefined;
+    }
+
+    const serializedConfig = serializeTranslationConfig(translationConfig);
+    if (lastSavedTranslationSettingsRef.current === serializedConfig) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      void saveTranslationSettings.mutateAsync(translationConfig).catch(() => {
+        // Mutation state surfaces the failure in the project status area.
+      });
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [activeProjectId, saveTranslationSettings, translationConfig, translationSettings.data]);
 
   useEffect(() => {
     const nextStyle = subtitleStyleWithDefaults(
@@ -367,6 +655,33 @@ export function WorkbenchPage() {
 
     return () => window.clearTimeout(timer);
   }, [activeProjectId, draftDocument, saveDraft]);
+
+  useEffect(() => {
+    if (!activeProjectId) {
+      return undefined;
+    }
+
+    let unlisten: (() => void) | null = null;
+    let disposed = false;
+    void listenForDroppedVideoFiles((paths) => {
+      void importVideoPaths(paths);
+    })
+      .then((cleanup) => {
+        if (disposed) {
+          cleanup();
+          return;
+        }
+        unlisten = cleanup;
+      })
+      .catch(() => {
+        // Drag-and-drop is best-effort; the toolbar import button remains available.
+      });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [activeProjectId]);
 
   function resetEditingHistory() {
     setHistoryPast([]);
@@ -453,6 +768,82 @@ export function WorkbenchPage() {
   function handleTimelineSeek(timeMs: number) {
     setSeekRequestMs(timeMs);
     setCurrentTimeMs(timeMs);
+  }
+
+  function resetProjectMediaState() {
+    setDraftDocument(null);
+    resetEditingHistory();
+    setSelectedLineId(null);
+    setCurrentTimeMs(0);
+    setSeekRequestMs(null);
+    setLatestTask(null);
+    setLatestTaskId(null);
+    refetchedTaskId.current = null;
+  }
+
+  async function importVideoPath(sourceVideoPath: string) {
+    if (!activeProjectId || !sourceVideoPath.trim()) {
+      return;
+    }
+
+    try {
+      await updateSourceMedia.mutateAsync({ sourceVideoPath: sourceVideoPath.trim() });
+      resetProjectMediaState();
+      void project.refetch();
+      void subtitle.refetch();
+      void subtitleDraft.refetch();
+      void subtitleSnapshots.refetch();
+      void waveform.refetch();
+    } catch {
+      // Mutation state surfaces the failure.
+    }
+  }
+
+  async function importVideoPaths(sourceVideoPaths: string[]) {
+    const normalizedPaths = sourceVideoPaths.map((path) => path.trim()).filter(Boolean);
+    for (const sourceVideoPath of normalizedPaths) {
+      await importVideoPath(sourceVideoPath);
+    }
+  }
+
+  async function handleUseMediaAsset(asset: ProjectMediaAsset) {
+    if (asset.active) {
+      return;
+    }
+    await importVideoPath(asset.sourceVideoPath);
+  }
+
+  async function handleDeleteMediaAsset(asset: ProjectMediaAsset) {
+    if (!activeProjectId) {
+      return;
+    }
+
+    try {
+      await deleteMediaAsset.mutateAsync(asset.assetId);
+      if (asset.active || asset.sourceVideoPath === projectSourceVideoPath) {
+        resetProjectMediaState();
+        void subtitle.refetch();
+        void subtitleDraft.refetch();
+        void subtitleSnapshots.refetch();
+        void waveform.refetch();
+      }
+      void project.refetch();
+    } catch {
+      // Mutation state surfaces the failure.
+    }
+  }
+
+  async function handleImportVideo() {
+    const pickedPaths = await pickVideoFiles();
+    if (pickedPaths.length > 0) {
+      await importVideoPaths(pickedPaths);
+      return;
+    }
+
+    const pickedPath = await pickVideoFile();
+    if (pickedPath) {
+      await importVideoPath(pickedPath);
+    }
   }
 
   function handleSplitLine() {
@@ -655,6 +1046,110 @@ export function WorkbenchPage() {
     }
   }
 
+  function handleInspectorResizeStart(event: ReactPointerEvent<HTMLDivElement>) {
+    if (isNarrow || workspaceLayout.inspectorCollapsed) {
+      return;
+    }
+
+    event.preventDefault();
+    inspectorResizeRef.current = {
+      startX: event.clientX,
+      startWidth: workspaceLayout.inspectorWidth
+    };
+    capturePointer(event.currentTarget, event.pointerId);
+  }
+
+  function handleInspectorResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!inspectorResizeRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    const nextWidth = clampPanelSize(
+      inspectorResizeRef.current.startWidth + inspectorResizeRef.current.startX - event.clientX,
+      inspectorResizeBounds.min,
+      inspectorResizeBounds.max
+    );
+    setWorkspaceLayout(editorWorkspace, {
+      inspectorWidth: nextWidth,
+      inspectorCollapsed: false
+    }, { persist: false });
+  }
+
+  function handleInspectorResizeEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!inspectorResizeRef.current) {
+      return;
+    }
+
+    inspectorResizeRef.current = null;
+    setWorkspaceLayout(editorWorkspace, {});
+    releasePointer(event.currentTarget, event.pointerId);
+  }
+
+  function handleInspectorResizeReset() {
+    if (isNarrow) {
+      return;
+    }
+
+    inspectorResizeRef.current = null;
+    setWorkspaceLayout(editorWorkspace, {
+      inspectorWidth: defaultWorkspaceLayout.inspectorWidth,
+      inspectorCollapsed: false
+    });
+  }
+
+  function handleTimelineResizeStart(event: ReactPointerEvent<HTMLDivElement>) {
+    if (isNarrow || workspaceLayout.bottomCollapsed) {
+      return;
+    }
+
+    event.preventDefault();
+    timelineResizeRef.current = {
+      startY: event.clientY,
+      startHeight: workspaceLayout.bottomDockHeight
+    };
+    capturePointer(event.currentTarget, event.pointerId);
+  }
+
+  function handleTimelineResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!timelineResizeRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    const nextHeight = clampPanelSize(
+      timelineResizeRef.current.startHeight + timelineResizeRef.current.startY - event.clientY,
+      timelineResizeBounds.min,
+      timelineResizeBounds.max
+    );
+    setWorkspaceLayout(editorWorkspace, {
+      bottomDockHeight: nextHeight,
+      bottomCollapsed: false
+    }, { persist: false });
+  }
+
+  function handleTimelineResizeEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!timelineResizeRef.current) {
+      return;
+    }
+
+    timelineResizeRef.current = null;
+    setWorkspaceLayout(editorWorkspace, {});
+    releasePointer(event.currentTarget, event.pointerId);
+  }
+
+  function handleTimelineResizeReset() {
+    if (isNarrow) {
+      return;
+    }
+
+    timelineResizeRef.current = null;
+    setWorkspaceLayout(editorWorkspace, {
+      bottomDockHeight: defaultWorkspaceLayout.bottomDockHeight,
+      bottomCollapsed: false
+    });
+  }
+
   async function handleCancelTask() {
     if (!observedTask || !isTaskActive(observedTask)) {
       return;
@@ -740,6 +1235,11 @@ export function WorkbenchPage() {
     await openPathInFileManager(exportsDir);
   }
 
+  function openInspectorHelp() {
+    setHelpTopic(inspectorHelpTopicByMode[inspectorMode]);
+    setPage("help");
+  }
+
   async function handleCreateStylePreset(name: string, style: typeof styleDraft) {
     try {
       await createStylePreset.mutateAsync({ name, style });
@@ -785,7 +1285,11 @@ export function WorkbenchPage() {
     if (inspectorMode === "line") {
       return (
         <Stack gap="sm">
-          <ErrorMessage error={saveSubtitle.error} />
+          <ErrorMessage
+            error={saveSubtitle.error}
+            fallbackTitle={t("workbench.errors.saveFailed")}
+            fallbackMessage={t("workbench.errors.saveFailedHint")}
+          />
           <LineInspector
             line={selectedLine}
             busy={saveSubtitle.isPending}
@@ -799,7 +1303,10 @@ export function WorkbenchPage() {
     if (inspectorMode === "analysis") {
       return (
         <Stack gap="sm">
-          <ErrorMessage error={createAnalysisJob.error} />
+          <ErrorMessage
+            error={createAnalysisJob.error}
+            fallbackTitle={t("workbench.errors.analysisFailed")}
+          />
           <AnalysisInspector
             config={analysisConfig}
             busy={!activeProjectId || taskActive}
@@ -818,10 +1325,17 @@ export function WorkbenchPage() {
     if (inspectorMode === "translation") {
       return (
         <Stack gap="sm">
-          <ErrorMessage error={createTranslationJob.error} />
+          <ErrorMessage
+            error={
+              translationSettings.error ??
+              saveTranslationSettings.error ??
+              createTranslationJob.error
+            }
+            fallbackTitle={t("workbench.errors.translationFailed")}
+          />
           <TranslationInspector
             config={translationConfig}
-            busy={!activeProjectId || taskActive}
+            busy={!activeProjectId || taskActive || translationSettings.isLoading}
             modelCatalog={modelCatalog}
             canCancel={canCancelTask}
             canRetry={canRetryTranslationTask}
@@ -829,6 +1343,52 @@ export function WorkbenchPage() {
             onStart={() => void handleStartTranslation()}
             onCancel={() => void handleCancelTask()}
             onRetry={() => void handleRetryTask(translationConfig)}
+          />
+        </Stack>
+      );
+    }
+
+    if (inspectorMode === "style") {
+      const styleError =
+        createStylePreset.error ??
+        updateStylePreset.error ??
+        deleteStylePreset.error ??
+        applyStylePreset.error;
+      const presetBusy =
+        stylePresets.isPending ||
+        createStylePreset.isPending ||
+        updateStylePreset.isPending ||
+        deleteStylePreset.isPending ||
+        applyStylePreset.isPending;
+
+      return (
+        <Stack gap="sm">
+          <ErrorMessage
+            error={styleError}
+            fallbackTitle={t("workbench.errors.styleFailed")}
+          />
+          <ExportInspector
+            surface="style"
+            format={exportFormat}
+            mode={exportMode}
+            result={exportResult}
+            canExport={canExport}
+            disabledReason={exportDisabledReason}
+            busy={false}
+            style={styleDraft}
+            presets={stylePresetList}
+            activePresetId={stylePresets.data?.activePresetId ?? null}
+            presetBusy={presetBusy}
+            showSafeArea={showSafeArea}
+            onFormatChange={setExportFormat}
+            onModeChange={setExportMode}
+            onStyleChange={setStyleDraft}
+            onCreatePreset={(name, style) => void handleCreateStylePreset(name, style)}
+            onUpdatePreset={(presetId, input) => void handleUpdateStylePreset(presetId, input)}
+            onDeletePreset={(presetId) => void handleDeleteStylePreset(presetId)}
+            onApplyPreset={(presetId) => void handleApplyStylePreset(presetId)}
+            onShowSafeAreaChange={setShowSafeArea}
+            onExport={() => void handleExport()}
           />
         </Stack>
       );
@@ -850,8 +1410,12 @@ export function WorkbenchPage() {
         applyStylePreset.isPending;
       return (
         <Stack gap="sm">
-          <ErrorMessage error={exportError} />
+          <ErrorMessage
+            error={exportError}
+            fallbackTitle={t("workbench.errors.exportFailed")}
+          />
           <ExportInspector
+            surface="delivery"
             format={exportFormat}
             mode={exportMode}
             result={exportResult}
@@ -886,6 +1450,21 @@ export function WorkbenchPage() {
       );
     }
 
+    if (inspectorMode === "settings-lite") {
+      return (
+        <Stack gap="sm">
+          <ErrorMessage error={translationSettings.error ?? saveTranslationSettings.error} />
+          <CurrentProjectSettingsPanel
+            translationConfig={translationConfig}
+            exportMode={exportMode}
+            busy={!activeProjectId || taskActive || translationSettings.isLoading}
+            onTranslationConfigChange={setTranslationConfig}
+            onExportModeChange={setExportMode}
+          />
+        </Stack>
+      );
+    }
+
     return (
       <Stack gap="sm">
         <Text size="sm" c="#334155">
@@ -893,6 +1472,18 @@ export function WorkbenchPage() {
         </Text>
       </Stack>
     );
+  }
+
+  function handleToolbarInspectorMode(mode: Parameters<typeof setInspectorMode>[0]) {
+    if (mode === "export") {
+      setEditorWorkspace("delivery");
+    }
+
+    setInspectorMode(mode);
+  }
+
+  function openProductionStageControls() {
+    setInspectorMode(productionStageInspectorMode);
   }
 
   function renderDataNotice() {
@@ -908,8 +1499,20 @@ export function WorkbenchPage() {
       return (
         <StatusNotice
           title={t("workbench.projectLoadError")}
-          message={getErrorMessage(project.error)}
+          message={displayWorkbenchErrorMessage(
+            project.error,
+            t("workbench.errors.projectLoadFailed")
+          )}
           tone="error"
+        />
+      );
+    }
+
+    if (!projectSourceVideoPath) {
+      return (
+        <StatusNotice
+          title={t("workbench.noSourceVideo")}
+          message={t("workbench.importVideoToStart")}
         />
       );
     }
@@ -922,7 +1525,10 @@ export function WorkbenchPage() {
       return (
         <StatusNotice
           title={t("workbench.subtitleLoadError")}
-          message={getErrorMessage(subtitle.error)}
+          message={displayWorkbenchErrorMessage(
+            subtitle.error,
+            t("workbench.errors.subtitleLoadFailed")
+          )}
           tone="error"
         />
       );
@@ -937,7 +1543,7 @@ export function WorkbenchPage() {
 
   const dataNotice = renderDataNotice();
   const projectContextTitle = project.data?.name ?? t("workbench.noProject");
-  const projectContextSource = project.data?.sourceVideoPath ?? t("workbench.previewUnavailable");
+  const projectContextSource = projectSourceVideoPath ?? t("workbench.noSourceVideo");
   const taskStatusAction =
     observedTask || taskOperationPending ? (
       <Group gap={6} wrap="nowrap">
@@ -994,14 +1600,14 @@ export function WorkbenchPage() {
           <Box
             px="sm"
             py={6}
-            bg="#0f172a"
-            style={{ borderTop: "1px solid #1e293b" }}
+            bg={workstationSurfaces.panelAlt}
+            style={{ borderTop: `1px solid ${workstationSurfaces.outline}` }}
           >
             <Button
               type="button"
               size="compact-xs"
               variant="light"
-              color="cyan"
+              color="teal"
               leftSection={<IconWaveSine size={14} />}
               disabled={!activeProjectId || taskActive}
               loading={createWaveformJob.isPending}
@@ -1026,31 +1632,330 @@ export function WorkbenchPage() {
       </Box>
     ) : (
       <TimelineStrip durationMs={timelineDurationMs} lineCount={subtitleLines.length} />
+  );
+  const mediaActionBusy = updateSourceMedia.isPending || deleteMediaAsset.isPending || taskActive;
+  const hasProjectMediaAssets = projectMediaAssets.length > 0;
+  const mediaBinEmpty = Boolean(project.data) && !hasProjectMediaAssets && !projectSourceVideoPath;
+  const showMediaImportStart = mediaBinEmpty;
+  const mediaBinTrack = mediaBinEmpty ? "152px" : "auto";
+  const mediaPreviewTrack = mediaBinEmpty ? "minmax(180px, 22vh)" : "minmax(200px, 30vh)";
+  const activeSourceName = projectSourceVideoPath ? fileNameFromPath(projectSourceVideoPath) : null;
+  const projectMediaBin = activeProjectId ? (
+    <Box
+      component="section"
+      role="region"
+      aria-label={t("workbench.media.title")}
+      px="sm"
+      py={8}
+      bg={workstationSurfaces.panelAlt}
+      style={{
+        borderBottom: `1px solid ${workstationSurfaces.outline}`,
+        minHeight: mediaBinEmpty ? 360 : undefined,
+        overflow: "hidden"
+      }}
+    >
+      <Group justify="space-between" align="center" mb={6} gap="xs" wrap="nowrap">
+        <Text size="xs" fw={900} c={workstationSurfaces.text}>
+          {t("workbench.media.title")}
+        </Text>
+        <Text size="xs" c={workstationSurfaces.textMuted}>
+          {t("workbench.media.count", { count: projectMediaAssets.length })}
+        </Text>
+      </Group>
+      {hasProjectMediaAssets ? (
+        <Group gap="xs" wrap="nowrap" style={{ overflowX: "auto", paddingBottom: 2 }}>
+          {projectMediaAssets.map((asset) => (
+            <Box
+              key={asset.assetId}
+              p="xs"
+              data-active={asset.active ? "true" : "false"}
+              style={{
+                minWidth: 260,
+                maxWidth: 360,
+                border: `1px solid ${
+                  asset.active ? workstationSurfaces.success : workstationSurfaces.outline
+                }`,
+                borderRadius: 6,
+                background: asset.active ? "#ecfdf5" : "#ffffff"
+              }}
+            >
+              <Group justify="space-between" gap="xs" wrap="nowrap">
+                <Text
+                  size="sm"
+                  fw={800}
+                  c={workstationSurfaces.text}
+                  truncate
+                  title={asset.sourceVideoPath}
+                >
+                  {asset.name}
+                </Text>
+                {asset.active ? (
+                  <Badge size="xs" color="teal" variant="light">
+                    {t("workbench.media.active")}
+                  </Badge>
+                ) : null}
+                {!asset.exists ? (
+                  <Badge size="xs" color="red" variant="light">
+                    {t("workbench.media.missing")}
+                  </Badge>
+                ) : null}
+              </Group>
+              <Text size="xs" c={workstationSurfaces.textMuted} truncate title={asset.sourceVideoPath}>
+                {t("workbench.media.localFile")}
+              </Text>
+              <Group gap={6} mt={6} wrap="nowrap">
+                <Button
+                  type="button"
+                  size="compact-xs"
+                  variant={asset.active ? "light" : "subtle"}
+                  color="teal"
+                  leftSection={<IconPlayerPlay size={14} aria-hidden />}
+                  aria-label={t("workbench.media.useAsset", { name: asset.name })}
+                  disabled={asset.active || mediaActionBusy}
+                  onClick={() => void handleUseMediaAsset(asset)}
+                >
+                  {t("workbench.media.use")}
+                </Button>
+                <Button
+                  type="button"
+                  size="compact-xs"
+                  variant="subtle"
+                  color="red"
+                  leftSection={<IconTrash size={14} aria-hidden />}
+                  aria-label={t("workbench.media.removeAsset", { name: asset.name })}
+                  disabled={mediaActionBusy}
+                  onClick={() => void handleDeleteMediaAsset(asset)}
+                >
+                  {t("workbench.media.remove")}
+                </Button>
+              </Group>
+            </Box>
+          ))}
+          <Button
+            type="button"
+            size="compact-sm"
+            variant="light"
+            color="teal"
+            leftSection={<IconMovie size={16} aria-hidden />}
+            disabled={mediaActionBusy}
+            loading={updateSourceMedia.isPending}
+            onClick={() => void handleImportVideo()}
+            style={{ alignSelf: "stretch", minWidth: 136 }}
+          >
+            {t("workbench.importVideoAction")}
+          </Button>
+        </Group>
+      ) : mediaBinEmpty ? (
+        <Box
+          data-testid="project-media-empty-dropzone"
+          p="md"
+          style={{
+            border: `1px dashed ${workstationSurfaces.outlineStrong}`,
+            borderRadius: 6,
+            background: "#ffffff",
+            minHeight: 320,
+            display: "grid",
+            alignItems: "center"
+          }}
+        >
+          <Group justify="space-between" align="center" gap="sm">
+            <Stack gap={2} style={{ minWidth: 0 }}>
+              <Text size="sm" fw={800} c={workstationSurfaces.text}>
+                {t("workbench.media.dropTitle")}
+              </Text>
+              <Text size="xs" c={workstationSurfaces.textMuted}>
+                {t("workbench.media.empty")}
+              </Text>
+            </Stack>
+            <Button
+              type="button"
+              size="compact-sm"
+              color="teal"
+              leftSection={<IconMovie size={16} aria-hidden />}
+              disabled={mediaActionBusy}
+              loading={updateSourceMedia.isPending}
+              onClick={() => void handleImportVideo()}
+            >
+              {t("workbench.importVideoAction")}
+            </Button>
+          </Group>
+        </Box>
+      ) : projectSourceVideoPath ? (
+        <Box
+          p="xs"
+          style={{
+            border: `1px solid ${workstationSurfaces.outline}`,
+            borderRadius: 6,
+            background: "#ffffff"
+          }}
+        >
+          <Group justify="space-between" align="center" gap="sm" wrap="nowrap">
+            <Stack gap={2} style={{ minWidth: 0 }}>
+              <Group gap={6} wrap="nowrap">
+                <Text
+                  size="sm"
+                  fw={800}
+                  c={workstationSurfaces.text}
+                  truncate
+                  title={projectSourceVideoPath ?? undefined}
+                >
+                  {activeSourceName ?? t("workbench.media.title")}
+                </Text>
+                <Badge size="xs" color="teal" variant="light">
+                  {t("workbench.media.active")}
+                </Badge>
+              </Group>
+              <Text
+                size="xs"
+                c={workstationSurfaces.textMuted}
+                truncate
+                title={projectSourceVideoPath ?? undefined}
+              >
+                {t("workbench.media.localFile")}
+              </Text>
+            </Stack>
+            <Button
+              type="button"
+              size="compact-sm"
+              variant="light"
+              color="teal"
+              leftSection={<IconMovie size={16} aria-hidden />}
+              disabled={mediaActionBusy}
+              loading={updateSourceMedia.isPending}
+              onClick={() => void handleImportVideo()}
+            >
+              {t("workbench.importVideoAction")}
+            </Button>
+          </Group>
+        </Box>
+      ) : null}
+    </Box>
+  ) : null;
+
+  const workbenchHeading = (
+    <VisuallyHidden>
+      <h1>{t("workbench.title")}</h1>
+    </VisuallyHidden>
+  );
+
+  if (!activeProjectId) {
+    return (
+      <Box
+        component="main"
+        aria-label={t("workbench.title")}
+        data-editor-workspace={editorWorkspace}
+        bg="#e9edf2"
+        style={{
+          height: "calc(100vh - 84px)",
+          minHeight: 620,
+          display: "grid",
+          placeItems: "center",
+          overflow: "hidden",
+          border: `1px solid ${workstationSurfaces.outline}`,
+          borderRadius: 6
+        }}
+      >
+        {workbenchHeading}
+        <Box
+          component="section"
+          role="region"
+          aria-label={t("workbench.emptyStateLabel")}
+          bg={workstationSurfaces.panel}
+          p="xl"
+          style={{
+            width: "min(560px, 100%)",
+            border: `1px solid ${workstationSurfaces.outline}`,
+            borderRadius: 6
+          }}
+        >
+          <Stack gap="sm" align="flex-start">
+            <Text size="lg" fw={900} c={workstationSurfaces.text}>
+              {t("workbench.noProject")}
+            </Text>
+            <Text size="sm" c={workstationSurfaces.textMuted}>
+              {t("workbench.emptyStateDescription")}
+            </Text>
+            <Button
+              type="button"
+              size="compact-sm"
+              color="teal"
+              leftSection={<IconFolderOpen size={16} aria-hidden />}
+              onClick={() => setPage("projects")}
+            >
+              {t("workbench.openProjectLibrary")}
+            </Button>
+          </Stack>
+        </Box>
+      </Box>
     );
+  }
+
+  if (showMediaImportStart) {
+    return (
+      <Box
+        component="main"
+        aria-label={t("workbench.title")}
+        data-editor-workspace={editorWorkspace}
+        bg="#e9edf2"
+        style={{
+          height: "calc(100vh - 84px)",
+          minHeight: 620,
+          display: "grid",
+          placeItems: "center",
+          overflow: "auto",
+          border: `1px solid ${workstationSurfaces.outline}`,
+          borderRadius: 6
+        }}
+        >
+          {workbenchHeading}
+          <Box
+            data-testid="workbench-media-start"
+            p="lg"
+            style={{
+              width: "min(960px, 100%)"
+            }}
+          >
+          <Stack gap="sm">
+            <Box>
+              <Text size="lg" fw={900} c={workstationSurfaces.text}>
+                {projectContextTitle}
+              </Text>
+              <Text size="sm" c={workstationSurfaces.textMuted}>
+                {t("workbench.noSourceVideo")}
+              </Text>
+            </Box>
+            {projectMediaBin}
+          </Stack>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <>
       <Box
         component="main"
         aria-label={t("workbench.title")}
+        data-editor-workspace={editorWorkspace}
         bg="#e9edf2"
         style={{
           height: "calc(100vh - 84px)",
           minHeight: 620,
           display: "grid",
           gridTemplateRows: recoveryPanelVisible
-            ? "auto auto auto auto auto minmax(0, 1fr)"
-            : "auto auto auto auto minmax(0, 1fr)",
-          overflow: "hidden",
-          border: "1px solid #cbd5e1",
+              ? "auto auto auto auto auto minmax(0, 1fr)"
+              : "auto auto auto auto minmax(0, 1fr)",
+          overflow: isNarrow ? "auto" : "hidden",
+          border: `1px solid ${workstationSurfaces.outline}`,
           borderRadius: 6
         }}
       >
+      {workbenchHeading}
       <TopToolbar
         canSave={hasUnsavedChanges && !saveSubtitle.isPending}
         canExport={Boolean(activeProjectId)}
-        onImport={() => setPage("projects")}
-        onInspectorMode={setInspectorMode}
+        onImport={activeProjectId ? () => void handleImportVideo() : undefined}
+        onInspectorMode={handleToolbarInspectorMode}
         onSave={() => void handleSave()}
       />
 
@@ -1059,25 +1964,74 @@ export function WorkbenchPage() {
         aria-label={t("workbench.labels.projectContext")}
         px="sm"
         py={7}
-        bg="#ffffff"
+        bg={workstationSurfaces.panelAlt}
         style={{
-          borderBottom: "1px solid #dbe3ec",
+          borderBottom: `1px solid ${workstationSurfaces.outline}`,
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) auto",
+          gridTemplateColumns: isNarrow
+            ? "minmax(0, 1fr)"
+            : "minmax(0, 1fr) minmax(260px, 390px) auto",
           gap: 12,
-          alignItems: "center"
+          alignItems: isNarrow ? "stretch" : "center"
         }}
       >
         <Box style={{ minWidth: 0 }}>
-          <Text size="sm" fw={800} c="#111827" truncate>
+          <Text size="sm" fw={800} c={workstationSurfaces.text} truncate>
             {projectContextTitle}
           </Text>
-          <Text size="xs" c="#5b677a" truncate>
+          <Text size="xs" c={workstationSurfaces.textMuted} truncate>
             {projectContextSource}
           </Text>
         </Box>
-        <Group gap={6} wrap="nowrap">
-          <Text size="xs" fw={800} c="#5b677a">
+        <Box
+          component="section"
+          role="region"
+          aria-label={t("workbench.productionStage.label")}
+          px="xs"
+          py={6}
+          bg={workstationSurfaces.panel}
+          style={{
+            minWidth: 0,
+            border: `1px solid ${workstationSurfaces.outline}`,
+            borderRadius: 6
+          }}
+        >
+          <Group gap={8} justify="space-between" wrap={isNarrow ? "wrap" : "nowrap"}>
+            <Group gap={6} wrap="nowrap" miw={0}>
+              <Badge color="teal" variant="light" size="xs" style={{ flexShrink: 0 }}>
+                {t(`workbench.productionStage.${editorWorkspace}.title`)}
+              </Badge>
+              <Text size="xs" fw={700} c={workstationSurfaces.textMuted} truncate>
+                {t(`workbench.productionStage.${editorWorkspace}.goal`)}
+              </Text>
+            </Group>
+            <Button
+              type="button"
+              aria-label={t(`workbench.productionStage.${editorWorkspace}.action`)}
+              size="compact-xs"
+              color="teal"
+              variant="subtle"
+              onClick={openProductionStageControls}
+            >
+              {t("workbench.productionStage.controls")}
+            </Button>
+          </Group>
+        </Box>
+        <Group gap={6} wrap={isNarrow ? "wrap" : "nowrap"} justify={isNarrow ? "flex-start" : "flex-end"}>
+          <Button
+            type="button"
+            size="compact-xs"
+            variant={inspectorMode === "settings-lite" ? "light" : "subtle"}
+            color={inspectorMode === "settings-lite" ? "teal" : "gray"}
+            leftSection={<IconSettings size={14} aria-hidden />}
+            onClick={() => setInspectorMode("settings-lite")}
+          >
+            {t("workbench.projectSettings")}
+          </Button>
+          <Text size="xs" fw={800} c="teal">
+            {t(`workbench.workspaces.${editorWorkspace}`)}
+          </Text>
+          <Text size="xs" fw={800} c={workstationSurfaces.textMuted}>
             {t("workbench.timeline.subtitleRows", { count: subtitleLines.length })}
           </Text>
           <Text size="xs" fw={800} c={hasUnsavedChanges ? "orange" : "teal"}>
@@ -1089,15 +2043,22 @@ export function WorkbenchPage() {
       <Box
         px="sm"
         py={4}
-        bg="#ffffff"
+        bg={workstationSurfaces.panelAlt}
         style={{
-          borderBottom: "1px solid #dbe3ec"
+          borderBottom: `1px solid ${workstationSurfaces.outline}`
         }}
       >
         <TaskStatusSurface
           busy={taskActive}
           message={taskStatusMessage}
-          error={taskStatusError}
+          error={
+            taskStatusError
+              ? displayWorkbenchErrorMessage(
+                  taskStatusError,
+                  t("workbench.errors.operationFailed")
+                )
+              : null
+          }
           status={observedTask?.status ?? (taskActive ? "running" : "ready")}
           progress={observedTask?.progress ?? null}
           action={taskStatusAction}
@@ -1136,22 +2097,52 @@ export function WorkbenchPage() {
         data-layout={layout}
         style={{
           display: "grid",
-          gridTemplateColumns: isNarrow ? "minmax(0, 1fr)" : "minmax(0, 1fr) 320px",
-          gridTemplateRows: isNarrow ? "minmax(0, 1fr) minmax(260px, 40vh)" : undefined,
+          gridTemplateColumns: isNarrow
+            ? "minmax(0, 1fr)"
+            : `minmax(0, 1fr) ${inspectorColumnWidth}px`,
+          gridTemplateRows: isNarrow ? "auto auto" : undefined,
           minHeight: 0,
-          overflow: isNarrow ? "auto" : "hidden"
+          overflow: isNarrow ? "visible" : "hidden",
+          position: "relative"
         }}
       >
+        {!isNarrow && !workspaceLayout.inspectorCollapsed ? (
+          <Box
+            role="separator"
+            aria-label={t("workbench.layout.resizeInspector")}
+            aria-orientation="vertical"
+            onPointerDown={handleInspectorResizeStart}
+            onPointerMove={handleInspectorResize}
+            onPointerUp={handleInspectorResizeEnd}
+            onPointerCancel={handleInspectorResizeEnd}
+            onDoubleClick={handleInspectorResizeReset}
+            style={{
+              position: "absolute",
+              top: 0,
+              right: inspectorColumnWidth - 3,
+              bottom: 0,
+              width: 6,
+              cursor: "col-resize",
+              zIndex: 4
+            }}
+          />
+        ) : null}
         <Box
           data-testid="workbench-media-stack"
           style={{
             display: "grid",
-            gridTemplateRows: "minmax(200px, 34vh) minmax(140px, 1fr) auto",
+            gridTemplateRows: isNarrow
+              ? `${mediaBinTrack} minmax(260px, auto) minmax(260px, auto) auto`
+              : `${mediaBinTrack} ${mediaPreviewTrack} minmax(140px, 1fr) ${timelineDockHeight}px`,
             minHeight: 0
           }}
         >
-          <Box p="md" bg="#111827" style={{ minHeight: 0 }}>
+          {projectMediaBin}
+          <Box p="md" bg={workstationSurfaces.panel} style={{ minHeight: 0 }}>
             <VideoPreviewPanel
+              emptyDescription={
+                activeProjectId ? t("workbench.noSourceVideo") : t("workbench.noProject")
+              }
               mediaUrl={mediaUrl}
               selectedLine={selectedLine}
               previewStyle={styleDraft}
@@ -1165,7 +2156,7 @@ export function WorkbenchPage() {
             style={{
               display: "grid",
               gridTemplateRows: dataNotice ? "auto minmax(0, 1fr)" : "minmax(0, 1fr)",
-              minHeight: 0,
+              minHeight: isNarrow ? 260 : 0,
               overflow: "hidden"
             }}
           >
@@ -1181,12 +2172,136 @@ export function WorkbenchPage() {
             />
           </Box>
 
-          {timelinePanel}
+          <Box
+            data-testid="timeline-dock"
+            bg={workstationSurfaces.panelAlt}
+            style={{
+              minHeight: 0,
+              height: "100%",
+              overflow: "hidden",
+              position: "relative",
+              borderTop: `1px solid ${workstationSurfaces.outline}`
+            }}
+          >
+            {!isNarrow && !workspaceLayout.bottomCollapsed ? (
+              <Box
+                role="separator"
+                aria-label={t("workbench.layout.resizeTimeline")}
+                aria-orientation="horizontal"
+                onPointerDown={handleTimelineResizeStart}
+                onPointerMove={handleTimelineResize}
+                onPointerUp={handleTimelineResizeEnd}
+                onPointerCancel={handleTimelineResizeEnd}
+                onDoubleClick={handleTimelineResizeReset}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  right: 0,
+                  left: 0,
+                  height: 6,
+                  cursor: "row-resize",
+                  zIndex: 4
+                }}
+              />
+            ) : null}
+            {workspaceLayout.bottomCollapsed && !isNarrow ? (
+              <Group h="100%" justify="center" align="center">
+                <ActionIcon
+                  type="button"
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  aria-label={t("workbench.layout.expandTimeline")}
+                  onClick={() => setWorkspaceLayout(editorWorkspace, { bottomCollapsed: false })}
+                >
+                  <IconChevronUp size={16} aria-hidden />
+                </ActionIcon>
+              </Group>
+            ) : (
+              <Box
+                h="100%"
+                style={{
+                  minHeight: 0,
+                  overflow: "hidden",
+                  paddingTop: isNarrow ? 0 : 6,
+                  position: "relative"
+                }}
+              >
+                {!isNarrow ? (
+                  <ActionIcon
+                    type="button"
+                    variant="subtle"
+                    color="gray"
+                    size="sm"
+                    aria-label={t("workbench.layout.collapseTimeline")}
+                    onClick={() => setWorkspaceLayout(editorWorkspace, { bottomCollapsed: true })}
+                    style={{
+                      position: "absolute",
+                      top: 8,
+                      right: 8,
+                      zIndex: 5
+                    }}
+                  >
+                    <IconChevronDown size={16} aria-hidden />
+                  </ActionIcon>
+                ) : null}
+                {timelinePanel}
+              </Box>
+            )}
+          </Box>
         </Box>
 
-        <InspectorPanel mode={inspectorMode} layout={isNarrow ? "stacked" : "side"}>
-          {renderInspectorContent()}
-        </InspectorPanel>
+        {workspaceLayout.inspectorCollapsed && !isNarrow ? (
+          <Box
+            bg={workstationSurfaces.panel}
+            style={{
+              minHeight: 0,
+              borderLeft: `1px solid ${workstationSurfaces.outline}`,
+              display: "grid",
+              placeItems: "start center",
+              paddingTop: 8
+            }}
+          >
+            <ActionIcon
+              type="button"
+              variant="subtle"
+              color="gray"
+              size="sm"
+              aria-label={t("workbench.layout.expandInspector")}
+              onClick={() => setWorkspaceLayout(editorWorkspace, { inspectorCollapsed: false })}
+            >
+              <IconChevronLeft size={16} aria-hidden />
+            </ActionIcon>
+          </Box>
+        ) : (
+          <Box style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
+            {!isNarrow ? (
+              <ActionIcon
+                type="button"
+                variant="subtle"
+                color="gray"
+                size="sm"
+                aria-label={t("workbench.layout.collapseInspector")}
+                onClick={() => setWorkspaceLayout(editorWorkspace, { inspectorCollapsed: true })}
+                style={{
+                  position: "absolute",
+                  top: 8,
+                  right: 8,
+                  zIndex: 5
+                }}
+              >
+                <IconChevronRight size={16} aria-hidden />
+              </ActionIcon>
+            ) : null}
+            <InspectorPanel
+              mode={inspectorMode}
+              layout={isNarrow ? "stacked" : "side"}
+              onOpenHelp={openInspectorHelp}
+            >
+              {renderInspectorContent()}
+            </InspectorPanel>
+          </Box>
+        )}
       </Box>
       </Box>
 

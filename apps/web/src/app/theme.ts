@@ -1,16 +1,20 @@
 import { createTheme, rem } from "@mantine/core";
 
 export const workstationSurfaces = {
-  app: "#f4f7fb",
-  rail: "#111827",
-  railActive: "#0f766e",
+  app: "#f7f9fc",
+  rail: "#ffffff",
+  railActive: "#0d9488",
   header: "#ffffff",
   panel: "#ffffff",
-  panelAlt: "#f8fafc",
-  outline: "#d7dee8",
-  outlineStrong: "#aab7c7",
-  text: "#111827",
-  textMuted: "#5b677a",
+  panelAlt: "#eef3f8",
+  outline: "#d8e0e8",
+  outlineStrong: "#b8c4d0",
+  text: "#17212b",
+  textMuted: "#5f6b7a",
+  lightApp: "#f7f9fc",
+  lightPanel: "#ffffff",
+  lightPanelAlt: "#eef3f8",
+  lightText: "#17212b",
   success: "#0f766e",
   warning: "#b45309",
   danger: "#be123c"

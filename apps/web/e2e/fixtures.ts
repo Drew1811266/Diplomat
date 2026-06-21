@@ -49,6 +49,18 @@ export const demoProject: ProjectResponse = {
   createdAt: timestamp,
   updatedAt: "2026-06-07T00:01:00+00:00",
   hasSubtitleDocument: true,
+  mediaAssets: [
+    {
+      assetId: "media-demo",
+      name: "demo.mp4",
+      sourceVideoPath: "D:/media/demo.mp4",
+      kind: "video",
+      durationMs: 12_000,
+      importedAt: timestamp,
+      active: true,
+      exists: true
+    }
+  ],
   diagnostics: demoDiagnostics
 };
 
@@ -158,6 +170,7 @@ const translationSettings: TranslationSettingsResponse = {
 };
 
 type WorkerState = {
+  healthStatus: "ok" | "offline";
   projects: ProjectResponse[];
   subtitleDocument: SubtitleDocument;
   stylePresets: StylePreset[];
@@ -196,6 +209,30 @@ function createTask(type: TaskResponse["type"], taskId: string): TaskResponse {
   };
 }
 
+function fileNameFromPath(sourcePath: string) {
+  return sourcePath.replace(/\\/g, "/").split("/").pop() || sourcePath;
+}
+
+function emptyProjectDiagnostics(projectId: string): ProjectDiagnostics {
+  const projectDir = `D:/Diplomat/projects/${projectId}`;
+  return {
+    ...demoDiagnostics,
+    status: "not_transcribed",
+    warnings: [],
+    sourceVideoExists: false,
+    diskUsageBytes: 0,
+    subtitleLineCount: 0,
+    translatedLineCount: 0,
+    activeTaskCount: 0,
+    failedTaskCount: 0,
+    latestTaskStatus: null,
+    exportsDir: `${projectDir}/exports`,
+    cacheDir: `${projectDir}/cache`,
+    logsDir: `${projectDir}/logs`,
+    backupsDir: `${projectDir}/backups`
+  };
+}
+
 async function routeWorkerRequest(route: Route, state: WorkerState) {
   const request = route.request();
   const url = new URL(request.url());
@@ -208,6 +245,10 @@ async function routeWorkerRequest(route: Route, state: WorkerState) {
   }
 
   if (method === "GET" && path === "/health") {
+    if (state.healthStatus === "offline") {
+      await fulfillJson(route, { detail: "Local runtime unavailable" }, 503);
+      return;
+    }
     await fulfillJson(route, { name: "diplomat-worker", status: "ok", version: "0.2.0" });
     return;
   }
@@ -217,18 +258,108 @@ async function routeWorkerRequest(route: Route, state: WorkerState) {
     return;
   }
 
+  if (method === "GET" && path === "/tasks") {
+    await fulfillJson(route, { tasks: Array.from(state.tasks.values()) });
+    return;
+  }
+
+  if (method === "GET" && path === "/models") {
+    await fulfillJson(route, { models: [] });
+    return;
+  }
+
   if (method === "POST" && path === "/projects") {
     const body = await readRequestJson<Partial<ProjectResponse>>(route);
-    const createdProject = {
+    const sourceVideoPath = body?.sourceVideoPath ?? null;
+    const projectId = "project-created";
+    const projectDir = `D:/Diplomat/projects/${projectId}`;
+    const createdProject: ProjectResponse = {
       ...demoProject,
-      projectId: "project-created",
+      projectId,
       name: body?.name ?? "Created Project",
-      sourceVideoPath: body?.sourceVideoPath ?? "D:/media/created.mp4",
+      sourceVideoPath,
+      projectDir,
+      durationMs: sourceVideoPath ? 12_000 : 0,
       sourceLanguage: body?.sourceLanguage ?? "zh",
-      targetLanguage: body?.targetLanguage ?? "en"
+      targetLanguage: body?.targetLanguage ?? "en",
+      hasSubtitleDocument: false,
+      mediaAssets: sourceVideoPath
+        ? [
+            {
+              assetId: "media-created",
+              name: fileNameFromPath(sourceVideoPath),
+              sourceVideoPath,
+              kind: "video",
+              durationMs: 12_000,
+              importedAt: timestamp,
+              active: true,
+              exists: true
+            }
+          ]
+        : [],
+      diagnostics: sourceVideoPath
+        ? {
+            ...emptyProjectDiagnostics(projectId),
+            status: "not_transcribed",
+            sourceVideoExists: true,
+            diskUsageBytes: 4096
+          }
+        : emptyProjectDiagnostics(projectId)
     };
     state.projects = [createdProject, ...state.projects];
     await fulfillJson(route, createdProject, 201);
+    return;
+  }
+
+  const projectMatch = path.match(/^\/projects\/([^/]+)$/);
+  if (method === "GET" && projectMatch) {
+    const project = state.projects.find((candidate) => candidate.projectId === projectMatch[1]);
+    if (!project) {
+      await fulfillJson(route, { detail: "Project not found" }, 404);
+      return;
+    }
+    await fulfillJson(route, project);
+    return;
+  }
+
+  const translationSettingsMatch = path.match(/^\/projects\/([^/]+)\/translation-settings$/);
+  if (translationSettingsMatch) {
+    const project = state.projects.find(
+      (candidate) => candidate.projectId === translationSettingsMatch[1]
+    );
+    if (!project) {
+      await fulfillJson(route, { detail: "Project not found" }, 404);
+      return;
+    }
+
+    if (method === "GET") {
+      await fulfillJson(route, {
+        ...translationSettings,
+        projectId: project.projectId,
+        sourceLanguage: project.sourceLanguage,
+        targetLanguage: project.targetLanguage ?? "en"
+      });
+      return;
+    }
+
+    if (method === "PUT") {
+      const body = await readRequestJson<Partial<TranslationSettingsResponse>>(route);
+      await fulfillJson(route, {
+        ...translationSettings,
+        ...body,
+        projectId: project.projectId
+      });
+      return;
+    }
+  }
+
+  const stylePresetsMatch = path.match(/^\/projects\/([^/]+)\/style-presets$/);
+  if (method === "GET" && stylePresetsMatch) {
+    await fulfillJson(route, {
+      projectId: stylePresetsMatch[1],
+      activePresetId: state.activeStylePresetId,
+      presets: state.stylePresets
+    });
     return;
   }
 
@@ -430,6 +561,7 @@ async function routeWorkerRequest(route: Route, state: WorkerState) {
 
 async function installWorkerMocks(page: Page): Promise<WorkerState> {
   const state: WorkerState = {
+    healthStatus: "ok",
     projects: [demoProject],
     subtitleDocument: structuredClone(demoSubtitleDocument),
     stylePresets: [

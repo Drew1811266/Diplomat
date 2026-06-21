@@ -12,6 +12,7 @@ import {
   ProjectListResponseSchema,
   ProjectMaintenanceResponseSchema,
   ProjectResponseSchema,
+  ProjectSourceMediaRequestSchema,
   ReleaseReadinessResponseSchema,
   StylePresetApplyResponseSchema,
   StylePresetCreateRequestSchema,
@@ -26,6 +27,7 @@ import {
   SubtitleSnapshotCreateRequestSchema,
   SubtitleSnapshotListResponseSchema,
   SubtitleSnapshotResponseSchema,
+  TaskListResponseSchema,
   TaskResponseSchema,
   TranslationJobRequestSchema,
   TranslationSettingsResponseSchema,
@@ -44,6 +46,7 @@ import {
   type ProjectListResponse,
   type ProjectMaintenanceResponse,
   type ProjectResponse,
+  type ProjectSourceMediaRequest,
   type ReleaseReadinessResponse,
   type StylePreset,
   type StylePresetApplyResponse,
@@ -59,6 +62,7 @@ import {
   type SubtitleSnapshotCreateRequest,
   type SubtitleSnapshotListResponse,
   type SubtitleSnapshotResponse,
+  type TaskListResponse,
   type TaskResponse,
   type TranslationJobRequestInput,
   type TranslationSettingsResponse,
@@ -78,12 +82,11 @@ export type WorkerHealth = {
   version: string;
 };
 
-export type CreateProjectInput = Omit<CreateProjectRequest, "targetLanguage"> & {
-  targetLanguage?: CreateProjectRequest["targetLanguage"];
-};
+export type CreateProjectInput = Pick<CreateProjectRequest, "name"> &
+  Partial<Pick<CreateProjectRequest, "sourceLanguage" | "sourceVideoPath" | "targetLanguage">>;
 
 async function formatWorkerError(response: Response): Promise<string> {
-  const message = `Worker request failed: ${response.status}`;
+  const message = `Local runtime request failed: ${response.status}`;
 
   try {
     const payload = (await response.json()) as unknown;
@@ -124,7 +127,7 @@ async function requestJson<T>(
   } catch (error) {
     const workerOrigin = new URL(url).origin;
     throw new Error(
-      `Worker is not reachable at ${workerOrigin}. Start the Worker or use the desktop Start Worker action.`,
+      `Local runtime is not reachable at ${workerOrigin}. Start the local runtime from Settings.`,
       { cause: error }
     );
   }
@@ -161,6 +164,36 @@ export async function createProject(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request)
     },
+    (payload) => ProjectResponseSchema.parse(payload)
+  );
+}
+
+export async function updateProjectSourceMedia(
+  projectId: string,
+  input: ProjectSourceMediaRequest,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<ProjectResponse> {
+  const request = ProjectSourceMediaRequestSchema.parse(input);
+
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/media/source`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    },
+    (payload) => ProjectResponseSchema.parse(payload)
+  );
+}
+
+export async function deleteProjectMediaAsset(
+  projectId: string,
+  assetId: string,
+  baseUrl = defaultWorkerBaseUrl()
+): Promise<ProjectResponse> {
+  return requestJson(
+    `${baseUrl}/projects/${projectId}/media/assets/${encodeURIComponent(assetId)}`,
+    { method: "DELETE" },
     (payload) => ProjectResponseSchema.parse(payload)
   );
 }
@@ -346,6 +379,14 @@ export async function fetchTask(
     `${baseUrl}/tasks/${taskId}`,
     undefined,
     (payload) => TaskResponseSchema.parse(payload)
+  );
+}
+
+export async function listTasks(baseUrl = defaultWorkerBaseUrl()): Promise<TaskListResponse> {
+  return requestJson(
+    `${baseUrl}/tasks`,
+    undefined,
+    (payload) => TaskListResponseSchema.parse(payload)
   );
 }
 

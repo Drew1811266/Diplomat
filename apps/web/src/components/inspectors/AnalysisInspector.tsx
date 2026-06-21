@@ -1,6 +1,8 @@
 import { Button, Group, NativeSelect, Stack, Text, TextInput } from "@mantine/core";
 import type { AnalysisJobRequest, ModelCatalogEntry } from "@diplomat/shared";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { createOptionalLanguageSelectData } from "../../lib/languageOptions";
 
 type AnalysisInspectorProps = {
   config: AnalysisJobRequest;
@@ -45,6 +47,10 @@ function preferredProfile(model: ModelCatalogEntry) {
   );
 }
 
+function displayRuntimeMessage(message: string) {
+  return message.replaceAll("Worker runtime", "local runtime").replaceAll("Worker", "local runtime");
+}
+
 export function AnalysisInspector({
   config,
   busy,
@@ -58,6 +64,10 @@ export function AnalysisInspector({
   onRetry
 }: AnalysisInspectorProps) {
   const { t } = useTranslation();
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const sourceLanguageOptions = createOptionalLanguageSelectData(t, t("languages.autoDetect"), [
+    config.sourceLanguage
+  ]);
   const installedAsrModels = modelCatalog.filter(
     (model) =>
       model.task === "asr" &&
@@ -153,47 +163,68 @@ export function AnalysisInspector({
         </Text>
       ) : null}
 
-      <TextInput
+      <NativeSelect
         label={t("fields.sourceLanguage")}
         value={config.sourceLanguage ?? ""}
+        data={sourceLanguageOptions}
         disabled={busy}
         onChange={(event) => updateConfig("sourceLanguage", event.currentTarget.value || null)}
       />
 
-      <Group grow gap="xs" align="flex-start">
-        <NativeSelect
-          label={t("fields.device")}
-          value={config.device}
-          data={devices}
-          disabled={busy}
-          onChange={(event) => updateConfig("device", event.currentTarget.value)}
-        />
-        <NativeSelect
-          label={t("fields.computeType")}
-          value={config.computeType}
-          data={computeTypes}
-          disabled={busy}
-          onChange={(event) => updateConfig("computeType", event.currentTarget.value)}
-        />
-      </Group>
-      {runtimeProfile ? (
-        <Text size="xs" c={runtimeProfile.available ? "dimmed" : "orange"}>
-          {runtimeProfile.available
-            ? t("inspector.runtimeProfile", {
-                device: runtimeProfile.device,
-                computeType: runtimeProfile.computeType,
-                batchSize: runtimeProfile.batchSize
-              })
-            : (runtimeProfile.reason ?? runtimeProfile.notes)}
+      {runtimeProfile && !runtimeProfile.available ? (
+        <Text size="xs" c="orange">
+          {displayRuntimeMessage(runtimeProfile.reason ?? runtimeProfile.notes ?? "")}
         </Text>
       ) : null}
 
-      <TextInput
-        label={t("fields.initialPrompt")}
-        value={config.initialPrompt ?? ""}
-        disabled={busy}
-        onChange={(event) => updateConfig("initialPrompt", event.currentTarget.value || null)}
-      />
+      <Button
+        type="button"
+        size="compact-xs"
+        variant="subtle"
+        color="gray"
+        aria-controls="analysis-runtime-advanced-options"
+        aria-expanded={advancedOpen}
+        onClick={() => setAdvancedOpen((open) => !open)}
+        w="fit-content"
+      >
+        {t("inspector.advancedOptions")}
+      </Button>
+
+      {advancedOpen ? (
+        <Stack id="analysis-runtime-advanced-options" gap="sm">
+          <Group grow gap="xs" align="flex-start">
+            <NativeSelect
+              label={t("fields.device")}
+              value={config.device}
+              data={devices}
+              disabled={busy}
+              onChange={(event) => updateConfig("device", event.currentTarget.value)}
+            />
+            <NativeSelect
+              label={t("fields.computeType")}
+              value={config.computeType}
+              data={computeTypes}
+              disabled={busy}
+              onChange={(event) => updateConfig("computeType", event.currentTarget.value)}
+            />
+          </Group>
+          {runtimeProfile?.available ? (
+            <Text size="xs" c="dimmed">
+              {t("inspector.runtimeProfile", {
+                device: runtimeProfile.device,
+                computeType: runtimeProfile.computeType,
+                batchSize: runtimeProfile.batchSize
+              })}
+            </Text>
+          ) : null}
+          <TextInput
+            label={t("fields.initialPrompt")}
+            value={config.initialPrompt ?? ""}
+            disabled={busy}
+            onChange={(event) => updateConfig("initialPrompt", event.currentTarget.value || null)}
+          />
+        </Stack>
+      ) : null}
 
       <Group justify="flex-end" gap="xs">
         <Button type="button" size="xs" color="teal" onClick={onStart} disabled={!canStart}>

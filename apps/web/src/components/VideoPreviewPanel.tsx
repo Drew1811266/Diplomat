@@ -1,6 +1,6 @@
-import { Box, Center, Stack, Text } from "@mantine/core";
+import { Box, Button, Center, Stack, Text } from "@mantine/core";
 import type { SubtitleLine, SubtitleStyle } from "@diplomat/shared";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   previewContainerStyle,
@@ -10,22 +10,30 @@ import {
 } from "../lib/subtitleStyles";
 
 type VideoPreviewPanelProps = {
+  emptyDescription?: string;
+  emptyActionIcon?: ReactNode;
+  emptyActionLabel?: string;
   mediaUrl?: string | null;
   sourceVideoPath?: string | null;
   selectedLine: SubtitleLine | null;
   previewStyle?: SubtitleStyle | null;
   showSafeArea?: boolean;
   seekRequestMs?: number | null;
+  onEmptyAction?: () => void;
   onTimeUpdate?: (timeMs: number) => void;
 };
 
 export function VideoPreviewPanel({
+  emptyDescription,
+  emptyActionIcon,
+  emptyActionLabel,
   mediaUrl,
   sourceVideoPath,
   selectedLine,
   previewStyle = null,
   showSafeArea = false,
   seekRequestMs = null,
+  onEmptyAction,
   onTimeUpdate
 }: VideoPreviewPanelProps) {
   const { t } = useTranslation();
@@ -92,8 +100,20 @@ export function VideoPreviewPanel({
               {t("workbench.previewUnavailable")}
             </Text>
             <Text size="xs" c="gray.6">
-              {t("workbench.noProject")}
+              {emptyDescription ?? t("workbench.noProject")}
             </Text>
+            {emptyActionLabel ? (
+              <Button
+                type="button"
+                size="compact-xs"
+                color="teal"
+                variant="light"
+                leftSection={emptyActionIcon}
+                onClick={onEmptyAction}
+              >
+                {emptyActionLabel}
+              </Button>
+            ) : null}
           </Stack>
         </Center>
       )}

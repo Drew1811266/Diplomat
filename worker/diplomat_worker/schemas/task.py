@@ -45,3 +45,9 @@ class TaskResponse(BaseModel):
     error_code: str | None = Field(default=None, alias="errorCode")
     error_message: str | None = Field(default=None, alias="errorMessage")
     diagnostic_log_path: str | None = Field(default=None, alias="diagnosticLogPath")
+
+
+class TaskListResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    tasks: list[TaskResponse]

@@ -82,7 +82,7 @@ def development_readiness(
     root: Path | None = None,
 ) -> DevelopmentModelReadiness:
     base = root or repo_root()
-    development_dir = _rooted_path(base, manifest.development_path)
+    development_dir = development_model_path(manifest, root)
     if not development_dir.is_dir():
         return DevelopmentModelReadiness(
             usable=False,
@@ -120,6 +120,14 @@ def development_readiness(
         )
 
     return DevelopmentModelReadiness(usable=True, reason=None)
+
+
+def development_model_path(
+    manifest: ModelDevelopmentManifest,
+    root: Path | None = None,
+) -> Path:
+    base = root or repo_root()
+    return _rooted_path(base, manifest.development_path)
 
 
 def _manifest_from_payload(payload: dict[str, Any]) -> ModelDevelopmentManifest:

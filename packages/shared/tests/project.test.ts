@@ -6,7 +6,9 @@ import {
   ProjectImportRequestSchema,
   ProjectListResponseSchema,
   ProjectMaintenanceResponseSchema,
+  ProjectMediaAssetSchema,
   ProjectResponseSchema,
+  ProjectSourceMediaRequestSchema,
   ProjectStatusSchema,
   SubtitleDraftResponseSchema,
   SubtitleDocumentRequestSchema,
@@ -87,6 +89,17 @@ const validProjectDiagnostics = {
 };
 
 describe("CreateProjectRequestSchema", () => {
+  it("accepts a name-only project request", () => {
+    const request = CreateProjectRequestSchema.parse({
+      name: "Client campaign"
+    });
+
+    expect(request.name).toBe("Client campaign");
+    expect(request.sourceVideoPath).toBeNull();
+    expect(request.sourceLanguage).toBe("zh");
+    expect(request.targetLanguage).toBe("en");
+  });
+
   it("accepts a valid create project request", () => {
     const request = CreateProjectRequestSchema.parse({
       name: "Launch interview",
@@ -110,18 +123,44 @@ describe("CreateProjectRequestSchema", () => {
     expect(request.targetLanguage).toBeNull();
   });
 
-  it("defaults an omitted target language to null", () => {
+  it("defaults an omitted target language to English", () => {
     const request = CreateProjectRequestSchema.parse({
       name: "Source-only review",
       sourceVideoPath: "D:/media/review.mp4",
       sourceLanguage: "ja"
     });
 
-    expect(request.targetLanguage).toBeNull();
+    expect(request.targetLanguage).toBe("en");
   });
 });
 
 describe("ProjectResponseSchema", () => {
+  it("accepts an empty project response without a source video", () => {
+    const response = ProjectResponseSchema.parse({
+      projectId: "project-empty",
+      name: "Client campaign",
+      sourceVideoPath: null,
+      projectDir: "D:/Diplomat/projects/project-empty",
+      durationMs: 0,
+      sourceLanguage: "zh",
+      targetLanguage: "en",
+      createdAt: "2026-06-07T00:00:00+00:00",
+      updatedAt: "2026-06-07T00:01:00+00:00",
+      hasSubtitleDocument: false,
+      diagnostics: {
+        ...validProjectDiagnostics,
+        sourceVideoExists: false,
+        status: "not_transcribed",
+        subtitleLineCount: 0,
+        translatedLineCount: 0,
+        exportCount: 0
+      }
+    });
+
+    expect(response.sourceVideoPath).toBeNull();
+    expect(response.durationMs).toBe(0);
+  });
+
   it("accepts a valid project response", () => {
     const response = ProjectResponseSchema.parse({
       projectId: "project-1",
@@ -140,6 +179,49 @@ describe("ProjectResponseSchema", () => {
     expect(response.projectId).toBe("project-1");
     expect(response.durationMs).toBe(124_000);
     expect(response.hasSubtitleDocument).toBe(true);
+  });
+
+  it("accepts project media assets and identifies the active source", () => {
+    const response = ProjectResponseSchema.parse({
+      projectId: "project-1",
+      name: "Launch interview",
+      sourceVideoPath: "D:/media/interview-b.mp4",
+      projectDir: "D:/Diplomat/projects/project-1",
+      durationMs: 90_000,
+      sourceLanguage: "zh",
+      targetLanguage: "en",
+      createdAt: "2026-06-07T00:00:00+00:00",
+      updatedAt: "2026-06-07T00:01:00+00:00",
+      hasSubtitleDocument: true,
+      mediaAssets: [
+        {
+          assetId: "media-a",
+          name: "interview-a.mp4",
+          sourceVideoPath: "D:/media/interview-a.mp4",
+          kind: "video",
+          durationMs: 60_000,
+          importedAt: "2026-06-07T00:00:00+00:00",
+          active: false,
+          exists: true
+        },
+        {
+          assetId: "media-b",
+          name: "interview-b.mp4",
+          sourceVideoPath: "D:/media/interview-b.mp4",
+          kind: "video",
+          durationMs: 90_000,
+          importedAt: "2026-06-07T00:01:00+00:00",
+          active: true,
+          exists: true
+        }
+      ],
+      diagnostics: validProjectDiagnostics
+    });
+
+    expect(response.mediaAssets).toHaveLength(2);
+    expect(response.mediaAssets.find((asset) => asset.active)?.sourceVideoPath).toBe(
+      "D:/media/interview-b.mp4"
+    );
   });
 
   it("accepts a null target language", () => {
@@ -235,6 +317,30 @@ describe("ProjectListResponseSchema", () => {
 });
 
 describe("Project management schemas", () => {
+  it("accepts a project media asset", () => {
+    const asset = ProjectMediaAssetSchema.parse({
+      assetId: "media-1",
+      name: "interview.mp4",
+      sourceVideoPath: "D:/media/interview.mp4",
+      kind: "video",
+      durationMs: 124_000,
+      importedAt: "2026-06-07T00:00:00+00:00",
+      active: true,
+      exists: true
+    });
+
+    expect(asset.kind).toBe("video");
+    expect(asset.active).toBe(true);
+  });
+
+  it("accepts a project source media request", () => {
+    const request = ProjectSourceMediaRequestSchema.parse({
+      sourceVideoPath: "D:/media/interview.mp4"
+    });
+
+    expect(request.sourceVideoPath).toBe("D:/media/interview.mp4");
+  });
+
   it("rejects unsupported project statuses", () => {
     expect(ProjectStatusSchema.parse("failed")).toBe("failed");
     expect(() => ProjectStatusSchema.parse("unknown")).toThrow();

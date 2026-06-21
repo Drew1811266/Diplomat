@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { AnalysisJobRequest } from "@diplomat/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -53,7 +53,11 @@ describe("AnalysisInspector", () => {
       target: { value: "faster-whisper" }
     });
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: "tiny" } });
-    fireEvent.change(screen.getByLabelText("Source language"), { target: { value: "zh" } });
+    const sourceLanguage = screen.getByRole("combobox", { name: "Source language" });
+    expect(within(sourceLanguage).getByRole("option", { name: "Auto detect" })).toBeInTheDocument();
+    expect(within(sourceLanguage).getByRole("option", { name: "Chinese (zh)" })).toBeInTheDocument();
+    fireEvent.change(sourceLanguage, { target: { value: "zh" } });
+    fireEvent.click(screen.getByRole("button", { name: "Advanced options" }));
     fireEvent.change(screen.getByRole("combobox", { name: "Device" }), {
       target: { value: "cuda" }
     });
@@ -88,6 +92,34 @@ describe("AnalysisInspector", () => {
       ...analysisConfig,
       initialPrompt: "Use short subtitle phrasing"
     });
+  });
+
+  it("keeps runtime controls behind advanced options", () => {
+    renderWithProviders(
+      <AnalysisInspector
+        config={analysisConfig}
+        busy={false}
+        allowDevelopmentControls
+        onConfigChange={() => undefined}
+        onStart={() => undefined}
+        onCancel={() => undefined}
+        onRetry={() => undefined}
+      />
+    );
+
+    const advancedButton = screen.getByRole("button", { name: "Advanced options" });
+
+    expect(advancedButton).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("combobox", { name: "Device" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Compute type" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Initial prompt")).not.toBeInTheDocument();
+
+    fireEvent.click(advancedButton);
+
+    expect(advancedButton).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("combobox", { name: "Device" })).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Compute type" })).toBeVisible();
+    expect(screen.getByLabelText("Initial prompt")).toBeVisible();
   });
 
   it("runs task action callbacks", async () => {
@@ -132,7 +164,8 @@ describe("AnalysisInspector", () => {
 
     expect(screen.getByRole("combobox", { name: "Provider" })).toBeDisabled();
     expect(screen.getByLabelText("Model")).toBeDisabled();
-    expect(screen.getByLabelText("Source language")).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Source language" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Advanced options" }));
     expect(screen.getByRole("combobox", { name: "Device" })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "Compute type" })).toBeDisabled();
     expect(screen.getByLabelText("Initial prompt")).toBeDisabled();
@@ -153,6 +186,8 @@ describe("AnalysisInspector", () => {
         onRetry={() => undefined}
       />
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "Advanced options" }));
 
     expect(screen.getByRole("combobox", { name: "Device" })).toHaveValue("cpu");
     expect(screen.getByRole("combobox", { name: "Compute type" })).toHaveValue("int8");
@@ -258,7 +293,9 @@ describe("AnalysisInspector", () => {
 
     expect(screen.queryByRole("combobox", { name: "Provider" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Model")).not.toBeInTheDocument();
-    expect(screen.getByText("Install an ASR model from Models before starting local transcription.")).toBeVisible();
+    expect(
+      screen.getByText("Install an ASR model from Settings > Models before starting local transcription.")
+    ).toBeVisible();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
   });
 
@@ -281,7 +318,7 @@ describe("AnalysisInspector", () => {
       />
     );
 
-    expect(screen.getByText("CUDA is not available in this Worker runtime.")).toBeVisible();
+    expect(screen.getByText("CUDA is not available in this local runtime.")).toBeVisible();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
   });
 });

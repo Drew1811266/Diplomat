@@ -2,6 +2,11 @@ from dataclasses import replace
 from pathlib import Path
 
 from diplomat_worker.models.capabilities import RuntimeCapabilities
+from diplomat_worker.models.dev_manifests import (
+    development_model_path,
+    development_readiness,
+    get_development_manifest,
+)
 from diplomat_worker.models.registry import ModelRegistryEntry, get_model_entry
 from diplomat_worker.storage.project_store import ProjectStore
 from diplomat_worker.translation.config import TranslationProviderConfig
@@ -30,6 +35,7 @@ def resolve_translation_provider_config(
     fallback_target_language: str,
     allow_unmanaged_models: bool = False,
     runtime_capabilities: RuntimeCapabilities | None = None,
+    development_model_root: Path | None = None,
 ) -> TranslationProviderConfig:
     if config.provider in {"fake", "libretranslate"}:
         return config
@@ -76,6 +82,17 @@ def resolve_translation_provider_config(
         total_bytes=entry.download_size_bytes,
     )
     if installation.status != "installed":
+        development_path, development_reason = _development_model_resolution(
+            entry,
+            development_model_root,
+        )
+        if development_path is not None:
+            return replace(config, model_name_or_path=str(development_path))
+        if development_reason is not None:
+            raise TranslationConfigurationError(
+                "TRANSLATION_MODEL_NOT_INSTALLED",
+                f"Development model is not ready for {entry.name}: {development_reason}",
+            )
         raise TranslationConfigurationError(
             "TRANSLATION_MODEL_NOT_INSTALLED",
             f"Install {entry.name} from Models before starting translation.",
@@ -97,6 +114,20 @@ def resolve_translation_provider_config(
         config,
         model_name_or_path=str(installation.installed_path),
     )
+
+
+def _development_model_resolution(
+    entry: ModelRegistryEntry,
+    root: Path | None,
+) -> tuple[Path | None, str | None]:
+    try:
+        manifest = get_development_manifest(entry.model_id, root=root)
+    except KeyError:
+        return None, None
+    readiness = development_readiness(manifest, root)
+    if not readiness.usable:
+        return None, readiness.reason
+    return development_model_path(manifest, root), None
 
 
 def _validate_entry_for_translation(entry: ModelRegistryEntry, provider: str) -> None:

@@ -2,6 +2,7 @@ import { Badge, Box, Group, Stack, Text } from "@mantine/core";
 import type { SubtitleLine, WaveformResponse } from "@diplomat/shared";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { workstationSurfaces } from "../app/theme";
 import type { TimingIssue } from "../lib/timingValidation";
 
 type InteractionMode = "move" | "resize-start" | "resize-end";
@@ -129,12 +130,12 @@ export function TimelineEditor({
       component="section"
       role="region"
       aria-label={t("timelineEditor.region")}
-      bg="#0b1220"
-      c="white"
+      bg={workstationSurfaces.panelAlt}
+      c={workstationSurfaces.text}
       px="sm"
       py={8}
       style={{
-        borderTop: "1px solid #1e293b",
+        borderTop: `1px solid ${workstationSurfaces.outline}`,
         minHeight: 156,
         display: "grid",
         gridTemplateRows: "auto minmax(0, 1fr)",
@@ -143,15 +144,15 @@ export function TimelineEditor({
     >
       <Group justify="space-between" gap="sm" wrap="nowrap">
         <Stack gap={0} style={{ minWidth: 0 }}>
-          <Text size="xs" fw={800} c="#e2e8f0">
+          <Text size="xs" fw={800} c={workstationSurfaces.text}>
             {t("timelineEditor.title")}
           </Text>
-          <Text size="xs" c="#94a3b8" ff="monospace">
+          <Text size="xs" c={workstationSurfaces.textMuted} ff="monospace">
             {formatTime(currentTimeMs)} / {formatTime(durationMs)}
           </Text>
         </Stack>
         <Group gap={6} wrap="nowrap">
-          <Text component="label" size="xs" fw={700} c="#cbd5e1" htmlFor="timeline-zoom">
+          <Text component="label" size="xs" fw={700} c={workstationSurfaces.textMuted} htmlFor="timeline-zoom">
             {t("timelineEditor.zoom")}
           </Text>
           <input

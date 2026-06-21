@@ -10,7 +10,9 @@ import {
 } from "@mantine/core";
 import type { ModelCatalogEntry, TranslationJobRequest } from "@diplomat/shared";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { createRequiredLanguageSelectData } from "../../lib/languageOptions";
 
 type TranslationInspectorProps = {
   config: TranslationJobRequest;
@@ -100,6 +102,11 @@ export function TranslationInspector({
   onRetry
 }: TranslationInspectorProps) {
   const { t } = useTranslation();
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const languageOptions = createRequiredLanguageSelectData(t, [
+    config.sourceLanguage,
+    config.targetLanguage
+  ]);
   const languageLengthError = t("validation.languageCodeLength");
   const sourceLanguageError = getLanguageError(
     config.sourceLanguage,
@@ -291,16 +298,18 @@ export function TranslationInspector({
       ) : null}
 
       <Group grow gap="xs" align="flex-start">
-        <TextInput
+        <NativeSelect
           label={t("fields.sourceLanguage")}
           value={config.sourceLanguage}
+          data={languageOptions}
           error={sourceLanguageError}
           disabled={busy}
           onChange={(event) => updateSourceLanguage(event.currentTarget.value)}
         />
-        <TextInput
+        <NativeSelect
           label={t("fields.targetLanguage")}
           value={config.targetLanguage}
+          data={languageOptions}
           error={targetLanguageError}
           disabled={busy}
           onChange={(event) => updateTargetLanguage(event.currentTarget.value)}
@@ -390,32 +399,53 @@ export function TranslationInspector({
         )}
       </Stack>
 
-      <Group grow gap="xs" align="flex-start">
-        <NativeSelect
-          label={t("fields.device")}
-          value={config.device}
-          data={devices}
-          disabled={busy}
-          onChange={(event) => updateConfig("device", event.currentTarget.value)}
-        />
-        <NativeSelect
-          label={t("fields.computeType")}
-          value={config.computeType}
-          data={computeTypes}
-          disabled={busy}
-          onChange={(event) => updateConfig("computeType", event.currentTarget.value)}
-        />
-      </Group>
-      {runtimeProfile ? (
-        <Text size="xs" c={runtimeProfile.available ? "dimmed" : "orange"}>
-          {runtimeProfile.available
-            ? t("inspector.runtimeProfile", {
+      {runtimeProfile && !runtimeProfile.available ? (
+        <Text size="xs" c="orange">
+          {runtimeProfile.reason ?? runtimeProfile.notes}
+        </Text>
+      ) : null}
+
+      <Button
+        type="button"
+        size="compact-xs"
+        variant="subtle"
+        color="gray"
+        aria-controls="translation-runtime-advanced-options"
+        aria-expanded={advancedOpen}
+        onClick={() => setAdvancedOpen((open) => !open)}
+        w="fit-content"
+      >
+        {t("inspector.advancedOptions")}
+      </Button>
+
+      {advancedOpen ? (
+        <Stack id="translation-runtime-advanced-options" gap="sm">
+          <Group grow gap="xs" align="flex-start">
+            <NativeSelect
+              label={t("fields.device")}
+              value={config.device}
+              data={devices}
+              disabled={busy}
+              onChange={(event) => updateConfig("device", event.currentTarget.value)}
+            />
+            <NativeSelect
+              label={t("fields.computeType")}
+              value={config.computeType}
+              data={computeTypes}
+              disabled={busy}
+              onChange={(event) => updateConfig("computeType", event.currentTarget.value)}
+            />
+          </Group>
+          {runtimeProfile?.available ? (
+            <Text size="xs" c="dimmed">
+              {t("inspector.runtimeProfile", {
                 device: runtimeProfile.device,
                 computeType: runtimeProfile.computeType,
                 batchSize: runtimeProfile.batchSize
-              })
-            : (runtimeProfile.reason ?? runtimeProfile.notes)}
-        </Text>
+              })}
+            </Text>
+          ) : null}
+        </Stack>
       ) : null}
 
       {allowDevelopmentControls ? (

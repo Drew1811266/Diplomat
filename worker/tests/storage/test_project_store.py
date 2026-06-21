@@ -116,6 +116,105 @@ def test_project_store_round_trips_project_metadata(tmp_path: Path) -> None:
     assert loaded.updated_at == created.updated_at
 
 
+def test_project_store_creates_empty_project_and_later_assigns_source_media(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    created = store.create_project(
+        name="Client campaign",
+        source_video_path=None,
+        duration_ms=0,
+        source_language="zh",
+        target_language="en",
+    )
+
+    empty_project = store.get_project(created.project_id)
+    empty_diagnostics = store.project_diagnostics(empty_project)
+
+    assert empty_project.source_video_path is None
+    assert empty_project.duration_ms == 0
+    assert empty_diagnostics.source_video_exists is False
+    assert empty_diagnostics.warnings == []
+
+    source_video = tmp_path / "source.mp4"
+    source_video.write_bytes(b"fake-video")
+    updated = store.update_project_source_media(
+        created.project_id,
+        source_video_path=source_video,
+        duration_ms=65_000,
+    )
+
+    diagnostics = store.project_diagnostics(updated)
+
+    assert updated.source_video_path == source_video
+    assert updated.duration_ms == 65_000
+    assert updated.updated_at >= created.updated_at
+    assert diagnostics.source_video_exists is True
+
+
+def test_project_store_tracks_multiple_project_media_assets(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    project = store.create_project(
+        name="Client campaign",
+        source_video_path=None,
+        duration_ms=0,
+        source_language="zh",
+        target_language="en",
+    )
+    first_source = tmp_path / "interview-a.mp4"
+    second_source = tmp_path / "interview-b.mp4"
+    first_source.write_bytes(b"first-video")
+    second_source.write_bytes(b"second-video")
+
+    store.update_project_source_media(
+        project.project_id,
+        source_video_path=first_source,
+        duration_ms=60_000,
+    )
+    store.update_project_source_media(
+        project.project_id,
+        source_video_path=second_source,
+        duration_ms=90_000,
+    )
+
+    assets = store.project_media_assets(project.project_id)
+
+    assert [asset.source_video_path for asset in assets] == [first_source, second_source]
+    assert [asset.name for asset in assets] == ["interview-a.mp4", "interview-b.mp4"]
+    assert [asset.duration_ms for asset in assets] == [60_000, 90_000]
+    assert [asset.active for asset in assets] == [False, True]
+
+    store.update_project_source_media(
+        project.project_id,
+        source_video_path=first_source,
+        duration_ms=60_000,
+    )
+
+    reactivated_assets = store.project_media_assets(project.project_id)
+
+    assert len(reactivated_assets) == 2
+    assert [asset.active for asset in reactivated_assets] == [True, False]
+
+
+def test_project_store_deletes_active_media_and_clears_source(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"fake-video")
+    project = store.create_project(
+        name="Client campaign",
+        source_video_path=source,
+        duration_ms=65_000,
+        source_language="zh",
+        target_language="en",
+    )
+    active_asset = store.project_media_assets(project.project_id)[0]
+
+    updated = store.delete_project_media_asset(project.project_id, active_asset.asset_id)
+    assets = store.project_media_assets(project.project_id)
+
+    assert updated.source_video_path is None
+    assert updated.duration_ms == 0
+    assert assets == []
+
+
 def test_project_store_lists_projects_newest_first(tmp_path: Path) -> None:
     store = ProjectStore(tmp_path / "diplomat.db")
     first = store.create_project(
@@ -138,6 +237,33 @@ def test_project_store_lists_projects_newest_first(tmp_path: Path) -> None:
     assert [project.project_id for project in projects] == [second.project_id, first.project_id]
     assert projects[0].created_at
     assert projects[0].updated_at
+
+
+def test_project_store_lists_tasks_across_projects_by_latest_update(tmp_path: Path) -> None:
+    store = ProjectStore(tmp_path / "diplomat.db")
+    first_project = store.create_project(
+        name="Episode 1",
+        source_video_path=None,
+        duration_ms=0,
+        source_language="zh",
+        target_language="en",
+    )
+    second_project = store.create_project(
+        name="Episode 2",
+        source_video_path=None,
+        duration_ms=0,
+        source_language="en",
+        target_language="zh",
+    )
+    first = store.create_task(first_project.project_id, "analysis", "Queued analysis", {})
+    second = store.create_task(second_project.project_id, "translation", "Queued translation", {})
+
+    store.update_task(first.task_id, status="running", progress=0.4, message="Transcribing")
+
+    tasks = store.list_tasks()
+
+    assert [task.task_id for task in tasks] == [first.task_id, second.task_id]
+    assert {task.project_id for task in tasks} == {first_project.project_id, second_project.project_id}
 
 
 def test_project_store_tracks_subtitle_presence_and_updates_timestamp(tmp_path: Path) -> None:

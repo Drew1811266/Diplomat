@@ -49,15 +49,30 @@ export const ProjectDiagnosticsSchema = z.object({
 
 export const CreateProjectRequestSchema = z.object({
   name: z.string().min(1),
+  sourceVideoPath: z.string().min(1).nullable().default(null),
+  sourceLanguage: LanguageCodeSchema.default("zh"),
+  targetLanguage: LanguageCodeSchema.nullable().default("en")
+});
+
+export const ProjectSourceMediaRequestSchema = z.object({
+  sourceVideoPath: z.string().min(1)
+});
+
+export const ProjectMediaAssetSchema = z.object({
+  assetId: z.string().min(1),
+  name: z.string().min(1),
   sourceVideoPath: z.string().min(1),
-  sourceLanguage: LanguageCodeSchema,
-  targetLanguage: LanguageCodeSchema.nullable().default(null)
+  kind: z.literal("video"),
+  durationMs: z.number().int().nonnegative(),
+  importedAt: z.string().min(1),
+  active: z.boolean(),
+  exists: z.boolean()
 });
 
 export const ProjectResponseSchema = z.object({
   projectId: z.string().min(1),
   name: z.string().min(1),
-  sourceVideoPath: z.string().min(1),
+  sourceVideoPath: z.string().min(1).nullable(),
   projectDir: z.string().min(1),
   durationMs: z.number().int().nonnegative(),
   sourceLanguage: z.string(),
@@ -65,6 +80,7 @@ export const ProjectResponseSchema = z.object({
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
   hasSubtitleDocument: z.boolean(),
+  mediaAssets: z.array(ProjectMediaAssetSchema).default([]),
   diagnostics: ProjectDiagnosticsSchema
 });
 
@@ -177,6 +193,8 @@ export const WaveformResponseSchema = z
   });
 
 export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
+export type ProjectSourceMediaRequest = z.infer<typeof ProjectSourceMediaRequestSchema>;
+export type ProjectMediaAsset = z.infer<typeof ProjectMediaAssetSchema>;
 export type ProjectStatus = z.infer<typeof ProjectStatusSchema>;
 export type ProjectWarningCode = z.infer<typeof ProjectWarningCodeSchema>;
 export type ProjectWarning = z.infer<typeof ProjectWarningSchema>;

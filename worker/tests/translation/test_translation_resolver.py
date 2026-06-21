@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,42 @@ def install_entry(store: ProjectStore, entry: ModelRegistryEntry, create_files: 
         installed=True,
     )
     return installed_path
+
+
+def write_development_manifest(root: Path, entry: ModelRegistryEntry) -> Path:
+    development_path = Path("models/dev/translation/fixture-translation")
+    manifest_dir = root / "models" / "manifests"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    (manifest_dir / "fixture-translation.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": "diplomat.modelManifest.v1",
+                "modelId": entry.model_id,
+                "name": entry.name,
+                "task": "translation",
+                "runtime": entry.runtime,
+                "provider": entry.provider,
+                "source": {
+                    "type": "huggingface",
+                    "repoId": "example/translation",
+                    "revision": "fixture",
+                    "url": "https://example.invalid/translation",
+                },
+                "license": {
+                    "name": "MIT",
+                    "url": "https://example.invalid/license",
+                    "acceptanceRequired": False,
+                },
+                "developmentPath": str(development_path).replace("\\", "/"),
+                "expectedFiles": ["model.bin"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    model_path = root / development_path
+    model_path.mkdir(parents=True, exist_ok=True)
+    (model_path / "model.bin").write_bytes(b"fixture")
+    return model_path
 
 
 def resolve(
@@ -203,6 +240,26 @@ def test_resolver_returns_installed_path_for_curated_translation_model(tmp_path:
     assert resolved.provider == "ct2-marian"
     assert resolved.model_id == entry.model_id
     assert resolved.model_name_or_path == str(installed_path)
+
+
+def test_resolver_returns_development_manifest_path_for_curated_translation_model(
+    tmp_path: Path,
+) -> None:
+    entry = make_entry()
+    model_path = write_development_manifest(tmp_path, entry)
+
+    resolved = resolve_translation_provider_config(
+        TranslationProviderConfig(provider="ct2-marian", model_id=entry.model_id),
+        store=make_store(tmp_path),
+        registry=[entry],
+        fallback_source_language="zh",
+        fallback_target_language="en",
+        development_model_root=tmp_path,
+    )
+
+    assert resolved.provider == "ct2-marian"
+    assert resolved.model_id == entry.model_id
+    assert resolved.model_name_or_path == str(model_path)
 
 
 def test_resolver_accepts_vendor_owned_local_llm_entry(tmp_path: Path) -> None:

@@ -200,6 +200,61 @@ describe("ExportInspector", () => {
     expect(onUpdatePreset).toHaveBeenCalledWith("preset-default", { name: "Renamed" });
   });
 
+  it("can render as a style-only inspector without delivery controls", () => {
+    renderWithProviders(
+      <ExportInspector
+        surface="style"
+        format="srt"
+        mode="bilingual"
+        result={null}
+        canExport
+        disabledReason={null}
+        busy={false}
+        style={style}
+        onFormatChange={() => undefined}
+        onModeChange={() => undefined}
+        onStyleChange={() => undefined}
+        onExport={() => undefined}
+      />
+    );
+
+    expect(screen.getByLabelText("Font family")).toBeInTheDocument();
+    expect(screen.getByLabelText("Safe area")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Format" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Export mode" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Render video" })).not.toBeInTheDocument();
+  });
+
+  it("can render as a delivery-only inspector without style controls", () => {
+    renderWithProviders(
+      <ExportInspector
+        surface="delivery"
+        format="srt"
+        mode="bilingual"
+        result={null}
+        canExport
+        disabledReason={null}
+        busy={false}
+        style={style}
+        onFormatChange={() => undefined}
+        onModeChange={() => undefined}
+        onStyleChange={() => undefined}
+        onExport={() => undefined}
+        onBurnInExport={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("combobox", { name: "Format" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Export mode" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Render video" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Font family")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Preset name")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Safe area")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Apply preset" })).not.toBeInTheDocument();
+  });
+
   it("starts burn-in export and exposes export task controls", async () => {
     const user = userEvent.setup();
     const onBurnInExport = vi.fn();

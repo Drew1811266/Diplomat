@@ -10,6 +10,7 @@ from pathlib import Path
 from diplomat_worker.schemas.subtitle import SubtitleDocument, SubtitleStyle
 
 SCHEMA_VERSION = 7
+MEDIA_ASSET_SCHEMA_VERSION = "diplomat.media-assets.v1"
 SUBTITLE_SNAPSHOT_SCHEMA_VERSION = "diplomat.subtitle-snapshot.v1"
 STYLE_PRESET_SCHEMA_VERSION = "diplomat.style-presets.v1"
 SUBTITLE_SNAPSHOT_REASONS = {
@@ -30,13 +31,25 @@ class StorageMigrationError(RuntimeError):
 class ProjectRecord:
     project_id: str
     name: str
-    source_video_path: Path
+    source_video_path: Path | None
     project_dir: Path
     duration_ms: int
     source_language: str
     target_language: str | None
     created_at: str
     updated_at: str
+
+
+@dataclass(frozen=True)
+class ProjectMediaAsset:
+    asset_id: str
+    name: str
+    source_video_path: Path
+    kind: str
+    duration_ms: int
+    imported_at: str
+    active: bool
+    exists: bool
 
 
 @dataclass(frozen=True)
@@ -167,9 +180,10 @@ class ModelInstallationRecord:
 
 
 class ProjectStore:
-    def __init__(self, database_path: Path) -> None:
+    def __init__(self, database_path: Path, models_root: Path | None = None) -> None:
         self.database_path = database_path
         self.root_dir = database_path.parent
+        self._models_root = models_root
         self.root_dir.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
@@ -413,7 +427,7 @@ class ProjectStore:
     def create_project(
         self,
         name: str,
-        source_video_path: Path,
+        source_video_path: Path | None,
         duration_ms: int,
         source_language: str,
         target_language: str | None,
@@ -460,7 +474,7 @@ class ProjectStore:
                 (
                     record.project_id,
                     record.name,
-                    str(record.source_video_path),
+                    str(record.source_video_path) if record.source_video_path is not None else "",
                     str(record.project_dir),
                     record.duration_ms,
                     record.source_language,
@@ -470,6 +484,8 @@ class ProjectStore:
                 ),
             )
             connection.commit()
+        if source_video_path is not None:
+            self._upsert_project_media_asset(record, source_video_path, duration_ms, now)
         return record
 
     def list_projects(self) -> list[ProjectRecord]:
@@ -515,6 +531,80 @@ class ProjectStore:
             raise KeyError(f"Project not found: {project_id}")
         return self._record_from_row(row)
 
+    def update_project_source_media(
+        self,
+        project_id: str,
+        source_video_path: Path,
+        duration_ms: int,
+    ) -> ProjectRecord:
+        if duration_ms < 0:
+            raise ValueError("duration_ms must be greater than or equal to 0")
+
+        updated_at = self._utc_now()
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE projects
+                SET source_video_path = ?,
+                    duration_ms = ?,
+                    updated_at = ?
+                WHERE project_id = ?
+                """,
+                (str(source_video_path), duration_ms, updated_at, project_id),
+            )
+            connection.commit()
+        if cursor.rowcount == 0:
+            raise KeyError(f"Project not found: {project_id}")
+        project = self.get_project(project_id)
+        self._upsert_project_media_asset(project, source_video_path, duration_ms, updated_at)
+        self._remove_project_file(project, "subtitle.diplomat.json")
+        self._remove_project_file(project, "draft.diplomat.json")
+        self._remove_project_file(project, "cache/waveform.json")
+        return self.get_project(project_id)
+
+    def project_media_assets(self, project_id: str) -> list[ProjectMediaAsset]:
+        project = self.get_project(project_id)
+        return self._read_project_media_assets(project)
+
+    def delete_project_media_asset(self, project_id: str, asset_id: str) -> ProjectRecord:
+        project = self.get_project(project_id)
+        assets = self._read_project_media_assets(project)
+        target = next((asset for asset in assets if asset.asset_id == asset_id), None)
+        if target is None:
+            raise KeyError(f"Project media asset not found: {asset_id}")
+
+        remaining_assets = [asset for asset in assets if asset.asset_id != asset_id]
+        deleted_active_source = (
+            project.source_video_path is not None
+            and target.source_video_path == project.source_video_path
+        )
+        updated_at = self._utc_now()
+        with self._connect() as connection:
+            if deleted_active_source:
+                connection.execute(
+                    """
+                    UPDATE projects
+                    SET source_video_path = '',
+                        duration_ms = 0,
+                        updated_at = ?
+                    WHERE project_id = ?
+                    """,
+                    (updated_at, project_id),
+                )
+            else:
+                connection.execute(
+                    "UPDATE projects SET updated_at = ? WHERE project_id = ?",
+                    (updated_at, project_id),
+                )
+            connection.commit()
+
+        self._write_project_media_assets(project, remaining_assets)
+        if deleted_active_source:
+            self._remove_project_file(project, "subtitle.diplomat.json")
+            self._remove_project_file(project, "draft.diplomat.json")
+            self._remove_project_file(project, "cache/waveform.json")
+        return self.get_project(project_id)
+
     def project_child_dir(self, project: ProjectRecord, name: str) -> Path:
         if name not in {"cache", "exports", "logs", "backups"}:
             raise ValueError(f"Unsupported project directory: {name}")
@@ -526,10 +616,14 @@ class ProjectStore:
         logs_dir = self.project_child_dir(project, "logs")
         backups_dir = self.project_child_dir(project, "backups")
         warnings: list[ProjectWarning] = []
-        source_video_exists = project.source_video_path.is_file()
+        source_video_exists = (
+            project.source_video_path.is_file()
+            if project.source_video_path is not None
+            else False
+        )
         project_dir_exists = project.project_dir.is_dir()
 
-        if not source_video_exists:
+        if project.source_video_path is not None and not source_video_exists:
             warnings.append(
                 ProjectWarning(
                     code="source_missing",
@@ -652,7 +746,7 @@ class ProjectStore:
             "schemaVersion": "diplomat.project-backup.v1",
             "project": {
                 "name": project.name,
-                "sourceVideoPath": str(project.source_video_path),
+                "sourceVideoPath": str(project.source_video_path) if project.source_video_path is not None else None,
                 "durationMs": project.duration_ms,
                 "sourceLanguage": project.source_language,
                 "targetLanguage": project.target_language,
@@ -724,7 +818,11 @@ class ProjectStore:
 
             project = self.create_project(
                 name=restore_name or str(project_payload["name"]),
-                source_video_path=Path(str(project_payload["sourceVideoPath"])),
+                source_video_path=(
+                    Path(str(project_payload["sourceVideoPath"]))
+                    if project_payload.get("sourceVideoPath")
+                    else None
+                ),
                 duration_ms=int(project_payload["durationMs"]),
                 source_language=str(project_payload["sourceLanguage"]),
                 target_language=project_payload.get("targetLanguage"),
@@ -793,7 +891,7 @@ class ProjectStore:
         return self.get_project(project.project_id)
 
     def models_root(self) -> Path:
-        root = self.root_dir / "models"
+        root = self._models_root or self.root_dir / "models"
         root.mkdir(parents=True, exist_ok=True)
         return root
 
@@ -1098,11 +1196,159 @@ class ProjectStore:
             line_spacing=1.15,
         )
 
+    def _media_assets_path(self, project: ProjectRecord) -> Path:
+        return project.project_dir / "media-assets.diplomat.json"
+
+    def _asset_payload_from_record(self, asset: ProjectMediaAsset) -> dict:
+        return {
+            "assetId": asset.asset_id,
+            "name": asset.name,
+            "sourceVideoPath": str(asset.source_video_path),
+            "kind": asset.kind,
+            "durationMs": asset.duration_ms,
+            "importedAt": asset.imported_at,
+        }
+
+    def _fallback_project_media_assets(self, project: ProjectRecord) -> list[dict]:
+        if project.source_video_path is None:
+            return []
+        asset_uuid = uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"{project.project_id}:{project.source_video_path}",
+        )
+        return [
+            {
+                "assetId": f"media-{asset_uuid.hex}",
+                "name": project.source_video_path.name or str(project.source_video_path),
+                "sourceVideoPath": str(project.source_video_path),
+                "kind": "video",
+                "durationMs": project.duration_ms,
+                "importedAt": project.created_at,
+            }
+        ]
+
+    def _media_asset_from_payload(
+        self,
+        project: ProjectRecord,
+        payload: dict,
+    ) -> ProjectMediaAsset | None:
+        try:
+            asset_id = str(payload["assetId"]).strip()
+            source_video_path = Path(str(payload["sourceVideoPath"]))
+            name = str(payload.get("name") or source_video_path.name or source_video_path)
+            kind = str(payload.get("kind") or "video")
+            duration_ms = int(payload.get("durationMs") or 0)
+            imported_at = str(payload.get("importedAt") or project.created_at)
+        except (KeyError, TypeError, ValueError):
+            return None
+
+        if not asset_id or kind != "video" or duration_ms < 0:
+            return None
+
+        return ProjectMediaAsset(
+            asset_id=asset_id,
+            name=name,
+            source_video_path=source_video_path,
+            kind="video",
+            duration_ms=duration_ms,
+            imported_at=imported_at,
+            active=(
+                project.source_video_path is not None
+                and source_video_path == project.source_video_path
+            ),
+            exists=source_video_path.is_file(),
+        )
+
+    def _read_project_media_assets(self, project: ProjectRecord) -> list[ProjectMediaAsset]:
+        path = self._media_assets_path(project)
+        payload_assets: list[dict] = []
+        if path.is_file():
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                if payload.get("schemaVersion") == MEDIA_ASSET_SCHEMA_VERSION:
+                    raw_assets = payload.get("assets", [])
+                    if isinstance(raw_assets, list):
+                        payload_assets = [
+                            asset for asset in raw_assets if isinstance(asset, dict)
+                        ]
+            except (json.JSONDecodeError, OSError):
+                payload_assets = []
+
+        if not payload_assets:
+            payload_assets = self._fallback_project_media_assets(project)
+
+        assets: list[ProjectMediaAsset] = []
+        seen_paths: set[str] = set()
+        for payload in payload_assets:
+            asset = self._media_asset_from_payload(project, payload)
+            if asset is None:
+                continue
+            normalized_path = str(asset.source_video_path)
+            if normalized_path in seen_paths:
+                continue
+            seen_paths.add(normalized_path)
+            assets.append(asset)
+        return assets
+
+    def _write_project_media_assets(
+        self,
+        project: ProjectRecord,
+        assets: list[ProjectMediaAsset],
+    ) -> None:
+        project.project_dir.mkdir(parents=True, exist_ok=True)
+        path = self._media_assets_path(project)
+        payload = {
+            "schemaVersion": MEDIA_ASSET_SCHEMA_VERSION,
+            "assets": [self._asset_payload_from_record(asset) for asset in assets],
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _upsert_project_media_asset(
+        self,
+        project: ProjectRecord,
+        source_video_path: Path,
+        duration_ms: int,
+        imported_at: str,
+    ) -> None:
+        assets = self._read_project_media_assets(project)
+        existing_index = next(
+            (
+                index
+                for index, asset in enumerate(assets)
+                if asset.source_video_path == source_video_path
+            ),
+            None,
+        )
+        next_asset = ProjectMediaAsset(
+            asset_id=(
+                assets[existing_index].asset_id
+                if existing_index is not None
+                else f"media-{uuid.uuid4().hex}"
+            ),
+            name=source_video_path.name or str(source_video_path),
+            source_video_path=source_video_path,
+            kind="video",
+            duration_ms=duration_ms,
+            imported_at=(
+                assets[existing_index].imported_at
+                if existing_index is not None
+                else imported_at
+            ),
+            active=True,
+            exists=source_video_path.is_file(),
+        )
+        if existing_index is None:
+            assets.append(next_asset)
+        else:
+            assets[existing_index] = next_asset
+        self._write_project_media_assets(project, assets)
+
     def _record_from_row(self, row: sqlite3.Row) -> ProjectRecord:
+        raw_source_path = str(row["source_video_path"] or "").strip()
         return ProjectRecord(
             project_id=row["project_id"],
             name=row["name"],
-            source_video_path=Path(row["source_video_path"]),
+            source_video_path=Path(raw_source_path) if raw_source_path else None,
             project_dir=Path(row["project_dir"]),
             duration_ms=row["duration_ms"],
             source_language=row["source_language"],
@@ -1642,6 +1888,30 @@ class ProjectStore:
             ).fetchall()
         return [self._task_from_row(row) for row in rows]
 
+    def list_tasks(self) -> list[TaskRecord]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    task_id,
+                    project_id,
+                    type,
+                    status,
+                    progress,
+                    message,
+                    started_at,
+                    updated_at,
+                    completed_at,
+                    error_code,
+                    error_message,
+                    diagnostic_log_path,
+                    request_json
+                FROM tasks
+                ORDER BY updated_at DESC, rowid DESC
+                """
+            ).fetchall()
+        return [self._task_from_row(row) for row in rows]
+
     def update_task(
         self,
         task_id: str,
@@ -1741,6 +2011,12 @@ class ProjectStore:
                 child.unlink()
         path.mkdir(parents=True, exist_ok=True)
         return files_affected, bytes_affected
+
+    def _remove_project_file(self, project: ProjectRecord, relative_path: str) -> None:
+        path = project.project_dir / relative_path
+        self._assert_safe_child_path(project.project_dir, path)
+        if path.is_file():
+            path.unlink()
 
     def _assert_safe_project_directory(self, path: Path) -> None:
         resolved = path.resolve()

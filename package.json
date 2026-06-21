@@ -6,6 +6,7 @@
   "packageManager": "pnpm@10.13.1",
   "scripts": {
     "check": "pnpm -r check",
+    "dev:desktop": "node scripts/start-dev-desktop.mjs",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   },

@@ -160,8 +160,10 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("POST", "/projects/{project_id}/analysis-jobs"),
         ("POST", "/projects/{project_id}/backup"),
         ("POST", "/projects/{project_id}/cleanup/cache"),
-        ("POST", "/projects/{project_id}/cleanup/exports"),
-        ("GET", "/projects/{project_id}/media/source"),
+            ("POST", "/projects/{project_id}/cleanup/exports"),
+            ("DELETE", "/projects/{project_id}/media/assets/{asset_id}"),
+            ("GET", "/projects/{project_id}/media/source"),
+            ("PUT", "/projects/{project_id}/media/source"),
         ("GET", "/projects/{project_id}/subtitle/draft"),
         ("PUT", "/projects/{project_id}/subtitle/draft"),
         ("DELETE", "/projects/{project_id}/subtitle/draft"),
@@ -183,6 +185,7 @@ def test_app_exposes_worker_project_routes(app_module, monkeypatch) -> None:
         ("POST", "/projects/{project_id}/exports/srt"),
         ("GET", "/projects/{project_id}/subtitle"),
         ("PUT", "/projects/{project_id}/subtitle"),
+        ("GET", "/tasks"),
         ("GET", "/tasks/{task_id}"),
         ("POST", "/tasks/{task_id}/cancel"),
         ("POST", "/tasks/{task_id}/retry"),
@@ -327,6 +330,73 @@ def test_project_list_includes_diagnostics(app_module, tmp_path: Path) -> None:
     assert diagnostics["status"] == "not_transcribed"
     assert diagnostics["sourceVideoExists"] is True
     assert diagnostics["cacheDir"].endswith("cache")
+
+
+def test_project_can_be_created_without_source_video_and_later_receive_media(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    client = TestClient(app_module.create_app(runtime))
+    source_video = tmp_path / "source.mp4"
+    replacement_video = tmp_path / "replacement.mp4"
+    source_video.write_bytes(b"fake-video")
+    replacement_video.write_bytes(b"replacement-video")
+
+    create_response = client.post(
+        "/projects",
+        json={
+            "name": "Client campaign",
+        },
+    )
+
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["name"] == "Client campaign"
+    assert created["sourceVideoPath"] is None
+    assert created["sourceLanguage"] == "zh"
+    assert created["targetLanguage"] == "en"
+    assert created["durationMs"] == 0
+    assert created["mediaAssets"] == []
+    assert created["diagnostics"]["sourceVideoExists"] is False
+    assert created["diagnostics"]["warnings"] == []
+
+    media_response = client.put(
+        f"/projects/{created['projectId']}/media/source",
+        json={"sourceVideoPath": str(source_video)},
+    )
+
+    assert media_response.status_code == 200
+    updated = media_response.json()
+    assert updated["projectId"] == created["projectId"]
+    assert updated["sourceVideoPath"] == str(source_video)
+    assert updated["durationMs"] == 65_000
+    assert [asset["sourceVideoPath"] for asset in updated["mediaAssets"]] == [str(source_video)]
+    assert updated["mediaAssets"][0]["active"] is True
+    assert updated["diagnostics"]["sourceVideoExists"] is True
+
+    replacement_response = client.put(
+        f"/projects/{created['projectId']}/media/source",
+        json={"sourceVideoPath": str(replacement_video)},
+    )
+
+    assert replacement_response.status_code == 200
+    replaced = replacement_response.json()
+    assert replaced["sourceVideoPath"] == str(replacement_video)
+    assert [asset["sourceVideoPath"] for asset in replaced["mediaAssets"]] == [
+        str(source_video),
+        str(replacement_video),
+    ]
+    assert [asset["active"] for asset in replaced["mediaAssets"]] == [False, True]
+
+    active_asset_id = replaced["mediaAssets"][1]["assetId"]
+    delete_response = client.delete(
+        f"/projects/{created['projectId']}/media/assets/{active_asset_id}",
+    )
+
+    assert delete_response.status_code == 200
+    deleted = delete_response.json()
+    assert deleted["sourceVideoPath"] is None
+    assert deleted["durationMs"] == 0
+    assert [asset["sourceVideoPath"] for asset in deleted["mediaAssets"]] == [str(source_video)]
+    assert deleted["mediaAssets"][0]["active"] is False
 
 
 def test_project_cleanup_backup_import_and_delete_routes(app_module, tmp_path: Path) -> None:
@@ -869,6 +939,36 @@ def test_create_analysis_job_returns_accepted_task(app_module, tmp_path: Path) -
     task_response = client.get(f"/tasks/{payload['taskId']}")
     assert task_response.status_code == 200
     assert task_response.json()["taskId"] == payload["taskId"]
+
+
+def test_list_tasks_returns_real_queue_across_projects(app_module, tmp_path: Path) -> None:
+    runtime = make_test_runtime(tmp_path)
+    client = TestClient(app_module.create_app(runtime))
+    first_project = runtime.store.create_project(
+        name="Episode 1",
+        source_video_path=None,
+        duration_ms=0,
+        source_language="zh",
+        target_language="en",
+    )
+    second_project = runtime.store.create_project(
+        name="Episode 2",
+        source_video_path=None,
+        duration_ms=0,
+        source_language="en",
+        target_language="zh",
+    )
+    first = runtime.store.create_task(first_project.project_id, "analysis", "Queued analysis", {})
+    second = runtime.store.create_task(second_project.project_id, "translation", "Queued translation", {})
+    runtime.store.update_task(first.task_id, status="running", progress=0.4, message="Transcribing")
+
+    response = client.get("/tasks")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [task["taskId"] for task in payload["tasks"]] == [first.task_id, second.task_id]
+    assert payload["tasks"][0]["status"] == "running"
+    assert payload["tasks"][1]["type"] == "translation"
 
 
 def test_create_analysis_job_accepts_installed_curated_asr_model(app_module, tmp_path: Path) -> None:
@@ -1474,9 +1574,10 @@ def test_project_response_populates_by_field_name_and_dumps_by_alias(tmp_path: P
         "sourceLanguage": "zh",
         "targetLanguage": "en",
         "createdAt": "2026-06-07T00:00:00+00:00",
-        "updatedAt": "2026-06-07T00:01:00+00:00",
-        "hasSubtitleDocument": True,
-        "diagnostics": {
+            "updatedAt": "2026-06-07T00:01:00+00:00",
+            "hasSubtitleDocument": True,
+            "mediaAssets": [],
+            "diagnostics": {
             "status": "not_transcribed",
             "warnings": [],
             "sourceVideoExists": True,

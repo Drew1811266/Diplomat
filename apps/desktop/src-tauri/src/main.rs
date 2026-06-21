@@ -60,8 +60,17 @@ impl WorkerLaunchConfig {
         ffprobe_path: String,
     ) -> Self {
         let mut env = worker_environment(directories);
+        let development_model_root = development_model_root(&repo_root);
         env.push(("DIPLOMAT_FFMPEG_PATH".to_string(), ffmpeg_path));
         env.push(("DIPLOMAT_FFPROBE_PATH".to_string(), ffprobe_path));
+        env.push((
+            "DIPLOMAT_DEVELOPMENT_MODEL_ROOT".to_string(),
+            development_model_root.clone(),
+        ));
+        env.push((
+            "DIPLOMAT_MODELS_DIR".to_string(),
+            development_models_dir(&development_model_root),
+        ));
         Self {
             mode: "development".to_string(),
             program: PathBuf::from("python"),
@@ -128,6 +137,43 @@ impl RuntimeDirectories {
             logs: path_to_string(&base.join("logs")),
             diagnostics: path_to_string(&base.join("diagnostics")),
         }
+    }
+
+    fn for_worker_launch_config(&self, launch_config: &WorkerLaunchConfig) -> Self {
+        let mut directories = self.clone();
+        if launch_config.mode == "development" {
+            if let Some((_, models_dir)) = launch_config
+                .env
+                .iter()
+                .find(|(key, _)| key == "DIPLOMAT_MODELS_DIR")
+            {
+                directories.models = models_dir.clone();
+            }
+        }
+        directories
+    }
+
+    fn for_worker_launcher(
+        &self,
+        worker_launcher: &str,
+        ffmpeg_path: &str,
+        ffprobe_path: &str,
+    ) -> Self {
+        if worker_launcher != "development" {
+            return self.clone();
+        }
+
+        find_repo_root()
+            .map(|repo_root| {
+                WorkerLaunchConfig::development(
+                    repo_root,
+                    self,
+                    ffmpeg_path.to_string(),
+                    ffprobe_path.to_string(),
+                )
+            })
+            .map(|launch_config| self.for_worker_launch_config(&launch_config))
+            .unwrap_or_else(|_| self.clone())
     }
 
     fn ensure_created(&self) -> Result<(), String> {
@@ -238,6 +284,66 @@ fn worker_environment(directories: &RuntimeDirectories) -> Vec<(String, String)>
     vec![("DIPLOMAT_DATA_DIR".to_string(), directories.data.clone())]
 }
 
+fn development_model_root(repo_root: &Path) -> String {
+    env::var("DIPLOMAT_DEVELOPMENT_MODEL_ROOT")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| path_to_string(&preferred_development_model_root(repo_root)))
+}
+
+fn development_models_dir(development_model_root: &str) -> String {
+    env::var("DIPLOMAT_MODELS_DIR")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| path_to_string(&PathBuf::from(development_model_root).join("models")))
+}
+
+fn preferred_development_model_root(repo_root: &Path) -> PathBuf {
+    if has_development_model_payload(repo_root) {
+        return repo_root.to_path_buf();
+    }
+    if let Some(main_workspace) = parent_workspace_for_worktree(repo_root) {
+        if has_development_model_payload(&main_workspace) {
+            return main_workspace;
+        }
+    }
+    repo_root.to_path_buf()
+}
+
+fn parent_workspace_for_worktree(repo_root: &Path) -> Option<PathBuf> {
+    let worktrees_dir = repo_root.parent()?;
+    if worktrees_dir.file_name().and_then(|name| name.to_str()) != Some(".worktrees") {
+        return None;
+    }
+    worktrees_dir.parent().map(Path::to_path_buf)
+}
+
+fn has_development_model_payload(root: &Path) -> bool {
+    contains_non_placeholder_file(&root.join("models").join("dev"), 8)
+}
+
+fn contains_non_placeholder_file(path: &Path, remaining_depth: usize) -> bool {
+    let Ok(entries) = fs::read_dir(path) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let child = entry.path();
+        if child.is_file() {
+            if child.file_name().and_then(|name| name.to_str()) != Some(".gitkeep") {
+                return true;
+            }
+        } else if remaining_depth > 0
+            && child.is_dir()
+            && contains_non_placeholder_file(&child, remaining_depth - 1)
+        {
+            return true;
+        }
+    }
+    false
+}
+
 fn packaged_resource_candidate(name: &str) -> Option<PathBuf> {
     env::current_exe()
         .ok()
@@ -247,6 +353,9 @@ fn packaged_resource_candidate(name: &str) -> Option<PathBuf> {
 }
 
 fn packaged_worker_candidate() -> Option<PathBuf> {
+    if debug_build_should_use_development_worker() {
+        return None;
+    }
     env::current_exe()
         .ok()
         .and_then(|path| path.parent().map(Path::to_path_buf))
@@ -255,6 +364,22 @@ fn packaged_worker_candidate() -> Option<PathBuf> {
                 .into_iter()
                 .find(|path| path.exists())
         })
+}
+
+fn debug_build_should_use_development_worker() -> bool {
+    cfg!(debug_assertions) && !debug_packaged_worker_override_enabled()
+}
+
+fn debug_packaged_worker_override_enabled() -> bool {
+    env::var("DIPLOMAT_USE_PACKAGED_WORKER")
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes"
+            )
+        })
+        .unwrap_or(false)
 }
 
 fn packaged_worker_candidates(exe_dir: &Path) -> Vec<PathBuf> {
@@ -396,6 +521,42 @@ fn pick_video_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+fn pick_video_files(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+    let selected = app
+        .dialog()
+        .file()
+        .add_filter("Video", &["mp4", "mov", "mkv", "webm", "avi", "m4v"])
+        .blocking_pick_files();
+
+    selected
+        .unwrap_or_default()
+        .into_iter()
+        .map(|path| {
+            path.into_path()
+                .map(|path| path.to_string_lossy().to_string())
+                .map_err(|error| error.to_string())
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn pick_project_backup_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let selected = app
+        .dialog()
+        .file()
+        .add_filter("Diplomat project backup", &["zip"])
+        .blocking_pick_file();
+
+    selected
+        .map(|path| {
+            path.into_path()
+                .map(|path| path.to_string_lossy().to_string())
+                .map_err(|error| error.to_string())
+        })
+        .transpose()
+}
+
+#[tauri::command]
 fn worker_status(state: State<'_, Mutex<WorkerProcessState>>) -> Result<WorkerStatus, String> {
     let mut guard = state
         .lock()
@@ -437,12 +598,17 @@ fn runtime_status(state: State<'_, Mutex<WorkerProcessState>>) -> Result<Runtime
         })
     };
 
+    let ffmpeg = ffmpeg_status();
+    let ffprobe = ffprobe_status();
+    let status_directories =
+        directories.for_worker_launcher(&worker_launcher, &ffmpeg.path, &ffprobe.path);
+
     Ok(RuntimeStatus::new(
         worker,
         &worker_launcher,
-        directories,
-        ffmpeg_status(),
-        ffprobe_status(),
+        status_directories,
+        ffmpeg,
+        ffprobe,
     ))
 }
 
@@ -679,6 +845,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             worker_endpoint,
             pick_video_file,
+            pick_video_files,
+            pick_project_backup_file,
             start_worker,
             stop_worker,
             worker_status,
@@ -858,14 +1026,54 @@ mod tests {
             config.current_dir,
             Some(PathBuf::from(r"D:\Software Project\Diplomat"))
         );
+        assert!(config.env.iter().any(|(key, value)| {
+            key == "DIPLOMAT_DEVELOPMENT_MODEL_ROOT" && value == r"D:\Software Project\Diplomat"
+        }));
+        assert!(config.env.iter().any(|(key, value)| {
+            key == "DIPLOMAT_MODELS_DIR" && value == r"D:\Software Project\Diplomat\models"
+        }));
         assert_eq!(config.mode, "development");
+    }
+
+    #[test]
+    fn development_runtime_status_uses_project_models_directory() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let config = WorkerLaunchConfig::development(
+            PathBuf::from(r"D:\Software Project\Diplomat"),
+            &directories,
+            "ffmpeg".to_string(),
+            "ffprobe".to_string(),
+        );
+        let status_directories = directories.for_worker_launch_config(&config);
+
+        assert_eq!(
+            status_directories.models,
+            r"D:\Software Project\Diplomat\models"
+        );
+        assert_eq!(status_directories.data, r"C:\Diplomat\data");
+    }
+
+    #[test]
+    fn packaged_runtime_status_keeps_app_models_directory() {
+        let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
+        let config = WorkerLaunchConfig::packaged(
+            PathBuf::from(r"C:\Program Files\Diplomat\diplomat-worker.exe"),
+            &directories,
+            "ffmpeg".to_string(),
+            "ffprobe".to_string(),
+        );
+        let status_directories = directories.for_worker_launch_config(&config);
+
+        assert_eq!(status_directories.models, r"C:\Diplomat\models");
     }
 
     #[test]
     fn packaged_launch_config_does_not_require_repo_root() {
         let directories = RuntimeDirectories::from_base(&PathBuf::from(r"C:\Diplomat"));
         let config = worker_launch_config_from_candidates(
-            Some(PathBuf::from(r"C:\Program Files\Diplomat\diplomat-worker.exe")),
+            Some(PathBuf::from(
+                r"C:\Program Files\Diplomat\diplomat-worker.exe",
+            )),
             Err("repo root unavailable".to_string()),
             &directories,
             "ffmpeg".to_string(),
@@ -994,10 +1202,7 @@ mod tests {
             "ffprobe",
         );
 
-        assert_eq!(
-            path,
-            r"C:\Program Files\Diplomat\resources\ffprobe.exe"
-        );
+        assert_eq!(path, r"C:\Program Files\Diplomat\resources\ffprobe.exe");
     }
 
     #[test]

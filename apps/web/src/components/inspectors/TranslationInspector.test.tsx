@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ModelCatalogEntry, TranslationJobRequest } from "@diplomat/shared";
 import { useState } from "react";
@@ -87,6 +87,60 @@ afterEach(() => {
 });
 
 describe("TranslationInspector", () => {
+  it("uses readable language selectors while storing language codes", () => {
+    const onConfigChange = vi.fn();
+
+    renderWithProviders(
+      <TranslationInspector
+        config={{
+          ...configuredTranslationConfig,
+          glossary: [
+            {
+              id: "zh-en-term-1",
+              sourceText: "字幕",
+              targetText: "subtitle",
+              sourceLanguage: "zh",
+              targetLanguage: "en",
+              caseSensitive: false
+            }
+          ]
+        }}
+        busy={false}
+        modelCatalog={[installedTranslationModel]}
+        onConfigChange={onConfigChange}
+        onStart={() => undefined}
+        onCancel={() => undefined}
+        onRetry={() => undefined}
+      />
+    );
+
+    const sourceLanguage = screen.getByRole("combobox", { name: "Source language" });
+    const targetLanguage = screen.getByRole("combobox", { name: "Target language" });
+    expect(sourceLanguage).toHaveValue("zh");
+    expect(targetLanguage).toHaveValue("en");
+    expect(within(sourceLanguage).getByRole("option", { name: "Chinese (zh)" })).toBeInTheDocument();
+    expect(within(targetLanguage).getByRole("option", { name: "English (en)" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Source language" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Target language" })).not.toBeInTheDocument();
+
+    fireEvent.change(targetLanguage, { target: { value: "ja" } });
+
+    expect(onConfigChange).toHaveBeenCalledWith({
+      ...configuredTranslationConfig,
+      targetLanguage: "ja",
+      glossary: [
+        {
+          id: "zh-en-term-1",
+          sourceText: "字幕",
+          targetText: "subtitle",
+          sourceLanguage: "zh",
+          targetLanguage: "ja",
+          caseSensitive: false
+        }
+      ]
+    });
+  });
+
   it("selects installed curated translation models as the formal local path", () => {
     const onConfigChange = vi.fn();
 
@@ -197,6 +251,36 @@ describe("TranslationInspector", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Advanced options" }));
+
+    expect(screen.getByText(/Batch size 8/)).toBeVisible();
+  });
+
+  it("keeps runtime controls behind advanced options", () => {
+    renderWithProviders(
+      <TranslationInspector
+        config={{ ...configuredTranslationConfig, device: "cpu", computeType: "int8" }}
+        busy={false}
+        modelCatalog={[installedTranslationModel]}
+        onConfigChange={() => undefined}
+        onStart={() => undefined}
+        onCancel={() => undefined}
+        onRetry={() => undefined}
+      />
+    );
+
+    const advancedButton = screen.getByRole("button", { name: "Advanced options" });
+
+    expect(advancedButton).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("combobox", { name: "Device" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Compute type" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Batch size 8/)).not.toBeInTheDocument();
+
+    fireEvent.click(advancedButton);
+
+    expect(advancedButton).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("combobox", { name: "Device" })).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Compute type" })).toBeVisible();
     expect(screen.getByText(/Batch size 8/)).toBeVisible();
   });
 
@@ -217,6 +301,7 @@ describe("TranslationInspector", () => {
     expect(screen.getByLabelText("Source language")).toBeDisabled();
     expect(screen.getByLabelText("Target language")).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "Translation mode" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Advanced options" }));
     expect(screen.getByRole("combobox", { name: "Device" })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "Compute type" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
@@ -280,7 +365,11 @@ describe("TranslationInspector", () => {
       />
     );
 
-    expect(screen.getByText("Install a translation model from Models before starting local translation.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Install a translation model from Settings > Models before starting local translation."
+      )
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
   });
 

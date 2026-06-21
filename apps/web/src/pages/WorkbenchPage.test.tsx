@@ -1,16 +1,18 @@
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {
   ModelCatalogResponse,
+  ProjectResponse,
   SubtitleDraftResponse,
   SubtitleDocument,
   SubtitleSnapshotSummary,
   TaskResponse,
+  TranslationSettingsResponse,
   WaveformResponse
 } from "@diplomat/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appI18n } from "../app/i18n";
-import { useUiStore } from "../state/uiStore";
+import { WORKSPACE_LAYOUT_STORAGE_KEY, useUiStore } from "../state/uiStore";
 import {
   analyzedDocumentFixture,
   completedAnalysisTaskFixture,
@@ -21,6 +23,33 @@ import {
 } from "../test/fixtures";
 import { renderWithProviders } from "../test/render";
 import { WorkbenchPage } from "./WorkbenchPage";
+
+const desktopMock = vi.hoisted(() => ({
+  listenForDroppedVideoFiles: vi.fn<
+    (handler: (paths: string[]) => void) => Promise<() => void>
+  >(async () => vi.fn()),
+  openPathInFileManager: vi.fn<(path: string) => Promise<void>>(async () => undefined),
+  pickVideoFiles: vi.fn<() => Promise<string[]>>(async () => []),
+  pickVideoFile: vi.fn<() => Promise<string | null>>(async () => null)
+}));
+
+vi.mock("../desktop", () => desktopMock);
+
+function openWorkbenchInspector(mode: "analysis" | "translation" | "style" | "export") {
+  const workspace =
+    mode === "analysis"
+      ? "transcription"
+      : mode === "translation"
+        ? "translation"
+        : mode === "style"
+          ? "style"
+          : "delivery";
+
+  act(() => {
+    useUiStore.getState().setEditorWorkspace(workspace);
+    useUiStore.getState().setInspectorMode(mode);
+  });
+}
 
 const liveSubtitleDocument = {
   ...analyzedDocumentFixture,
@@ -133,6 +162,23 @@ const queuedExportTaskFixture: TaskResponse = {
   diagnosticLogPath: null
 };
 
+const translationSettingsFixture: TranslationSettingsResponse = {
+  projectId: "project-demo",
+  provider: "fake",
+  modelId: null,
+  modelNameOrPath: null,
+  sourceLanguage: "zh",
+  targetLanguage: "en",
+  mode: "missing_only",
+  device: "cpu",
+  computeType: "int8",
+  batchSize: 8,
+  endpoint: null,
+  apiKeyEnv: null,
+  glossary: [],
+  updatedAt: "2026-06-14T00:00:00+00:00"
+};
+
 const modelCatalogWithInstalledTranslation: ModelCatalogResponse = {
   models: modelCatalogFixture.models.map((model) =>
     model.modelId === "translation.opus-mt.zh-en"
@@ -152,6 +198,21 @@ const modelCatalogWithInstalledTranslation: ModelCatalogResponse = {
         }
       : model
   )
+};
+
+type TestMediaAsset = {
+  assetId: string;
+  name: string;
+  sourceVideoPath: string;
+  kind: "video";
+  durationMs: number;
+  importedAt: string;
+  active: boolean;
+  exists: boolean;
+};
+
+type ProjectResponseWithMedia = ProjectResponse & {
+  mediaAssets?: TestMediaAsset[];
 };
 
 function stubMatchMedia(matches: boolean) {
@@ -193,13 +254,18 @@ type ActiveProjectFetchOptions = {
   snapshots?: SubtitleSnapshotSummary[];
   snapshotDocument?: SubtitleDocument;
   modelCatalog?: ModelCatalogResponse;
+  project?: ProjectResponse;
+  translationSettings?: TranslationSettingsResponse;
   waveform?: WaveformResponse | null;
 };
 
 function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
+  let currentProject: ProjectResponseWithMedia = options.project ?? projectFixture;
   let currentDocument: SubtitleDocument = options.subtitleDocuments?.[0] ?? liveSubtitleDocument;
   let currentDraft: SubtitleDraftResponse | null = options.draft ?? null;
   let currentSnapshots = [...(options.snapshots ?? [])];
+  let currentTranslationSettings: TranslationSettingsResponse =
+    options.translationSettings ?? translationSettingsFixture;
   let restoredSnapshotDocument = options.snapshotDocument ?? currentDocument;
   let subtitleGetCount = 0;
   let taskFetchCount = 0;
@@ -231,7 +297,82 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
       return {
         ok: true,
         status: 200,
-        json: async () => projectFixture
+        json: async () => currentProject
+      } as Response;
+    }
+
+    if (url.endsWith("/projects/project-demo/media/source") && init?.method === "PUT") {
+      const body = JSON.parse(String(init.body)) as { sourceVideoPath: string };
+      const importedAt = "2026-06-14T00:00:00+00:00";
+      const currentAssets = currentProject.mediaAssets ?? [];
+      const existingAsset = currentAssets.find(
+        (asset) => asset.sourceVideoPath === body.sourceVideoPath
+      );
+      const nextAsset =
+        existingAsset ??
+        ({
+          assetId: `media-${currentAssets.length + 1}`,
+          name: body.sourceVideoPath.split(/[\\/]/).pop() ?? body.sourceVideoPath,
+          sourceVideoPath: body.sourceVideoPath,
+          kind: "video",
+          durationMs: 65_000,
+          importedAt,
+          active: true,
+          exists: true
+        } satisfies TestMediaAsset);
+      const nextAssets = existingAsset
+        ? currentAssets
+        : [...currentAssets, nextAsset];
+      currentProject = {
+        ...currentProject,
+        sourceVideoPath: body.sourceVideoPath,
+        durationMs: 65_000,
+        mediaAssets: nextAssets.map((asset) => ({
+          ...asset,
+          active: asset.sourceVideoPath === body.sourceVideoPath
+        })),
+        diagnostics: {
+          ...currentProject.diagnostics,
+          sourceVideoExists: true,
+          warnings: []
+        }
+      };
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => currentProject
+      } as Response;
+    }
+
+    if (
+      url.match(/\/projects\/project-demo\/media\/assets\/[^/]+$/) &&
+      init?.method === "DELETE"
+    ) {
+      const assetId = decodeURIComponent(url.split("/").at(-1) ?? "");
+      const currentAssets = currentProject.mediaAssets ?? [];
+      const deletedAsset = currentAssets.find((asset) => asset.assetId === assetId);
+      const nextAssets = currentAssets.filter((asset) => asset.assetId !== assetId);
+      const deletedActiveAsset =
+        Boolean(deletedAsset?.active) ||
+        deletedAsset?.sourceVideoPath === currentProject.sourceVideoPath;
+      currentProject = {
+        ...currentProject,
+        sourceVideoPath: deletedActiveAsset ? null : currentProject.sourceVideoPath,
+        durationMs: deletedActiveAsset ? 0 : currentProject.durationMs,
+        mediaAssets: nextAssets.map((asset) => ({ ...asset, active: false })),
+        diagnostics: {
+          ...currentProject.diagnostics,
+          sourceVideoExists: deletedActiveAsset
+            ? false
+            : currentProject.diagnostics.sourceVideoExists
+        }
+      };
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => currentProject
       } as Response;
     }
 
@@ -265,6 +406,35 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
         ok: true,
         status: 200,
         json: async () => currentDocument
+      } as Response;
+    }
+
+    if (
+      url.endsWith("/projects/project-demo/translation-settings") &&
+      init?.method === undefined
+    ) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => currentTranslationSettings
+      } as Response;
+    }
+
+    if (url.endsWith("/projects/project-demo/translation-settings") && init?.method === "PUT") {
+      const body = JSON.parse(String(init.body)) as Omit<
+        TranslationSettingsResponse,
+        "projectId" | "updatedAt"
+      >;
+      currentTranslationSettings = {
+        ...body,
+        projectId: "project-demo",
+        updatedAt: "2026-06-14T00:05:00+00:00"
+      };
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => currentTranslationSettings
       } as Response;
     }
 
@@ -528,31 +698,61 @@ function stubActiveProjectFetch(options: ActiveProjectFetchOptions = {}) {
 }
 
 beforeEach(async () => {
+  localStorage.clear();
+  useUiStore.getState().resetUiState();
   stubMatchMedia(false);
   await appI18n.changeLanguage("en");
 });
 
 afterEach(async () => {
   cleanup();
+  desktopMock.listenForDroppedVideoFiles.mockReset();
+  desktopMock.listenForDroppedVideoFiles.mockResolvedValue(vi.fn());
+  desktopMock.openPathInFileManager.mockReset();
+  desktopMock.openPathInFileManager.mockResolvedValue(undefined);
+  desktopMock.pickVideoFiles.mockReset();
+  desktopMock.pickVideoFiles.mockResolvedValue([]);
+  desktopMock.pickVideoFile.mockReset();
+  desktopMock.pickVideoFile.mockResolvedValue(null);
   vi.unstubAllGlobals();
+  localStorage.clear();
   useUiStore.getState().resetUiState();
   await appI18n.changeLanguage("en");
 });
 
 describe("WorkbenchPage", () => {
+  it("labels the editor surface with the selected workspace", async () => {
+    stubMatchMedia(false);
+    useUiStore.getState().setActiveProjectId("project-demo");
+    useUiStore.getState().setEditorWorkspace("translation");
+    stubActiveProjectFetch({ waveform: waveformFixture });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    const workbench = await screen.findByRole("main", { name: "Workbench" });
+    expect(workbench).toHaveAttribute("data-editor-workspace", "translation");
+    expect(
+      within(workbench).getByRole("heading", { level: 1, name: "Workbench" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Translation workspace")).toBeVisible();
+  });
+
   it("shows an empty workbench state when no active project is selected", () => {
     renderWithProviders(<WorkbenchPage />);
 
+    const workbench = screen.getByRole("main", { name: "Workbench" });
+    expect(workbench).toBeInTheDocument();
     expect(
-      within(screen.getByRole("region", { name: "Project context" })).getByText(
-        "No project selected"
-      )
+      within(workbench).getByRole("heading", { level: 1, name: "Workbench" })
     ).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Workbench empty state" })).toBeInTheDocument();
+    expect(screen.getByText("No project selected")).toBeInTheDocument();
     expect(
-      within(screen.getByRole("region", { name: "Project context" })).getByText(
-        "0 subtitle rows"
-      )
+      screen.getByText("Create or open a project from Project Library before importing video.")
     ).toBeInTheDocument();
+    expect(screen.queryByRole("toolbar", { name: "Project tools" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("toolbar", { name: "Editor commands" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Video preview")).not.toBeInTheDocument();
     expect(screen.queryByText("原始字幕文本")).not.toBeInTheDocument();
   });
 
@@ -562,7 +762,8 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     expect(await screen.findByText("Could not load project.", {}, { timeout: 3000 })).toBeInTheDocument();
-    expect(screen.getByText("Worker request failed: 500: Project unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Project details could not be loaded.")).toBeInTheDocument();
+    expect(screen.queryByText(/Local runtime request failed/)).not.toBeInTheDocument();
     expect(screen.queryByText("No subtitle rows are available to export.")).not.toBeInTheDocument();
   });
 
@@ -572,7 +773,8 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     expect(await screen.findByText("Could not load subtitle document.")).toBeInTheDocument();
-    expect(screen.getByText("Worker request failed: 404: Subtitle missing")).toBeInTheDocument();
+    expect(screen.getByText("Subtitle document could not be loaded.")).toBeInTheDocument();
+    expect(screen.queryByText(/Local runtime request failed/)).not.toBeInTheDocument();
     expect(screen.queryByText("No subtitle rows are available to export.")).not.toBeInTheDocument();
   });
 
@@ -590,6 +792,305 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByLabelText("Subtitle Grid")).toBeInTheDocument();
     expect(screen.getByLabelText("Inspector")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Timeline editor" })).toBeInTheDocument();
+  });
+
+  it("shows the current production stage with a direct inspector action", async () => {
+    const user = userEvent.setup();
+    useUiStore.getState().setEditorWorkspace("translation");
+    useUiStore.getState().setInspectorMode("line");
+    stubActiveProjectFetch();
+
+    renderWithProviders(<WorkbenchPage />);
+
+    const productionStage = await screen.findByRole("region", {
+      name: "Current production stage"
+    });
+    expect(within(productionStage).getByText("Translation")).toBeVisible();
+    expect(within(productionStage).getByText("Fill missing translations")).toBeVisible();
+
+    await user.click(
+      within(productionStage).getByRole("button", { name: "Open translation controls" })
+    );
+
+    expect(screen.getByRole("heading", { name: "Project translation settings" })).toBeVisible();
+  });
+
+  it("shows a source-video empty state when a project is open without imported media", async () => {
+    const emptyProject: ProjectResponse = {
+      ...projectFixture,
+      sourceVideoPath: null,
+      mediaAssets: [],
+      durationMs: 0,
+      diagnostics: {
+        ...projectFixture.diagnostics,
+        sourceVideoExists: false,
+        warnings: []
+      }
+    };
+    stubActiveProjectFetch({ project: emptyProject, waveform: null });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await screen.findByTestId("workbench-media-start");
+    expect(screen.queryByLabelText("Video preview")).not.toBeInTheDocument();
+    expect(screen.queryByText("No project selected")).not.toBeInTheDocument();
+    const mediaBin = await screen.findByRole("region", { name: "Project media" });
+    expect(within(mediaBin).getByRole("button", { name: "Import video" })).toBeInTheDocument();
+    expect(within(mediaBin).getByText("Drop videos here")).toBeInTheDocument();
+    expect(screen.getByTestId("project-media-empty-dropzone")).toHaveStyle({
+      minHeight: "320px"
+    });
+    expect(screen.queryByTestId("workbench-media-stack")).not.toBeInTheDocument();
+  });
+
+  it("opens empty project containers on a media import start surface instead of disabled editor panels", async () => {
+    const emptyProject: ProjectResponse = {
+      ...projectFixture,
+      sourceVideoPath: null,
+      mediaAssets: [],
+      durationMs: 0,
+      diagnostics: {
+        ...projectFixture.diagnostics,
+        sourceVideoExists: false,
+        warnings: []
+      }
+    };
+    stubActiveProjectFetch({ project: emptyProject, waveform: null });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await screen.findByTestId("workbench-media-start");
+    const mediaBin = await screen.findByRole("region", { name: "Project media" });
+    expect(within(mediaBin).getByText("Drop videos here")).toBeVisible();
+    expect(within(mediaBin).getByRole("button", { name: "Import video" })).toBeVisible();
+    expect(screen.queryByRole("toolbar", { name: "Project tools" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Project context")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Video preview")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Subtitle Grid")).not.toBeInTheDocument();
+    expect(screen.queryByRole("toolbar", { name: "Editor commands" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Timeline editor" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("project-media-empty-dropzone")).toHaveStyle({
+      minHeight: "320px"
+    });
+  });
+
+  it("imports a selected video from the empty project media call to action", async () => {
+    const user = userEvent.setup();
+    const emptyProject: ProjectResponse = {
+      ...projectFixture,
+      sourceVideoPath: null,
+      mediaAssets: [],
+      durationMs: 0,
+      diagnostics: {
+        ...projectFixture.diagnostics,
+        sourceVideoExists: false,
+        warnings: []
+      }
+    };
+    desktopMock.pickVideoFile.mockResolvedValue("D:/media/onboarding-source.mp4");
+    const fetchMock = stubActiveProjectFetch({ project: emptyProject, waveform: null });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await screen.findByTestId("workbench-media-start");
+    expect(screen.queryByLabelText("Video preview")).not.toBeInTheDocument();
+    const mediaBin = await screen.findByRole("region", { name: "Project media" });
+    await user.click(within(mediaBin).getByRole("button", { name: "Import video" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/media\/source$/),
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ sourceVideoPath: "D:/media/onboarding-source.mp4" })
+        })
+      )
+    );
+  });
+
+  it("imports a selected video into the current project from the workbench", async () => {
+    const user = userEvent.setup();
+    const emptyProject: ProjectResponse = {
+      ...projectFixture,
+      sourceVideoPath: null,
+      mediaAssets: [],
+      durationMs: 0,
+      diagnostics: {
+        ...projectFixture.diagnostics,
+        sourceVideoExists: false,
+        warnings: []
+      }
+    };
+    desktopMock.pickVideoFile.mockResolvedValue("D:/media/new-source.mp4");
+    const fetchMock = stubActiveProjectFetch({ project: emptyProject, waveform: null });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await screen.findByTestId("workbench-media-start");
+    const mediaBin = await screen.findByRole("region", { name: "Project media" });
+    await user.click(within(mediaBin).getByRole("button", { name: "Import video" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/media\/source$/),
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ sourceVideoPath: "D:/media/new-source.mp4" })
+        })
+      )
+    );
+    const updatedMediaBin = await screen.findByRole("region", { name: "Project media" });
+    expect(await within(updatedMediaBin).findByText("new-source.mp4")).toBeVisible();
+    expect(within(updatedMediaBin).queryByText("D:/media/new-source.mp4")).not.toBeInTheDocument();
+    expect(within(updatedMediaBin).getByText("new-source.mp4")).toHaveAttribute(
+      "title",
+      "D:/media/new-source.mp4"
+    );
+  });
+
+  it("imports every video selected from the desktop media picker", async () => {
+    const user = userEvent.setup();
+    const emptyProject: ProjectResponse = {
+      ...projectFixture,
+      sourceVideoPath: null,
+      mediaAssets: [],
+      durationMs: 0,
+      diagnostics: {
+        ...projectFixture.diagnostics,
+        sourceVideoExists: false,
+        warnings: []
+      }
+    };
+    desktopMock.pickVideoFiles.mockResolvedValue([
+      "D:/media/interview-a.mp4",
+      "D:/media/interview-b.mp4"
+    ]);
+    const fetchMock = stubActiveProjectFetch({ project: emptyProject, waveform: null });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await screen.findByTestId("workbench-media-start");
+    const mediaBin = await screen.findByRole("region", { name: "Project media" });
+    await user.click(within(mediaBin).getByRole("button", { name: "Import video" }));
+
+    await waitFor(() => {
+      const mediaImports = fetchMock.mock.calls.filter(
+        ([input, init]) =>
+          String(input).endsWith("/projects/project-demo/media/source") && init?.method === "PUT"
+      );
+      expect(mediaImports).toHaveLength(2);
+      expect(mediaImports.map(([, init]) => JSON.parse(String(init?.body)))).toEqual([
+        { sourceVideoPath: "D:/media/interview-a.mp4" },
+        { sourceVideoPath: "D:/media/interview-b.mp4" }
+      ]);
+    });
+
+    const updatedMediaBin = await screen.findByRole("region", { name: "Project media" });
+    expect(await within(updatedMediaBin).findByText("interview-a.mp4")).toBeVisible();
+    expect(await within(updatedMediaBin).findByText("interview-b.mp4")).toBeVisible();
+  });
+
+  it("imports every dropped desktop video into the project media bin", async () => {
+    const dropCapture: { handler?: (paths: string[]) => void } = {};
+    const emptyProject: ProjectResponse = {
+      ...projectFixture,
+      sourceVideoPath: null,
+      mediaAssets: [],
+      durationMs: 0,
+      diagnostics: {
+        ...projectFixture.diagnostics,
+        sourceVideoExists: false,
+        warnings: []
+      }
+    };
+    desktopMock.listenForDroppedVideoFiles.mockImplementation(async (handler) => {
+      dropCapture.handler = handler;
+      return vi.fn();
+    });
+    const fetchMock = stubActiveProjectFetch({ project: emptyProject, waveform: null });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await screen.findByRole("main", { name: "Workbench" });
+    expect(dropCapture.handler).toBeDefined();
+    dropCapture.handler?.(["D:/media/drop-a.mp4", "D:/media/drop-b.mp4"]);
+
+    await waitFor(() => {
+      const mediaImports = fetchMock.mock.calls.filter(
+        ([input, init]) =>
+          String(input).endsWith("/projects/project-demo/media/source") && init?.method === "PUT"
+      );
+      expect(mediaImports).toHaveLength(2);
+      expect(mediaImports.map(([, init]) => JSON.parse(String(init?.body)))).toEqual([
+        { sourceVideoPath: "D:/media/drop-a.mp4" },
+        { sourceVideoPath: "D:/media/drop-b.mp4" }
+      ]);
+    });
+
+    const mediaBin = await screen.findByRole("region", { name: "Project media" });
+    expect(await within(mediaBin).findByText("drop-a.mp4")).toBeVisible();
+    expect(await within(mediaBin).findByText("drop-b.mp4")).toBeVisible();
+  });
+
+  it("manages multiple project videos from the workbench media bin", async () => {
+    const user = userEvent.setup();
+    const projectWithAssets: ProjectResponseWithMedia = {
+      ...projectFixture,
+      sourceVideoPath: "D:/media/clip-b.mp4",
+      mediaAssets: [
+        {
+          assetId: "media-a",
+          name: "clip-a.mp4",
+          sourceVideoPath: "D:/media/clip-a.mp4",
+          kind: "video",
+          durationMs: 60_000,
+          importedAt: "2026-06-14T00:00:00+00:00",
+          active: false,
+          exists: true
+        },
+        {
+          assetId: "media-b",
+          name: "clip-b.mp4",
+          sourceVideoPath: "D:/media/clip-b.mp4",
+          kind: "video",
+          durationMs: 65_000,
+          importedAt: "2026-06-14T00:01:00+00:00",
+          active: true,
+          exists: true
+        }
+      ]
+    };
+    const fetchMock = stubActiveProjectFetch({ project: projectWithAssets });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    const mediaBin = await screen.findByRole("region", { name: "Project media" });
+    expect(await within(mediaBin).findByText("clip-a.mp4")).toBeVisible();
+    expect(await within(mediaBin).findByText("clip-b.mp4")).toBeVisible();
+    expect(within(mediaBin).queryByText("D:/media/clip-a.mp4")).not.toBeInTheDocument();
+    expect(within(mediaBin).queryByText("D:/media/clip-b.mp4")).not.toBeInTheDocument();
+    expect(await within(mediaBin).findByText("Active")).toBeVisible();
+
+    await user.click(within(mediaBin).getByRole("button", { name: "Use clip-a.mp4" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/media\/source$/),
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ sourceVideoPath: "D:/media/clip-a.mp4" })
+        })
+      )
+    );
+
+    await user.click(within(mediaBin).getByRole("button", { name: "Remove clip-a.mp4" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/media\/assets\/media-a$/),
+        expect.objectContaining({ method: "DELETE" })
+      )
+    );
   });
 
   it("clicks subtitle rows to select and seek the preview", async () => {
@@ -667,6 +1168,7 @@ describe("WorkbenchPage", () => {
 
   it("stacks the inspector below media panes on narrow screens", () => {
     stubMatchMedia(true);
+    stubActiveProjectFetch();
 
     renderWithProviders(<WorkbenchPage />);
 
@@ -674,13 +1176,155 @@ describe("WorkbenchPage", () => {
   });
 
   it("keeps growing subtitle and inspector content independently scrollable", () => {
+    stubActiveProjectFetch();
+
     renderWithProviders(<WorkbenchPage />);
 
     expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
-      gridTemplateRows: "minmax(200px, 34vh) minmax(140px, 1fr) auto"
+      gridTemplateRows: "auto minmax(200px, 30vh) minmax(140px, 1fr) 210px"
     });
     expect(screen.getByTestId("subtitle-grid-body")).toHaveStyle({ overflow: "auto" });
     expect(screen.getByTestId("inspector-body")).toHaveStyle({ overflow: "auto" });
+  });
+
+  it("uses the active workspace layout for inspector width and bottom dock height", () => {
+    stubActiveProjectFetch();
+    useUiStore.getState().setEditorWorkspace("translation");
+    useUiStore.getState().setWorkspaceLayout("translation", {
+      inspectorWidth: 384,
+      bottomDockHeight: 260
+    });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(screen.getByTestId("workbench-body")).toHaveStyle({
+      gridTemplateColumns: "minmax(0, 1fr) 384px"
+    });
+    expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
+      gridTemplateRows: "auto minmax(200px, 30vh) minmax(140px, 1fr) 260px"
+    });
+  });
+
+  it("resizes editor panels and persists the dimensions for the current workspace", () => {
+    stubActiveProjectFetch();
+    useUiStore.getState().setEditorWorkspace("translation");
+
+    renderWithProviders(<WorkbenchPage />);
+
+    const inspectorResize = screen.getByRole("separator", { name: "Resize inspector panel" });
+    fireEvent.pointerDown(inspectorResize, { clientX: 1000, pointerId: 1 });
+    fireEvent.pointerMove(inspectorResize, { clientX: 960, pointerId: 1 });
+    fireEvent.pointerUp(inspectorResize, { pointerId: 1 });
+
+    expect(useUiStore.getState().workspaceLayouts.translation.inspectorWidth).toBe(376);
+    expect(screen.getByTestId("workbench-body")).toHaveStyle({
+      gridTemplateColumns: "minmax(0, 1fr) 376px"
+    });
+
+    const timelineResize = screen.getByRole("separator", { name: "Resize timeline panel" });
+    fireEvent.pointerDown(timelineResize, { clientY: 700, pointerId: 1 });
+    fireEvent.pointerMove(timelineResize, { clientY: 660, pointerId: 1 });
+    fireEvent.pointerUp(timelineResize, { pointerId: 1 });
+
+    expect(useUiStore.getState().workspaceLayouts.translation.bottomDockHeight).toBe(250);
+    expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
+      gridTemplateRows: "auto minmax(200px, 30vh) minmax(140px, 1fr) 250px"
+    });
+  });
+
+  it("defers persisted layout writes until a panel resize gesture ends", () => {
+    stubActiveProjectFetch();
+    useUiStore.getState().setEditorWorkspace("translation");
+
+    renderWithProviders(<WorkbenchPage />);
+
+    const inspectorResize = screen.getByRole("separator", { name: "Resize inspector panel" });
+    fireEvent.pointerDown(inspectorResize, { clientX: 1000, pointerId: 1 });
+    fireEvent.pointerMove(inspectorResize, { clientX: 960, pointerId: 1 });
+
+    expect(useUiStore.getState().workspaceLayouts.translation.inspectorWidth).toBe(376);
+    expect(screen.getByTestId("workbench-body")).toHaveStyle({
+      gridTemplateColumns: "minmax(0, 1fr) 376px"
+    });
+    expect(localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY)).toBeNull();
+
+    fireEvent.pointerUp(inspectorResize, { pointerId: 1 });
+
+    expect(
+      JSON.parse(localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY) ?? "{}").translation
+        .inspectorWidth
+    ).toBe(376);
+
+    localStorage.removeItem(WORKSPACE_LAYOUT_STORAGE_KEY);
+
+    const timelineResize = screen.getByRole("separator", { name: "Resize timeline panel" });
+    fireEvent.pointerDown(timelineResize, { clientY: 700, pointerId: 1 });
+    fireEvent.pointerMove(timelineResize, { clientY: 660, pointerId: 1 });
+
+    expect(useUiStore.getState().workspaceLayouts.translation.bottomDockHeight).toBe(250);
+    expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
+      gridTemplateRows: "auto minmax(200px, 30vh) minmax(140px, 1fr) 250px"
+    });
+    expect(localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY)).toBeNull();
+
+    fireEvent.pointerUp(timelineResize, { pointerId: 1 });
+
+    expect(
+      JSON.parse(localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY) ?? "{}").translation
+        .bottomDockHeight
+    ).toBe(250);
+  });
+
+  it("restores default panel dimensions when resize handles are double clicked", () => {
+    stubActiveProjectFetch();
+    useUiStore.getState().setEditorWorkspace("translation");
+    useUiStore.getState().setWorkspaceLayout("translation", {
+      inspectorWidth: 420,
+      bottomDockHeight: 320
+    });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    fireEvent.doubleClick(screen.getByRole("separator", { name: "Resize inspector panel" }));
+    expect(useUiStore.getState().workspaceLayouts.translation.inspectorWidth).toBe(336);
+    expect(screen.getByTestId("workbench-body")).toHaveStyle({
+      gridTemplateColumns: "minmax(0, 1fr) 336px"
+    });
+
+    fireEvent.doubleClick(screen.getByRole("separator", { name: "Resize timeline panel" }));
+    expect(useUiStore.getState().workspaceLayouts.translation.bottomDockHeight).toBe(210);
+    expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
+      gridTemplateRows: "auto minmax(200px, 30vh) minmax(140px, 1fr) 210px"
+    });
+  });
+
+  it("collapses and restores inspector and timeline panels from the workbench", () => {
+    stubActiveProjectFetch();
+    useUiStore.getState().setEditorWorkspace("translation");
+
+    renderWithProviders(<WorkbenchPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse inspector" }));
+
+    expect(useUiStore.getState().workspaceLayouts.translation.inspectorCollapsed).toBe(true);
+    expect(screen.queryByLabelText("Inspector")).not.toBeInTheDocument();
+    expect(screen.getByTestId("workbench-body")).toHaveStyle({
+      gridTemplateColumns: "minmax(0, 1fr) 32px"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand inspector" }));
+    expect(useUiStore.getState().workspaceLayouts.translation.inspectorCollapsed).toBe(false);
+    expect(screen.getByLabelText("Inspector")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse timeline" }));
+
+    expect(useUiStore.getState().workspaceLayouts.translation.bottomCollapsed).toBe(true);
+    expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
+      gridTemplateRows: "auto minmax(200px, 30vh) minmax(140px, 1fr) 32px"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand timeline" }));
+    expect(useUiStore.getState().workspaceLayouts.translation.bottomCollapsed).toBe(false);
   });
 
   it("selects a subtitle row, returns to line inspector mode, and updates preview overlay", async () => {
@@ -693,12 +1337,12 @@ describe("WorkbenchPage", () => {
     expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Select line line-1" }));
 
-    expect(screen.getByRole("heading", { name: "Line" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Subtitle line" })).toBeInTheDocument();
     expect(screen.getByLabelText("Source text")).toHaveValue("查询字幕文本");
     expect(within(screen.getByLabelText("Video preview")).getByText("查询字幕文本")).toBeInTheDocument();
   });
 
-  it("switches inspector modes from the toolbar", async () => {
+  it("does not duplicate workflow navigation inside the workbench command toolbar", async () => {
     const user = userEvent.setup();
     stubActiveProjectFetch();
 
@@ -706,17 +1350,177 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Analyze" }));
-    expect(screen.getByRole("heading", { name: "Analysis" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Installed ASR model" })).toBeInTheDocument();
+    const projectTools = screen.getByRole("toolbar", { name: "Project tools" });
+    expect(within(projectTools).queryByRole("button", { name: "Analyze" })).not.toBeInTheDocument();
+    expect(
+      within(projectTools).queryByRole("button", { name: "Translate" })
+    ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Translate" }));
-    expect(screen.getByRole("heading", { name: "Translation" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Target language")).toBeInTheDocument();
+    openWorkbenchInspector("translation");
+    expect(screen.getByRole("heading", { name: "Project translation settings" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Export" }));
-    expect(screen.getByRole("heading", { name: "Export" })).toBeInTheDocument();
+    await user.click(within(projectTools).getByRole("button", { name: "Export" }));
+    expect(screen.getByRole("heading", { name: "Project export settings" })).toBeInTheDocument();
+    expect(screen.getByText("Delivery workspace")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Export mode" })).toBeInTheDocument();
+  });
+
+  it("keeps style and delivery workspaces as separate production stages", async () => {
+    stubActiveProjectFetch();
+    openWorkbenchInspector("style");
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    const inspector = screen.getByRole("region", { name: "Inspector" });
+
+    expect(within(inspector).getByRole("heading", { name: "Project style settings" })).toBeInTheDocument();
+    expect(within(inspector).getByLabelText("Font family")).toBeInTheDocument();
+    expect(within(inspector).getByLabelText("Safe area")).toBeInTheDocument();
+    expect(within(inspector).queryByRole("combobox", { name: "Format" })).not.toBeInTheDocument();
+    expect(
+      within(inspector).queryByRole("combobox", { name: "Export mode" })
+    ).not.toBeInTheDocument();
+    expect(within(inspector).queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
+
+    act(() => {
+      useUiStore.getState().setEditorWorkspace("delivery");
+      useUiStore.getState().setInspectorMode("export");
+    });
+
+    expect(within(inspector).getByRole("heading", { name: "Project export settings" })).toBeInTheDocument();
+    expect(within(inspector).getByRole("combobox", { name: "Format" })).toBeInTheDocument();
+    expect(within(inspector).getByRole("combobox", { name: "Export mode" })).toBeInTheDocument();
+    expect(within(inspector).getByRole("button", { name: "Export" })).toBeInTheDocument();
+    expect(within(inspector).getByRole("button", { name: "Render video" })).toBeInTheDocument();
+    expect(within(inspector).queryByLabelText("Font family")).not.toBeInTheDocument();
+    expect(within(inspector).queryByLabelText("Safe area")).not.toBeInTheDocument();
+    expect(within(inspector).queryByLabelText("Preset name")).not.toBeInTheDocument();
+    expect(within(inspector).queryByRole("button", { name: "Apply preset" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["analysis", "Project analysis settings"],
+    ["translation", "Project translation settings"],
+    ["style", "Project style settings"],
+    ["export", "Project export settings"]
+  ] as const)("labels %s inspector controls as current-project settings", async (mode, heading) => {
+    stubActiveProjectFetch();
+    openWorkbenchInspector(mode);
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    const inspector = screen.getByRole("region", { name: "Inspector" });
+    expect(within(inspector).getByRole("heading", { name: heading })).toBeInTheDocument();
+    expect(within(inspector).getByText("Current project")).toBeInTheDocument();
+    expect(
+      within(inspector).getByText("Applies only to the open project. System defaults stay in Settings.")
+    ).toBeInTheDocument();
+  });
+
+  it("loads project translation settings into the translation inspector", async () => {
+    stubActiveProjectFetch({
+      translationSettings: {
+        ...translationSettingsFixture,
+        sourceLanguage: "en",
+        targetLanguage: "zh"
+      }
+    });
+    useUiStore.getState().setInspectorMode("translation");
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Source language" })).toHaveValue("en")
+    );
+    const sourceLanguage = screen.getByRole("combobox", { name: "Source language" });
+    const targetLanguage = screen.getByRole("combobox", { name: "Target language" });
+    expect(targetLanguage).toHaveValue("zh");
+    expect(within(sourceLanguage).getByRole("option", { name: "English (en)" })).toBeInTheDocument();
+    expect(within(targetLanguage).getByRole("option", { name: "Chinese (zh)" })).toBeInTheDocument();
+  });
+
+  it("persists translation language direction as current project settings", async () => {
+    stubActiveProjectFetch({
+      translationSettings: {
+        ...translationSettingsFixture,
+        sourceLanguage: "en",
+        targetLanguage: "zh"
+      }
+    });
+    useUiStore.getState().setInspectorMode("translation");
+
+    renderWithProviders(<WorkbenchPage />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Target language" })).toHaveValue("zh")
+    );
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Target language" }), {
+      target: { value: "ja" }
+    });
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/translation-settings$/),
+        expect.objectContaining({
+          method: "PUT",
+          body: expect.stringContaining('"targetLanguage":"ja"')
+        })
+      )
+    );
+  });
+
+  it("opens current project settings from the project context without entering system settings", async () => {
+    const user = userEvent.setup();
+    const fetchMock = stubActiveProjectFetch({
+      translationSettings: {
+        ...translationSettingsFixture,
+        sourceLanguage: "en",
+        targetLanguage: "zh"
+      }
+    });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await user.click(
+      within(screen.getByRole("region", { name: "Project context" })).getByRole("button", {
+        name: "Project settings"
+      })
+    );
+
+    const inspector = screen.getByRole("region", { name: "Inspector" });
+    expect(within(inspector).getByRole("heading", { name: "Current project settings" })).toBeInTheDocument();
+    expect(within(inspector).getByText("Current project")).toBeInTheDocument();
+    const projectSourceLanguage = within(inspector).getByRole("combobox", {
+      name: "Source language"
+    });
+    const projectTargetLanguage = within(inspector).getByRole("combobox", {
+      name: "Target language"
+    });
+    expect(projectSourceLanguage).toHaveValue("en");
+    expect(projectTargetLanguage).toHaveValue("zh");
+    expect(within(projectSourceLanguage).getByRole("option", { name: "English (en)" })).toBeInTheDocument();
+    expect(within(projectTargetLanguage).getByRole("option", { name: "Chinese (zh)" })).toBeInTheDocument();
+    expect(within(inspector).getByLabelText("Export mode")).toHaveValue("bilingual");
+    expect(useUiStore.getState().inspectorMode).toBe("settings-lite");
+
+    await user.selectOptions(within(inspector).getByLabelText("Export mode"), "target");
+    expect(within(inspector).getByLabelText("Export mode")).toHaveValue("target");
+
+    await user.selectOptions(projectTargetLanguage, "ja");
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/projects\/project-demo\/translation-settings$/),
+        expect.objectContaining({
+          method: "PUT",
+          body: expect.stringContaining('"targetLanguage":"ja"')
+        })
+      )
+    );
   });
 
   it("blocks export after local subtitle edits until the draft is saved", async () => {
@@ -1022,7 +1826,7 @@ describe("WorkbenchPage", () => {
     await user.clear(screen.getByLabelText("Source text"));
     await user.type(screen.getByLabelText("Source text"), "Local draft survives refetch");
 
-    await user.click(screen.getByRole("button", { name: "Analyze" }));
+    openWorkbenchInspector("analysis");
     await user.selectOptions(
       within(screen.getByLabelText("Inspector")).getByRole("combobox", {
         name: "Installed ASR model"
@@ -1060,7 +1864,9 @@ describe("WorkbenchPage", () => {
     const toolbarSave = within(toolbar).getByRole("button", { name: "Save" });
     await user.click(toolbarSave);
 
-    expect(await screen.findByText("Worker request failed: 500: Save failed")).toBeInTheDocument();
+    expect(await screen.findByText("Could not save subtitles.")).toBeInTheDocument();
+    expect(screen.getByText("Your local edits are still kept in this session.")).toBeInTheDocument();
+    expect(screen.queryByText(/Local runtime request failed/)).not.toBeInTheDocument();
     expect(screen.getByLabelText("Source text")).toHaveValue("Unsaved after failed PUT");
     expect(toolbarSave).toBeEnabled();
   });
@@ -1073,7 +1879,7 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Analyze" }));
+    openWorkbenchInspector("analysis");
     await user.selectOptions(
       within(screen.getByLabelText("Inspector")).getByRole("combobox", {
         name: "Installed ASR model"
@@ -1092,7 +1898,7 @@ describe("WorkbenchPage", () => {
       )
     );
 
-    await user.click(screen.getByRole("button", { name: "Translate" }));
+    openWorkbenchInspector("translation");
     await user.selectOptions(
       within(screen.getByLabelText("Inspector")).getByRole("combobox", {
         name: "Translation model"
@@ -1220,12 +2026,12 @@ describe("WorkbenchPage", () => {
   it("applies style presets and toggles safe area preview", async () => {
     const user = userEvent.setup();
     const fetchMock = stubActiveProjectFetch();
+    openWorkbenchInspector("style");
 
     renderWithProviders(<WorkbenchPage />);
 
     expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Export" }));
     await user.click(within(screen.getByLabelText("Inspector")).getByLabelText("Safe area"));
     expect(screen.getByTestId("subtitle-safe-area")).toBeInTheDocument();
 
@@ -1247,7 +2053,7 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Analyze" }));
+    openWorkbenchInspector("analysis");
     await user.selectOptions(
       within(screen.getByLabelText("Inspector")).getByRole("combobox", {
         name: "Installed ASR model"
@@ -1291,7 +2097,7 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Analyze" }));
+    openWorkbenchInspector("analysis");
     await user.selectOptions(
       within(screen.getByLabelText("Inspector")).getByRole("combobox", {
         name: "Installed ASR model"
@@ -1299,9 +2105,10 @@ describe("WorkbenchPage", () => {
       "asr.faster-whisper.medium"
     );
     await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Start" }));
-    expect(await screen.findByText("Worker request failed: 500: Analysis failed")).toBeInTheDocument();
+    expect(await screen.findByText("Could not start transcription.")).toBeInTheDocument();
+    expect(screen.queryByText(/Local runtime request failed/)).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Translate" }));
+    openWorkbenchInspector("translation");
     await user.selectOptions(
       within(screen.getByLabelText("Inspector")).getByRole("combobox", {
         name: "Translation model"
@@ -1309,11 +2116,13 @@ describe("WorkbenchPage", () => {
       "translation.opus-mt.zh-en"
     );
     await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Start" }));
-    expect(await screen.findByText("Worker request failed: 500: Translation failed")).toBeInTheDocument();
+    expect(await screen.findByText("Could not start translation.")).toBeInTheDocument();
+    expect(screen.queryByText(/Local runtime request failed/)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Export" }));
     await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Export" }));
-    expect(await screen.findByText("Worker request failed: 500: Export failed")).toBeInTheDocument();
+    expect(await screen.findByText("Could not start export.")).toBeInTheDocument();
+    expect(screen.queryByText(/Local runtime request failed/)).not.toBeInTheDocument();
   });
 
   it("blocks export while the latest local task is active", async () => {
@@ -1328,7 +2137,7 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Analyze" }));
+    openWorkbenchInspector("analysis");
     await user.selectOptions(
       within(screen.getByLabelText("Inspector")).getByRole("combobox", {
         name: "Installed ASR model"
@@ -1355,7 +2164,7 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Analyze" }));
+    openWorkbenchInspector("analysis");
     const inspector = screen.getByLabelText("Inspector");
     await user.selectOptions(
       within(inspector).getByRole("combobox", {
@@ -1400,6 +2209,7 @@ describe("WorkbenchPage", () => {
 
   it("uses localized task-active export blocking copy", async () => {
     const user = userEvent.setup();
+    useUiStore.getState().setLanguage("zh");
     await appI18n.changeLanguage("zh");
     stubActiveProjectFetch({
       modelCatalog: modelCatalogFixture,
@@ -1411,7 +2221,7 @@ describe("WorkbenchPage", () => {
 
     expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "分析" }));
+    openWorkbenchInspector("analysis");
     await user.selectOptions(
       within(screen.getByLabelText("检查器")).getByRole("combobox", {
         name: "已安装 ASR 模型"
@@ -1427,6 +2237,7 @@ describe("WorkbenchPage", () => {
   });
 
   it("uses localized workbench accessibility labels", async () => {
+    useUiStore.getState().setLanguage("zh");
     await appI18n.changeLanguage("zh");
     stubActiveProjectFetch();
 

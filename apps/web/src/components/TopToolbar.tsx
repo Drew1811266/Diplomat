@@ -2,11 +2,10 @@ import { ActionIcon, Button, Group, Tooltip } from "@mantine/core";
 import {
   IconDeviceFloppy,
   IconFileExport,
-  IconLanguage,
-  IconMovie,
-  IconSparkles
+  IconMovie
 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
+import { workstationSurfaces } from "../app/theme";
 import type { InspectorMode } from "../state/uiStore";
 
 type TopToolbarProps = {
@@ -35,9 +34,9 @@ export function TopToolbar({
       wrap="nowrap"
       px="sm"
       py={6}
-      bg="#f8fafc"
+      bg={workstationSurfaces.panelAlt}
       style={{
-        borderBottom: "1px solid #cbd5e1",
+        borderBottom: `1px solid ${workstationSurfaces.outline}`,
         minHeight: 44
       }}
     >
@@ -52,26 +51,6 @@ export function TopToolbar({
           onClick={onImport}
         >
           {t("toolbar.import")}
-        </Button>
-        <Button
-          type="button"
-          variant="light"
-          color="teal"
-          size="xs"
-          leftSection={<IconSparkles size={16} aria-hidden />}
-          onClick={() => onInspectorMode("analysis")}
-        >
-          {t("toolbar.analyze")}
-        </Button>
-        <Button
-          type="button"
-          variant="subtle"
-          color="gray"
-          size="xs"
-          leftSection={<IconLanguage size={16} aria-hidden />}
-          onClick={() => onInspectorMode("translation")}
-        >
-          {t("toolbar.translate")}
         </Button>
       </Group>
 

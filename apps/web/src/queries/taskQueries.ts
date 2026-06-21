@@ -11,6 +11,7 @@ import {
   createBurnInExportJob,
   createTranslationJob,
   fetchTask,
+  listTasks,
   retryTask
 } from "../api";
 import { queryKeys } from "./queryKeys";
@@ -28,35 +29,63 @@ export function useTaskQuery(taskId: string | null) {
   });
 }
 
+export function useTasksQuery() {
+  return useQuery({
+    queryKey: queryKeys.tasks,
+    queryFn: () => listTasks(),
+    retry: false,
+    refetchInterval: (query) =>
+      query.state.data?.tasks.some((task) => isTaskActive(task)) ? 500 : false
+  });
+}
+
 export function useCreateAnalysisJobMutation(projectId: string | null) {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: (input: AnalysisJobRequestInput) => {
       if (!projectId) {
         throw new Error("Project id is required to create an analysis job.");
       }
       return createAnalysisJob(projectId, input);
+    },
+    onSuccess: (task) => {
+      queryClient.setQueryData(queryKeys.task(task.taskId), task);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tasks, exact: true });
     }
   });
 }
 
 export function useCreateTranslationJobMutation(projectId: string | null) {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: (input: TranslationJobRequestInput) => {
       if (!projectId) {
         throw new Error("Project id is required to create a translation job.");
       }
       return createTranslationJob(projectId, input);
+    },
+    onSuccess: (task) => {
+      queryClient.setQueryData(queryKeys.task(task.taskId), task);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tasks, exact: true });
     }
   });
 }
 
 export function useCreateBurnInExportJobMutation(projectId: string | null) {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: (input: BurnInExportRequestInput) => {
       if (!projectId) {
         throw new Error("Project id is required to create a burn-in export job.");
       }
       return createBurnInExportJob(projectId, input);
+    },
+    onSuccess: (task) => {
+      queryClient.setQueryData(queryKeys.task(task.taskId), task);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tasks, exact: true });
     }
   });
 }
@@ -68,6 +97,7 @@ export function useCancelTaskMutation() {
     mutationFn: (taskId: string) => cancelTask(taskId),
     onSuccess: (task) => {
       queryClient.setQueryData(queryKeys.task(task.taskId), task);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tasks, exact: true });
     }
   });
 }
@@ -85,6 +115,7 @@ export function useRetryTaskMutation() {
     }) => retryTask(taskId, config),
     onSuccess: (task) => {
       queryClient.setQueryData(queryKeys.task(task.taskId), task);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tasks, exact: true });
     }
   });
 }

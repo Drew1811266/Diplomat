@@ -57,6 +57,21 @@ function makeLines(): SubtitleLine[] {
   ];
 }
 
+function makeManyLines(count: number): SubtitleLine[] {
+  return Array.from({ length: count }, (_, index) => ({
+    ...baseLine,
+    id: `line-${index + 1}`,
+    startMs: index * 1500,
+    endMs: index * 1500 + 1200,
+    sourceText: `Source subtitle ${index + 1}`,
+    translatedText: `Translated subtitle ${index + 1}`,
+    reviewStatus: "draft",
+    translationStatus: "translated",
+    translationError: null,
+    translationQualityIssues: []
+  }));
+}
+
 beforeEach(() => {
   stubMatchMedia(false);
 });
@@ -187,5 +202,23 @@ describe("SubtitleGrid", () => {
 
     expect(screen.getByTestId("subtitle-row-line-2")).toHaveAttribute("data-has-issues", "true");
     expect(screen.getByText("1 quality issue")).toBeInTheDocument();
+  });
+
+  it("virtualizes long subtitle documents instead of rendering every row", () => {
+    renderWithProviders(
+      <SubtitleGrid
+        lines={makeManyLines(1000)}
+        selectedLineId={null}
+        activeLineId={null}
+        filter="all"
+        onFilterChange={() => undefined}
+        onSelectLine={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("1000 rows")).toBeInTheDocument();
+    expect(screen.getByTestId("subtitle-row-line-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("subtitle-row-line-999")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId(/^subtitle-row-line-/)).toHaveLength(80);
   });
 });

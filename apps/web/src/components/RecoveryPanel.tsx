@@ -2,6 +2,7 @@ import { Badge, Box, Button, Group, Stack, Text } from "@mantine/core";
 import { IconCamera, IconHistory, IconRotateClockwise, IconTrash } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import type { SubtitleDraftResponse, SubtitleSnapshotSummary } from "@diplomat/shared";
+import { workstationSurfaces } from "../app/theme";
 
 type RecoveryPanelProps = {
   draft: SubtitleDraftResponse | null;
@@ -40,9 +41,9 @@ export function RecoveryPanel({
       aria-label={t("recovery.region")}
       px="sm"
       py={6}
-      bg="#f8fafc"
+      bg={workstationSurfaces.panelAlt}
       style={{
-        borderBottom: "1px solid #dbe3ec",
+        borderBottom: `1px solid ${workstationSurfaces.outline}`,
         display: "grid",
         gridTemplateColumns: "minmax(0, 1fr) auto",
         gap: 8,
@@ -55,14 +56,14 @@ export function RecoveryPanel({
             <Badge size="sm" color="yellow" variant="light">
               {t("recovery.autosavedDraft")}
             </Badge>
-            <Text size="xs" c="#475569">
+            <Text size="xs" c={workstationSurfaces.textMuted}>
               {t("recovery.draftMeta", { count: draft.lineCount, updatedAt: draft.updatedAt })}
             </Text>
           </Group>
         ) : null}
         {visibleSnapshots.length ? (
           <Group gap={6} wrap="wrap">
-            <Text size="xs" fw={700} c="#334155">
+            <Text size="xs" fw={700} c={workstationSurfaces.textMuted}>
               {t("recovery.snapshots")}
             </Text>
             {visibleSnapshots.map((snapshot) => {

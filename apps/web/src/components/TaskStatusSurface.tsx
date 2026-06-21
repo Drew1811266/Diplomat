@@ -2,6 +2,8 @@ import { Alert, Badge, Box, Group, Loader, Paper, Progress, Text } from "@mantin
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
+import { workstationSurfaces } from "../app/theme";
+import { displayTaskMessage } from "../lib/taskMessages";
 
 type TaskSurfaceStatus =
   | "ready"
@@ -44,8 +46,10 @@ export function TaskStatusSurface({
   const { t } = useTranslation();
   const resolvedStatus: TaskSurfaceStatus = error ? "failed" : status ?? (busy ? "running" : "ready");
   const progressValue = typeof progress === "number" ? Math.min(Math.max(progress, 0), 1) * 100 : null;
+  const displayMessage = message ? displayTaskMessage(message, t) : null;
+  const displayError = error ? displayTaskMessage(error, t) : null;
 
-  if (error) {
+  if (displayError) {
     return (
       <Alert
         color="red"
@@ -55,7 +59,7 @@ export function TaskStatusSurface({
       >
         <Group justify="space-between" gap="sm" wrap="nowrap">
           <Text size="sm" fw={700} style={{ overflowWrap: "anywhere" }}>
-            {error}
+            {displayError}
           </Text>
           {action}
         </Group>
@@ -70,7 +74,7 @@ export function TaskStatusSurface({
       withBorder
       radius="md"
       p="sm"
-      style={{ minHeight: 44, background: "#ffffff" }}
+      style={{ minHeight: 44, background: workstationSurfaces.panel }}
     >
       <Group justify="space-between" align="center" gap="sm" wrap="nowrap">
         <Group gap="xs" miw={0} wrap="nowrap">
@@ -78,9 +82,9 @@ export function TaskStatusSurface({
           <Badge color={statusColors[resolvedStatus]} radius="sm" tt="none" variant="light">
             {t(`status.${resolvedStatus}`)}
           </Badge>
-          {message ? (
+          {displayMessage ? (
             <Text size="sm" fw={700} c="dimmed" truncate>
-              {message}
+              {displayMessage}
             </Text>
           ) : null}
         </Group>

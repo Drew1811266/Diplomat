@@ -36,8 +36,24 @@ describe("AppProviders", () => {
   });
 
   it("exports workstation surface tokens for the desktop shell", () => {
-    expect(workstationSurfaces.app).toBe("#f4f7fb");
-    expect(workstationSurfaces.rail).toBe("#111827");
+    expect(workstationSurfaces.app).toBe("#f7f9fc");
+    expect(workstationSurfaces.rail).toBe("#ffffff");
+    expect(workstationSurfaces.header).toBe("#ffffff");
     expect(workstationSurfaces.panel).toBe("#ffffff");
+    expect(workstationSurfaces.panelAlt).toBe("#eef3f8");
+    expect(workstationSurfaces.text).toBe("#17212b");
+    expect(workstationSurfaces.textMuted).toBe("#5f6b7a");
+    expect(workstationSurfaces.railActive).toBe("#0d9488");
+  });
+
+  it("defaults the product shell to the light desktop theme", () => {
+    render(
+      <AppProviders>
+        <button type="button">Color scheme probe</button>
+      </AppProviders>
+    );
+
+    expect(screen.getByRole("button", { name: "Color scheme probe" })).toBeInTheDocument();
+    expect(document.documentElement).toHaveAttribute("data-mantine-color-scheme", "light");
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AnalysisJobRequestSchema,
+  TaskListResponseSchema,
   TaskTypeSchema,
   TaskResponseSchema,
   TranslationJobRequestSchema,
@@ -49,6 +50,46 @@ describe("TaskResponseSchema", () => {
         diagnosticLogPath: null
       })
     ).toThrow();
+  });
+});
+
+describe("TaskListResponseSchema", () => {
+  it("accepts real task queue responses", () => {
+    const response = TaskListResponseSchema.parse({
+      tasks: [
+        {
+          taskId: "task-1",
+          projectId: "project-1",
+          type: "analysis",
+          status: "running",
+          progress: 0.42,
+          message: "Transcribing audio",
+          startedAt: "2026-06-07T00:00:00+00:00",
+          updatedAt: "2026-06-07T00:00:01+00:00",
+          completedAt: null,
+          errorCode: null,
+          errorMessage: null,
+          diagnosticLogPath: null
+        },
+        {
+          taskId: "task-2",
+          projectId: "project-2",
+          type: "translation",
+          status: "failed",
+          progress: 0.65,
+          message: "Model is not installed",
+          startedAt: "2026-06-07T00:02:00+00:00",
+          updatedAt: "2026-06-07T00:03:00+00:00",
+          completedAt: "2026-06-07T00:03:00+00:00",
+          errorCode: "MODEL_NOT_INSTALLED",
+          errorMessage: "Model is not installed.",
+          diagnosticLogPath: "D:/Diplomat/projects/project-2/logs/task-2.log"
+        }
+      ]
+    });
+
+    expect(response.tasks).toHaveLength(2);
+    expect(response.tasks[1]?.status).toBe("failed");
   });
 });
 

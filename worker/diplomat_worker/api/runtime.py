@@ -41,6 +41,20 @@ def default_tool_path(env_name: str, fallback: str) -> str:
     return fallback
 
 
+def default_development_model_root() -> Path | None:
+    configured = os.environ.get("DIPLOMAT_DEVELOPMENT_MODEL_ROOT")
+    if configured and configured.strip():
+        return Path(configured)
+    return None
+
+
+def default_models_dir() -> Path | None:
+    configured = os.environ.get("DIPLOMAT_MODELS_DIR")
+    if configured and configured.strip():
+        return Path(configured)
+    return None
+
+
 @dataclass(frozen=True)
 class WorkerRuntime:
     store: ProjectStore
@@ -64,9 +78,13 @@ def create_default_runtime() -> WorkerRuntime:
     ffmpeg_path = default_tool_path("DIPLOMAT_FFMPEG_PATH", "ffmpeg")
     ffprobe_path = default_tool_path("DIPLOMAT_FFPROBE_PATH", "ffprobe")
     return WorkerRuntime(
-        store=ProjectStore(default_data_dir() / "diplomat.db"),
+        store=ProjectStore(
+            default_data_dir() / "diplomat.db",
+            models_root=default_models_dir(),
+        ),
         transcriber=FakeTranscriber(language="zh"),
         probe_video_fn=lambda source: probe_video(source, ffprobe_path=ffprobe_path),
         ffmpeg_path=ffmpeg_path,
         ffprobe_path=ffprobe_path,
+        development_model_root=default_development_model_root(),
     )

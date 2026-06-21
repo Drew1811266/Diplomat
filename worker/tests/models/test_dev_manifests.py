@@ -165,3 +165,31 @@ def test_catalog_reports_development_model_readiness_without_installation(
     assert catalog_entry.availability.usable is False
     assert catalog_entry.availability.reason is not None
     assert catalog_entry.availability.reason.startswith("Development model files are missing:")
+
+
+def test_catalog_reports_ready_development_model_as_installed(tmp_path: Path) -> None:
+    payload = copy_manifest_fixture(tmp_path, "vibevoice-asr.json")
+    manifest = get_development_manifest(
+        "asr.microsoft.vibevoice-asr",
+        load_development_manifests(tmp_path),
+    )
+    development_dir = tmp_path / manifest.development_path
+    for expected_file in manifest.expected_files:
+        target = development_dir / expected_file
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("fixture", encoding="utf-8")
+
+    entry = get_model_entry(payload["modelId"], built_in_model_registry())
+    manager = ModelDownloadManager(
+        ProjectStore(tmp_path / "diplomat.db"),
+        registry=[entry],
+        development_model_root=tmp_path,
+        auto_start=False,
+    )
+
+    catalog_entry = manager.get_catalog_entry(entry.model_id)
+
+    assert catalog_entry.installation.status == "installed"
+    assert catalog_entry.installation.installed_path == tmp_path / manifest.development_path
+    assert catalog_entry.availability.usable is True
+    assert catalog_entry.availability.reason is None

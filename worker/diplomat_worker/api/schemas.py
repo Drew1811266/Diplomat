@@ -16,15 +16,30 @@ class CamelModel(BaseModel):
 
 class CreateProjectRequest(CamelModel):
     name: str = Field(min_length=1)
+    source_video_path: Path | None = Field(default=None, alias="sourceVideoPath")
+    source_language: str = Field(default="zh", alias="sourceLanguage", min_length=2, max_length=12)
+    target_language: str | None = Field(default="en", alias="targetLanguage", min_length=2, max_length=12)
+
+
+class ProjectSourceMediaRequest(CamelModel):
     source_video_path: Path = Field(alias="sourceVideoPath")
-    source_language: str = Field(alias="sourceLanguage", min_length=2, max_length=12)
-    target_language: str | None = Field(default=None, alias="targetLanguage", min_length=2, max_length=12)
+
+
+class ProjectMediaAssetResponse(CamelModel):
+    asset_id: str = Field(alias="assetId")
+    name: str
+    source_video_path: str = Field(alias="sourceVideoPath")
+    kind: Literal["video"]
+    duration_ms: int = Field(alias="durationMs", ge=0)
+    imported_at: str = Field(alias="importedAt")
+    active: bool
+    exists: bool
 
 
 class ProjectResponse(CamelModel):
     project_id: str = Field(alias="projectId")
     name: str
-    source_video_path: str = Field(alias="sourceVideoPath")
+    source_video_path: str | None = Field(alias="sourceVideoPath")
     project_dir: str = Field(alias="projectDir")
     duration_ms: int = Field(alias="durationMs", ge=0)
     source_language: str = Field(alias="sourceLanguage")
@@ -32,6 +47,7 @@ class ProjectResponse(CamelModel):
     created_at: str = Field(alias="createdAt")
     updated_at: str = Field(alias="updatedAt")
     has_subtitle_document: bool = Field(alias="hasSubtitleDocument")
+    media_assets: list[ProjectMediaAssetResponse] = Field(default_factory=list, alias="mediaAssets")
     diagnostics: "ProjectDiagnosticsResponse"
 
 

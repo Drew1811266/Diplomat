@@ -22,7 +22,9 @@ class WaveformJobManager:
         self._lock = Lock()
 
     def create_waveform_job(self, project_id: str) -> TaskRecord:
-        self.runtime.store.get_project(project_id)
+        project = self.runtime.store.get_project(project_id)
+        if project.source_video_path is None:
+            raise ValueError("Import a source video before generating waveform")
         task = self.runtime.store.create_task(
             project_id=project_id,
             task_type="waveform",

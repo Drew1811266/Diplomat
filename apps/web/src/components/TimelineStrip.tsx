@@ -1,5 +1,6 @@
 import { Box, Group, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import { workstationSurfaces } from "../app/theme";
 
 type TimelineStripProps = {
   durationMs: number;
@@ -21,11 +22,11 @@ export function TimelineStrip({ durationMs, lineCount }: TimelineStripProps) {
       aria-label={t("workbench.labels.timeline")}
       px="sm"
       py={8}
-      bg="#f8fafc"
+      bg={workstationSurfaces.panelAlt}
       style={{
         height: 72,
         minHeight: 72,
-        borderTop: "1px solid #cbd5e1"
+        borderTop: `1px solid ${workstationSurfaces.outline}`
       }}
     >
       <Group justify="space-between" gap="sm" wrap="nowrap">
@@ -42,7 +43,7 @@ export function TimelineStrip({ durationMs, lineCount }: TimelineStripProps) {
       <Box
         mt={7}
         h={20}
-        bg="#e2e8f0"
+        bg={workstationSurfaces.outline}
         style={{
           position: "relative",
           borderRadius: 4,

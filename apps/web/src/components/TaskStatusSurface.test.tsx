@@ -2,6 +2,8 @@ import "@testing-library/jest-dom/vitest";
 import { Button } from "@mantine/core";
 import { cleanup, screen } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { appI18n } from "../app/i18n";
+import { useUiStore } from "../state/uiStore";
 import { renderWithProviders } from "../test/render";
 import { TaskStatusSurface } from "./TaskStatusSurface";
 
@@ -25,8 +27,10 @@ afterAll(() => {
   vi.unstubAllGlobals();
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  useUiStore.getState().resetUiState();
+  await appI18n.changeLanguage("en");
 });
 
 describe("TaskStatusSurface", () => {
@@ -65,5 +69,33 @@ describe("TaskStatusSurface", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("CUDA out of memory");
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("localizes common backend task messages and errors in Chinese", async () => {
+    useUiStore.getState().setLanguage("zh");
+    await appI18n.changeLanguage("zh");
+    const { rerender } = renderWithProviders(
+      <TaskStatusSurface busy status="failed" message="Model is not installed" />
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("模型未安装");
+    expect(screen.queryByText("Model is not installed")).not.toBeInTheDocument();
+
+    rerender(<TaskStatusSurface busy status="running" message="Transcribing audio" />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("正在转写音频");
+    expect(screen.queryByText("Transcribing audio")).not.toBeInTheDocument();
+
+    rerender(
+      <TaskStatusSurface
+        busy={false}
+        error="Install the translation model before retrying."
+      />
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("请先安装翻译模型再重试。");
+    expect(
+      screen.queryByText("Install the translation model before retrying.")
+    ).not.toBeInTheDocument();
   });
 });

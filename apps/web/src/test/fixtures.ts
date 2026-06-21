@@ -31,7 +31,7 @@ function runtimeProfiles(modelId: string, task: "asr" | "translation", provider:
       batchSize: task === "translation" ? 8 : 1,
       recommended: true,
       available: false,
-      reason: "CUDA is not available in this Worker runtime.",
+      reason: "CUDA is not available in this local runtime.",
       notes: task === "translation" ? translationNote : "CUDA float16 ASR profile."
     }
   ];
@@ -48,7 +48,7 @@ function vibeVoiceRuntimeProfiles(modelId: string) {
       batchSize: 1,
       recommended: true,
       available: false,
-      reason: "CUDA is not available in this Worker runtime.",
+      reason: "CUDA is not available in this local runtime.",
       notes: "VibeVoice ASR CUDA bfloat16 development profile."
     },
     {
@@ -78,7 +78,7 @@ function localLlmRuntimeProfiles(modelId: string, provider: string) {
         batchSize: 1,
         recommended: true,
         available: false,
-        reason: "CUDA is not available in this Worker runtime.",
+        reason: "CUDA is not available in this local runtime.",
         notes: "Hunyuan MT FP8 CUDA bfloat16 translation profile."
       }
     ];
@@ -93,7 +93,7 @@ function localLlmRuntimeProfiles(modelId: string, provider: string) {
       batchSize: 1,
       recommended: true,
       available: false,
-      reason: "CUDA is not available in this Worker runtime.",
+      reason: "CUDA is not available in this local runtime.",
       notes: "Local LLM translation profile."
     }
   ];
@@ -130,6 +130,18 @@ export const projectFixture: ProjectResponse = {
   createdAt: "2026-06-07T00:00:00+00:00",
   updatedAt: "2026-06-07T00:01:00+00:00",
   hasSubtitleDocument: false,
+  mediaAssets: [
+    {
+      assetId: "media-demo",
+      name: "demo.mp4",
+      sourceVideoPath: "D:/media/demo.mp4",
+      kind: "video",
+      durationMs: 12_000,
+      importedAt: "2026-06-07T00:00:00+00:00",
+      active: true,
+      exists: true
+    }
+  ],
   diagnostics: projectDiagnosticsFixture
 };
 

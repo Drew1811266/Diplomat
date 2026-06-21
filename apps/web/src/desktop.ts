@@ -80,6 +80,46 @@ export async function pickVideoFile(): Promise<string | null> {
   return typeof selected === "string" && selected.trim() ? selected : null;
 }
 
+export async function pickVideoFiles(): Promise<string[]> {
+  if (!isDesktopRuntime()) {
+    return [];
+  }
+
+  const selected = await invokeDesktop<string[] | null>("pick_video_files");
+  return Array.isArray(selected)
+    ? selected.filter((path): path is string => typeof path === "string" && Boolean(path.trim()))
+    : [];
+}
+
+export async function pickProjectBackupFile(): Promise<string | null> {
+  if (!isDesktopRuntime()) {
+    return null;
+  }
+
+  const selected = await invokeDesktop<string | null>("pick_project_backup_file");
+  return typeof selected === "string" && selected.trim() ? selected : null;
+}
+
+export async function listenForDroppedVideoFiles(
+  onDrop: (paths: string[]) => void
+): Promise<() => void> {
+  if (!isDesktopRuntime()) {
+    return () => undefined;
+  }
+
+  const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+  return getCurrentWebview().onDragDropEvent((event) => {
+    if (event.payload.type !== "drop") {
+      return;
+    }
+
+    const selected = event.payload.paths.filter((path) => path.trim());
+    if (selected.length > 0) {
+      onDrop(selected);
+    }
+  });
+}
+
 export async function workerStatus(): Promise<DesktopWorkerStatus | null> {
   if (!isDesktopRuntime()) {
     return null;

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -58,6 +59,42 @@ def install_entry(store: ProjectStore, entry: ModelRegistryEntry, create_files: 
         installed=True,
     )
     return installed_path
+
+
+def write_development_manifest(root: Path, entry: ModelRegistryEntry) -> Path:
+    development_path = Path("models/dev/asr/fixture-asr")
+    manifest_dir = root / "models" / "manifests"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    (manifest_dir / "fixture-asr.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": "diplomat.modelManifest.v1",
+                "modelId": entry.model_id,
+                "name": entry.name,
+                "task": "asr",
+                "runtime": entry.runtime,
+                "provider": entry.provider,
+                "source": {
+                    "type": "huggingface",
+                    "repoId": "example/asr",
+                    "revision": "fixture",
+                    "url": "https://example.invalid/asr",
+                },
+                "license": {
+                    "name": "MIT",
+                    "url": "https://example.invalid/license",
+                    "acceptanceRequired": False,
+                },
+                "developmentPath": str(development_path).replace("\\", "/"),
+                "expectedFiles": ["model.bin"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    model_path = root / development_path
+    model_path.mkdir(parents=True, exist_ok=True)
+    (model_path / "model.bin").write_bytes(b"fixture")
+    return model_path
 
 
 def resolve(
@@ -181,6 +218,26 @@ def test_resolver_returns_installed_path_for_curated_asr_model(tmp_path: Path) -
     assert resolved.provider == "faster-whisper"
     assert resolved.model_id == entry.model_id
     assert resolved.model_name_or_path == str(installed_path)
+    assert resolved.source_language == "zh"
+
+
+def test_resolver_returns_development_manifest_path_for_curated_asr_model(
+    tmp_path: Path,
+) -> None:
+    entry = make_entry()
+    model_path = write_development_manifest(tmp_path, entry)
+
+    resolved = resolve_asr_model_config(
+        AsrModelConfig(provider="faster-whisper", model_id=entry.model_id),
+        store=make_store(tmp_path),
+        registry=[entry],
+        fallback_language="zh",
+        development_model_root=tmp_path,
+    )
+
+    assert resolved.provider == "faster-whisper"
+    assert resolved.model_id == entry.model_id
+    assert resolved.model_name_or_path == str(model_path)
     assert resolved.source_language == "zh"
 
 

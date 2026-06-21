@@ -15,6 +15,7 @@ from diplomat_worker.models.registry import (
 )
 from diplomat_worker.models.capabilities import RuntimeCapabilities
 from diplomat_worker.models.dev_manifests import (
+    development_model_path,
     development_readiness,
     get_development_manifest,
 )
@@ -135,11 +136,12 @@ class ModelDownloadManager:
 
     def get_catalog_entry(self, model_id: str) -> ModelCatalogEntry:
         entry = get_model_entry(model_id, self.registry)
-        installation = self.store.get_model_installation(
+        tracked_installation = self.store.get_model_installation(
             entry.model_id,
             checksum=entry.checksum,
             total_bytes=entry.download_size_bytes,
         )
+        installation = self._development_installation(entry, tracked_installation) or tracked_installation
         return ModelCatalogEntry(
             registry=entry,
             installation=installation,
@@ -439,6 +441,36 @@ class ModelDownloadManager:
 
         readiness = development_readiness(manifest, self.development_model_root)
         return ModelAvailability(usable=readiness.usable, reason=readiness.reason)
+
+    def _development_installation(
+        self,
+        entry: ModelRegistryEntry,
+        installation: ModelInstallationRecord,
+    ) -> ModelInstallationRecord | None:
+        if installation.status in {"installed", "queued", "downloading", "verifying"}:
+            return None
+
+        try:
+            manifest = get_development_manifest(entry.model_id, root=self.development_model_root)
+        except KeyError:
+            return None
+
+        readiness = development_readiness(manifest, self.development_model_root)
+        if not readiness.usable:
+            return None
+
+        return ModelInstallationRecord(
+            model_id=entry.model_id,
+            status="installed",
+            installed_path=development_model_path(manifest, self.development_model_root),
+            downloaded_bytes=entry.download_size_bytes,
+            total_bytes=entry.download_size_bytes,
+            checksum=entry.checksum,
+            error_message=None,
+            created_at=installation.created_at,
+            updated_at=installation.updated_at,
+            installed_at=installation.installed_at or installation.updated_at,
+        )
 
     def _download_response(
         self,

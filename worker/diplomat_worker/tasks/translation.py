@@ -332,6 +332,7 @@ class TranslationJobManager:
             fallback_target_language=target_language,
             allow_unmanaged_models=self.runtime.allow_unmanaged_translation_models,
             runtime_capabilities=self.runtime.runtime_capabilities,
+            development_model_root=self.runtime.development_model_root,
         )
 
     def _normalize_glossary(self, glossary: list[dict] | None) -> list[dict]:

@@ -44,6 +44,8 @@ class AnalysisJobManager:
         resume_from_task_id: str | None = None,
     ) -> TaskRecord:
         project = self.runtime.store.get_project(project_id)
+        if project.source_video_path is None:
+            raise ValueError("Import a source video before analysis")
         self._resolve_config(config, project.source_language)
         if self.runtime.store.has_subtitle_document(project_id):
             self.runtime.store.create_subtitle_snapshot(
@@ -258,4 +260,5 @@ class AnalysisJobManager:
             fallback_language=fallback_language,
             allow_unmanaged_models=self.runtime.allow_unmanaged_asr_models,
             runtime_capabilities=self.runtime.runtime_capabilities,
+            development_model_root=self.runtime.development_model_root,
         )

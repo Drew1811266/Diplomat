@@ -5,6 +5,7 @@ import {
   useCancelTaskMutation,
   useCreateAnalysisJobMutation,
   useCreateTranslationJobMutation,
+  useTasksQuery,
   useTaskQuery
 } from "./taskQueries";
 import { queryKeys } from "./queryKeys";
@@ -43,6 +44,24 @@ describe("task queries", () => {
     });
 
     await waitFor(() => expect(result.current.data).toEqual(completedAnalysisTaskFixture));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads the real task queue through fetch", async () => {
+    const response = { tasks: [runningAnalysisTaskFixture, completedAnalysisTaskFixture] };
+    const fetchMock = stubFetchWithRoutes([
+      {
+        match: (url, init) => url.endsWith("/tasks") && init?.method === undefined,
+        response
+      }
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useTasksQuery(), {
+      wrapper: createQueryWrapper()
+    });
+
+    await waitFor(() => expect(result.current.data).toEqual(response));
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

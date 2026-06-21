@@ -11,6 +11,7 @@ import {
   createSubtitleSnapshot,
   createTranslationJob,
   createWaveformJob,
+  deleteProjectMediaAsset,
   deleteSubtitleDraft,
   deleteStylePreset,
   deleteModel,
@@ -26,6 +27,7 @@ import {
   fetchWaveform,
   fetchWorkerHealth,
   fetchTranslationSettings,
+  listTasks,
   listStylePresets,
   listProjects,
   listModels,
@@ -36,6 +38,7 @@ import {
   listSubtitleSnapshots,
   restoreSubtitleSnapshot,
   updateStylePreset,
+  updateProjectSourceMedia,
   saveSubtitleDraft,
   saveTranslationSettings,
   saveSubtitleDocument
@@ -56,6 +59,18 @@ const projectResponse = {
   createdAt: "2026-06-07T00:00:00+00:00",
   updatedAt: "2026-06-07T00:01:00+00:00",
   hasSubtitleDocument: false,
+  mediaAssets: [
+    {
+      assetId: "media-1",
+      name: "interview.mp4",
+      sourceVideoPath: "D:/media/interview.mp4",
+      kind: "video",
+      durationMs: 124_000,
+      importedAt: "2026-06-07T00:00:00+00:00",
+      active: true,
+      exists: true
+    }
+  ],
   diagnostics: {
     status: "not_transcribed",
     warnings: [],
@@ -195,16 +210,23 @@ afterEach(() => {
 
 describe("worker API helpers", () => {
   it("createProject sends POST JSON and parses the response", async () => {
-    const response = projectResponse;
+    const response = {
+      ...projectResponse,
+      projectId: "project-empty",
+      name: "Client campaign",
+      sourceVideoPath: null,
+      durationMs: 0,
+      diagnostics: {
+        ...projectResponse.diagnostics,
+        sourceVideoExists: false
+      }
+    };
     const fetchMock = stubJsonResponse(response);
 
     await expect(
       createProject(
         {
-          name: "Launch interview",
-          sourceVideoPath: "D:/media/interview.mp4",
-          sourceLanguage: "zh",
-          targetLanguage: "en"
+          name: "Client campaign"
         },
         baseUrl
       )
@@ -214,15 +236,57 @@ describe("worker API helpers", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: "Launch interview",
-        sourceVideoPath: "D:/media/interview.mp4",
+        name: "Client campaign",
+        sourceVideoPath: null,
         sourceLanguage: "zh",
         targetLanguage: "en"
       })
     });
   });
 
-  it("createProject normalizes an omitted target language to null", async () => {
+  it("updateProjectSourceMedia sends the selected source video path", async () => {
+    const response = {
+      ...projectResponse,
+      sourceVideoPath: "D:/media/new-source.mp4",
+      durationMs: 65_000
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(
+      updateProjectSourceMedia(
+        "project-1",
+        { sourceVideoPath: "D:/media/new-source.mp4" },
+        baseUrl
+      )
+    ).resolves.toEqual(response);
+
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/projects/project-1/media/source`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceVideoPath: "D:/media/new-source.mp4" })
+    });
+  });
+
+  it("deleteProjectMediaAsset deletes a project video asset", async () => {
+    const response = {
+      ...projectResponse,
+      sourceVideoPath: null,
+      durationMs: 0,
+      mediaAssets: []
+    };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(deleteProjectMediaAsset("project-1", "media-1", baseUrl)).resolves.toEqual(
+      response
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${baseUrl}/projects/project-1/media/assets/media-1`,
+      { method: "DELETE" }
+    );
+  });
+
+  it("createProject applies the default target language when omitted", async () => {
     const response = {
       ...projectResponse,
       projectId: "project-review",
@@ -231,7 +295,7 @@ describe("worker API helpers", () => {
       projectDir: "D:/Diplomat/projects/project-1",
       durationMs: 124_000,
       sourceLanguage: "ja",
-      targetLanguage: null
+      targetLanguage: "en"
     };
     const input: CreateProjectInput = {
       name: "Source-only review",
@@ -247,7 +311,7 @@ describe("worker API helpers", () => {
       name: "Source-only review",
       sourceVideoPath: "D:/media/review.mp4",
       sourceLanguage: "ja",
-      targetLanguage: null
+      targetLanguage: "en"
     });
   });
 
@@ -404,6 +468,14 @@ describe("worker API helpers", () => {
 
     await expect(fetchTask("task-1", baseUrl)).resolves.toEqual(taskResponse);
     expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/tasks/task-1`, undefined);
+  });
+
+  it("listTasks gets and parses the real task queue", async () => {
+    const response = { tasks: [taskResponse] };
+    const fetchMock = stubJsonResponse(response);
+
+    await expect(listTasks(baseUrl)).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/tasks`, undefined);
   });
 
   it("builds project media URLs for worker-served source video", () => {
@@ -930,7 +1002,7 @@ describe("worker API helpers", () => {
     stubJsonResponse({ error: "nope" }, false, 503);
 
     await expect(runProjectAnalysis("project-1", baseUrl)).rejects.toThrow(
-      "Worker request failed: 503"
+      "Local runtime request failed: 503"
     );
   });
 
@@ -943,7 +1015,7 @@ describe("worker API helpers", () => {
     );
 
     await expect(listProjects(baseUrl)).rejects.toThrow(
-      "Worker is not reachable at http://worker.test"
+      "Local runtime is not reachable at http://worker.test"
     );
   });
 
@@ -955,7 +1027,7 @@ describe("worker API helpers", () => {
     );
 
     await expect(runProjectAnalysis("project-1", baseUrl)).rejects.toThrow(
-      "Worker request failed: 400: Source video does not contain an audio stream"
+      "Local runtime request failed: 400: Source video does not contain an audio stream"
     );
   });
 

@@ -65,6 +65,10 @@ export const TaskResponseSchema = z.object({
   diagnosticLogPath: z.string().nullable()
 });
 
+export const TaskListResponseSchema = z.object({
+  tasks: z.array(TaskResponseSchema)
+});
+
 export const TaskEventSchema = TaskResponseSchema;
 
 export type TaskStatus = z.infer<typeof TaskStatusSchema>;
@@ -77,4 +81,5 @@ export type TranslationJobRequestInput = z.input<typeof TranslationJobRequestSch
 export type TranslationJobRequest = z.infer<typeof TranslationJobRequestSchema>;
 export type TranslationSettingsResponse = z.infer<typeof TranslationSettingsResponseSchema>;
 export type TaskResponse = z.infer<typeof TaskResponseSchema>;
+export type TaskListResponse = z.infer<typeof TaskListResponseSchema>;
 export type TaskEvent = TaskResponse;
