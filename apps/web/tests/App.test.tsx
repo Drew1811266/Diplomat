@@ -242,7 +242,7 @@ describe("App", () => {
     expect(within(header).queryByText("字幕工作台")).not.toBeInTheDocument();
     expect(within(header).queryByLabelText("界面语言")).not.toBeInTheDocument();
     expect(within(header).queryByRole("button", { name: "项目库" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "设置" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "打开系统设置" })).toBeVisible();
   });
 
   it("navigates to settings from the system utility controls", async () => {
@@ -253,7 +253,7 @@ describe("App", () => {
     renderWithProviders(<App />);
     await screen.findByRole("heading", { name: "Project Library" });
     expect(screen.queryByRole("navigation", { name: "Activity navigation" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open system settings" }));
 
     expect(await screen.findByRole("main", { name: "System Settings" })).toBeVisible();
     expect(screen.getAllByRole("heading", { level: 1 }).map((heading) => heading.textContent)).toEqual([
@@ -360,7 +360,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Open" }));
     expect(await screen.findByRole("main", { name: "Workbench" })).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open system settings" }));
     expect(await screen.findByRole("main", { name: "System Settings" })).toBeVisible();
     expect(within(screen.getByRole("banner")).getByText("System Settings")).toBeVisible();
 
@@ -393,8 +393,9 @@ describe("App", () => {
     expect(screen.queryByRole("navigation", { name: "Activity navigation" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Project Library" })).toBeVisible();
 
-    const projectWorkspaceNav = await screen.findByRole("navigation", { name: "Project workspaces" });
-    fireEvent.click(within(projectWorkspaceNav).getByRole("button", { name: "Translate" }));
+    expect(screen.queryByRole("navigation", { name: "Project workspaces" })).not.toBeInTheDocument();
+    const inspectorTabs = await screen.findByRole("tablist", { name: "Workbench inspector tabs" });
+    fireEvent.click(within(inspectorTabs).getByRole("tab", { name: "Translate" }));
     expect(useUiStore.getState().editorWorkspace).toBe("translation");
     expect(await screen.findByRole("main", { name: "Workbench" })).toBeVisible();
 
@@ -408,9 +409,9 @@ describe("App", () => {
     expect(await screen.findByRole("main", { name: "Help Center" })).toBeVisible();
     expect(screen.queryByRole("navigation", { name: "Project workspaces" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open system settings" }));
     expect(await screen.findByRole("main", { name: "System Settings" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Language" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "General" })).toHaveAttribute(
       "aria-current",
       "page"
     );
@@ -449,11 +450,15 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Open" }));
     expect(await screen.findByRole("main", { name: "Workbench" })).toBeVisible();
-    expect(await screen.findByTestId("workbench-media-start")).toBeVisible();
+    expect(await screen.findByTestId("workbench-preview-inspector-grid")).toBeVisible();
+    expect(screen.getByTestId("timeline-dock")).toBeVisible();
+    const inspectorTabs = await screen.findByRole("tablist", { name: "Workbench inspector tabs" });
+    expect(within(inspectorTabs).getByRole("tab", { name: "Media", selected: true })).toBeVisible();
 
     const header = screen.getByRole("banner");
     expect(screen.queryByRole("navigation", { name: "Project workspaces" })).not.toBeInTheDocument();
     expect(within(header).getByRole("button", { name: "Project Library" })).toBeVisible();
     expect(within(header).queryByRole("button", { name: "Translate" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Project media" })).toBeVisible();
   });
 });

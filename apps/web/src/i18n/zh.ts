@@ -22,6 +22,7 @@ export const zh = {
     openCurrentPage: "打开当前页面",
     openProjectContext: "打开项目上下文",
     openRuntimeSettings: "打开运行时设置",
+    openSystemSettings: "打开系统设置",
     runtime: {
       ready: "就绪",
       checking: "检查中",
@@ -252,6 +253,16 @@ export const zh = {
     timeline: {
       subtitleRows: "{{count}} 行字幕"
     },
+    inspectorTabs: {
+      label: "工作台参数面板标签",
+      media: "媒体",
+      project: "项目",
+      analysis: "转写",
+      translation: "翻译",
+      subtitles: "字幕",
+      style: "样式",
+      export: "导出"
+    },
     media: {
       title: "项目媒体",
       count: "{{count}} 个视频",
@@ -336,10 +347,18 @@ export const zh = {
     region: "时间线编辑器",
     title: "时间线",
     zoom: "缩放时间线",
+    subtitleTrack: "字幕",
+    clipCount: "{{count}} 个片段",
     blockLabel: "时间线字幕块 {{id}}",
     resizeStart: "调整 {{id}} 开始时间",
     resizeEnd: "调整 {{id}} 结束时间",
     generateWaveform: "生成波形"
+  },
+  videoPreview: {
+    play: "播放预览",
+    pause: "暂停预览",
+    scrubber: "预览拖动条",
+    toggleFit: "切换预览适配"
   },
   editorCommands: {
     toolbar: "编辑命令",
@@ -377,6 +396,7 @@ export const zh = {
     redo: "重做编辑"
   },
   inspector: {
+    media: "项目媒体",
     line: "字幕行",
     analysis: "项目分析设置",
     translation: "项目翻译设置",

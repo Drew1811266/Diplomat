@@ -37,7 +37,6 @@ import {
   IconPlayerPlay,
   IconPlayerStop,
   IconRefresh,
-  IconSettings,
   IconTrash,
   IconWaveSine
 } from "@tabler/icons-react";
@@ -160,14 +159,6 @@ const defaultTranslationConfig: TranslationJobRequest = {
   glossary: []
 };
 
-const workspaceInspectorModes: Record<EditorWorkspace, InspectorMode> = {
-  transcription: "analysis",
-  translation: "translation",
-  timing: "line",
-  style: "style",
-  delivery: "export"
-};
-
 function normalizeLanguageCode(value: string, fallback: string) {
   const trimmed = value.trim();
   return trimmed.length >= 2 ? trimmed : fallback;
@@ -197,9 +188,10 @@ const timelineResizeBounds = {
 } as const;
 
 const inspectorHelpTopicByMode: Record<
-  "line" | "analysis" | "translation" | "style" | "export" | "settings-lite",
+  "media" | "line" | "analysis" | "translation" | "style" | "export" | "settings-lite",
   HelpTopic
 > = {
+  media: "projectsMedia",
   line: "timingQa",
   analysis: "transcription",
   translation: "translation",
@@ -207,6 +199,16 @@ const inspectorHelpTopicByMode: Record<
   export: "export",
   "settings-lite": "projectsMedia"
 };
+
+const inspectorTabs: Array<{ mode: InspectorMode; key: string; workspace?: EditorWorkspace }> = [
+  { mode: "media", key: "workbench.inspectorTabs.media" },
+  { mode: "settings-lite", key: "workbench.inspectorTabs.project" },
+  { mode: "analysis", key: "workbench.inspectorTabs.analysis", workspace: "transcription" },
+  { mode: "translation", key: "workbench.inspectorTabs.translation", workspace: "translation" },
+  { mode: "line", key: "workbench.inspectorTabs.subtitles", workspace: "timing" },
+  { mode: "style", key: "workbench.inspectorTabs.style", workspace: "style" },
+  { mode: "export", key: "workbench.inspectorTabs.export", workspace: "delivery" }
+];
 
 function clampPanelSize(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -470,7 +472,6 @@ export function WorkbenchPage() {
   const recoveryPanelVisible = Boolean(serverDraft || snapshotSummaries.length > 0);
   const layout = isNarrow ? "stacked" : "split";
   const workspaceLayout = workspaceLayouts[editorWorkspace];
-  const productionStageInspectorMode = workspaceInspectorModes[editorWorkspace];
   const inspectorColumnWidth = workspaceLayout.inspectorCollapsed
     ? collapsedDockSize
     : workspaceLayout.inspectorWidth;
@@ -776,6 +777,7 @@ export function WorkbenchPage() {
 
   function handleSelectLine(lineId: string) {
     setSelectedLineId(lineId);
+    setInspectorMode("line");
     const line = subtitleLines.find((candidate) => candidate.id === lineId);
     if (line) {
       setSeekRequestMs(line.startMs);
@@ -807,6 +809,7 @@ export function WorkbenchPage() {
     try {
       await updateSourceMedia.mutateAsync({ sourceVideoPath: sourceVideoPath.trim() });
       resetProjectMediaState();
+      setInspectorMode("media");
       void project.refetch();
       void subtitle.refetch();
       void subtitleDraft.refetch();
@@ -1299,14 +1302,38 @@ export function WorkbenchPage() {
     }
   }
 
-  function renderInspectorContent() {
-    if (inspectorMode === "line") {
+  function renderInspectorContent(mode: InspectorMode) {
+    if (mode === "media") {
+      return (
+        <Stack gap="sm">
+          {mediaImportErrorMessage ? (
+            <StatusNotice
+              title={t("workbench.errors.mediaImportFailed")}
+              message={mediaImportErrorMessage}
+              tone="error"
+            />
+          ) : null}
+          {projectMediaBin}
+        </Stack>
+      );
+    }
+
+    if (mode === "line") {
       return (
         <Stack gap="sm">
           <ErrorMessage
             error={saveSubtitle.error}
             fallbackTitle={t("workbench.errors.saveFailed")}
             fallbackMessage={t("workbench.errors.saveFailedHint")}
+          />
+          <SubtitleGrid
+            lines={subtitleLines}
+            selectedLineId={selectedLineId}
+            activeLineId={activeLineId}
+            timingIssuesByLineId={timingValidation.byLineId}
+            filter={subtitleFilter}
+            onFilterChange={setSubtitleFilter}
+            onSelectLine={handleSelectLine}
           />
           <LineInspector
             line={selectedLine}
@@ -1318,7 +1345,7 @@ export function WorkbenchPage() {
       );
     }
 
-    if (inspectorMode === "analysis") {
+    if (mode === "analysis") {
       return (
         <Stack gap="sm">
           <ErrorMessage
@@ -1340,7 +1367,7 @@ export function WorkbenchPage() {
       );
     }
 
-    if (inspectorMode === "translation") {
+    if (mode === "translation") {
       return (
         <Stack gap="sm">
           <ErrorMessage
@@ -1366,7 +1393,7 @@ export function WorkbenchPage() {
       );
     }
 
-    if (inspectorMode === "style") {
+    if (mode === "style") {
       const styleError =
         createStylePreset.error ??
         updateStylePreset.error ??
@@ -1412,7 +1439,7 @@ export function WorkbenchPage() {
       );
     }
 
-    if (inspectorMode === "export") {
+    if (mode === "export") {
       const exportError =
         exportSubtitles.error ??
         createBurnInExportJob.error ??
@@ -1468,7 +1495,7 @@ export function WorkbenchPage() {
       );
     }
 
-    if (inspectorMode === "settings-lite") {
+    if (mode === "settings-lite") {
       return (
         <Stack gap="sm">
           <ErrorMessage error={translationSettings.error ?? saveTranslationSettings.error} />
@@ -1500,8 +1527,12 @@ export function WorkbenchPage() {
     setInspectorMode(mode);
   }
 
-  function openProductionStageControls() {
-    setInspectorMode(productionStageInspectorMode);
+  function handleInspectorTabMode(mode: InspectorMode) {
+    const tab = inspectorTabs.find((candidate) => candidate.mode === mode);
+    if (tab?.workspace) {
+      setEditorWorkspace(tab.workspace);
+    }
+    setInspectorMode(mode);
   }
 
   function renderDataNotice() {
@@ -1560,8 +1591,6 @@ export function WorkbenchPage() {
   }
 
   const dataNotice = renderDataNotice();
-  const projectContextTitle = project.data?.name ?? t("workbench.noProject");
-  const projectContextSource = projectSourceVideoPath ?? t("workbench.noSourceVideo");
   const mediaImportErrorMessage = updateSourceMedia.error
     ? displayMediaImportError(
         updateSourceMedia.error,
@@ -1611,6 +1640,7 @@ export function WorkbenchPage() {
         ) : null}
       </Group>
     ) : null;
+  const taskStatusVisible = taskActive || Boolean(taskStatusError) || Boolean(taskStatusAction);
   const timelinePanel =
     activeProjectId && subtitleDocument ? (
       <Box
@@ -1660,9 +1690,7 @@ export function WorkbenchPage() {
   const mediaActionBusy = updateSourceMedia.isPending || deleteMediaAsset.isPending || taskActive;
   const hasProjectMediaAssets = projectMediaAssets.length > 0;
   const mediaBinEmpty = Boolean(project.data) && !hasProjectMediaAssets && !projectSourceVideoPath;
-  const showMediaImportStart = mediaBinEmpty;
-  const mediaBinTrack = mediaBinEmpty ? "152px" : "auto";
-  const mediaPreviewTrack = mediaBinEmpty ? "minmax(180px, 22vh)" : "minmax(200px, 30vh)";
+  const activeInspectorMode: InspectorMode = mediaBinEmpty ? "media" : inspectorMode;
   const activeSourceName = projectSourceVideoPath ? fileNameFromPath(projectSourceVideoPath) : null;
   const projectMediaBin = activeProjectId ? (
     <Box
@@ -1674,7 +1702,7 @@ export function WorkbenchPage() {
       bg={workstationSurfaces.panelAlt}
       style={{
         borderBottom: `1px solid ${workstationSurfaces.outline}`,
-        minHeight: mediaBinEmpty ? 360 : undefined,
+        minHeight: mediaBinEmpty ? 220 : undefined,
         overflow: "hidden"
       }}
     >
@@ -1687,15 +1715,14 @@ export function WorkbenchPage() {
         </Text>
       </Group>
       {hasProjectMediaAssets ? (
-        <Group gap="xs" wrap="nowrap" style={{ overflowX: "auto", paddingBottom: 2 }}>
+        <Stack gap="xs">
           {projectMediaAssets.map((asset) => (
             <Box
               key={asset.assetId}
               p="xs"
               data-active={asset.active ? "true" : "false"}
               style={{
-                minWidth: 260,
-                maxWidth: 360,
+                minWidth: 0,
                 border: `1px solid ${
                   asset.active ? workstationSurfaces.success : workstationSurfaces.outline
                 }`,
@@ -1764,11 +1791,11 @@ export function WorkbenchPage() {
             disabled={mediaActionBusy}
             loading={updateSourceMedia.isPending}
             onClick={() => void handleImportVideo()}
-            style={{ alignSelf: "stretch", minWidth: 136 }}
+            style={{ alignSelf: "stretch" }}
           >
             {t("workbench.importVideoAction")}
           </Button>
-        </Group>
+        </Stack>
       ) : mediaBinEmpty ? (
         <Box
           data-testid="project-media-empty-dropzone"
@@ -1777,7 +1804,7 @@ export function WorkbenchPage() {
             border: `1px dashed ${workstationSurfaces.outlineStrong}`,
             borderRadius: 6,
             background: "#ffffff",
-            minHeight: 320,
+            minHeight: 220,
             display: "grid",
             alignItems: "center"
           }}
@@ -1914,54 +1941,6 @@ export function WorkbenchPage() {
     );
   }
 
-  if (showMediaImportStart) {
-    return (
-      <Box
-        component="main"
-        aria-label={t("workbench.title")}
-        data-editor-workspace={editorWorkspace}
-        bg="#e9edf2"
-        style={{
-          height: "calc(100vh - 84px)",
-          minHeight: 620,
-          display: "grid",
-          placeItems: "center",
-          overflow: "auto",
-          border: `1px solid ${workstationSurfaces.outline}`,
-          borderRadius: 6
-        }}
-        >
-          {workbenchHeading}
-          <Box
-            data-testid="workbench-media-start"
-            p="lg"
-            style={{
-              width: "min(960px, 100%)"
-            }}
-          >
-          <Stack gap="sm">
-            <Box>
-              <Text size="lg" fw={900} c={workstationSurfaces.text}>
-                {projectContextTitle}
-              </Text>
-              <Text size="sm" c={workstationSurfaces.textMuted}>
-                {t("workbench.noSourceVideo")}
-              </Text>
-            </Box>
-            {mediaImportErrorMessage ? (
-              <StatusNotice
-                title={t("workbench.errors.mediaImportFailed")}
-                message={mediaImportErrorMessage}
-                tone="error"
-              />
-            ) : null}
-            {projectMediaBin}
-          </Stack>
-        </Box>
-      </Box>
-    );
-  }
-
   return (
     <>
       <Box
@@ -1973,9 +1952,14 @@ export function WorkbenchPage() {
           height: "calc(100vh - 84px)",
           minHeight: 620,
           display: "grid",
-          gridTemplateRows: recoveryPanelVisible
-              ? "auto auto auto auto auto minmax(0, 1fr)"
-              : "auto auto auto auto minmax(0, 1fr)",
+          gridTemplateRows: [
+            "auto",
+            taskStatusVisible ? "auto" : null,
+            recoveryPanelVisible ? "auto" : null,
+            "minmax(0, 1fr)"
+          ]
+            .filter(Boolean)
+            .join(" "),
           overflow: isNarrow ? "auto" : "hidden",
           border: `1px solid ${workstationSurfaces.outline}`,
           borderRadius: 6
@@ -1990,128 +1974,32 @@ export function WorkbenchPage() {
         onSave={() => void handleSave()}
       />
 
-      <Box
-        component="section"
-        aria-label={t("workbench.labels.projectContext")}
-        px="sm"
-        py={7}
-        bg={workstationSurfaces.panelAlt}
-        style={{
-          borderBottom: `1px solid ${workstationSurfaces.outline}`,
-          display: "grid",
-          gridTemplateColumns: isNarrow
-            ? "minmax(0, 1fr)"
-            : "minmax(0, 1fr) minmax(260px, 390px) auto",
-          gap: 12,
-          alignItems: isNarrow ? "stretch" : "center"
-        }}
-      >
-        <Box style={{ minWidth: 0 }}>
-          <Text size="sm" fw={800} c={workstationSurfaces.text} truncate>
-            {projectContextTitle}
-          </Text>
-          <Text size="xs" c={workstationSurfaces.textMuted} truncate>
-            {projectContextSource}
-          </Text>
-        </Box>
+      {taskStatusVisible ? (
         <Box
-          component="section"
-          role="region"
-          aria-label={t("workbench.productionStage.label")}
-          px="xs"
-          py={6}
-          bg={workstationSurfaces.panel}
+          px="sm"
+          py={4}
+          bg={workstationSurfaces.panelAlt}
           style={{
-            minWidth: 0,
-            border: `1px solid ${workstationSurfaces.outline}`,
-            borderRadius: 6
+            borderBottom: `1px solid ${workstationSurfaces.outline}`
           }}
         >
-          <Group gap={8} justify="space-between" wrap={isNarrow ? "wrap" : "nowrap"}>
-            <Group gap={6} wrap="nowrap" miw={0}>
-              <Badge color="teal" variant="light" size="xs" style={{ flexShrink: 0 }}>
-                {t(`workbench.productionStage.${editorWorkspace}.title`)}
-              </Badge>
-              <Text size="xs" fw={700} c={workstationSurfaces.textMuted} truncate>
-                {t(`workbench.productionStage.${editorWorkspace}.goal`)}
-              </Text>
-            </Group>
-            <Button
-              type="button"
-              aria-label={t(`workbench.productionStage.${editorWorkspace}.action`)}
-              size="compact-xs"
-              color="teal"
-              variant="subtle"
-              onClick={openProductionStageControls}
-            >
-              {t("workbench.productionStage.controls")}
-            </Button>
-          </Group>
+          <TaskStatusSurface
+            busy={taskActive}
+            message={taskStatusMessage}
+            error={
+              taskStatusError
+                ? displayWorkbenchErrorMessage(
+                    taskStatusError,
+                    t("workbench.errors.operationFailed")
+                  )
+                : null
+            }
+            status={observedTask?.status ?? (taskActive ? "running" : "ready")}
+            progress={observedTask?.progress ?? null}
+            action={taskStatusAction}
+          />
         </Box>
-        <Group gap={6} wrap={isNarrow ? "wrap" : "nowrap"} justify={isNarrow ? "flex-start" : "flex-end"}>
-          <Button
-            type="button"
-            size="compact-xs"
-            variant={inspectorMode === "settings-lite" ? "light" : "subtle"}
-            color={inspectorMode === "settings-lite" ? "teal" : "gray"}
-            leftSection={<IconSettings size={14} aria-hidden />}
-            onClick={() => setInspectorMode("settings-lite")}
-          >
-            {t("workbench.projectSettings")}
-          </Button>
-          <Text size="xs" fw={800} c="teal">
-            {t(`workbench.workspaces.${editorWorkspace}`)}
-          </Text>
-          <Text size="xs" fw={800} c={workstationSurfaces.textMuted}>
-            {t("workbench.timeline.subtitleRows", { count: subtitleLines.length })}
-          </Text>
-          <Text size="xs" fw={800} c={hasUnsavedChanges ? "orange" : "teal"}>
-            {hasUnsavedChanges ? t("workbench.unsaved") : t("workbench.saved")}
-          </Text>
-        </Group>
-      </Box>
-
-      <Box
-        px="sm"
-        py={4}
-        bg={workstationSurfaces.panelAlt}
-        style={{
-          borderBottom: `1px solid ${workstationSurfaces.outline}`
-        }}
-      >
-        <TaskStatusSurface
-          busy={taskActive}
-          message={taskStatusMessage}
-          error={
-            taskStatusError
-              ? displayWorkbenchErrorMessage(
-                  taskStatusError,
-                  t("workbench.errors.operationFailed")
-                )
-              : null
-          }
-          status={observedTask?.status ?? (taskActive ? "running" : "ready")}
-          progress={observedTask?.progress ?? null}
-          action={taskStatusAction}
-        />
-      </Box>
-
-      <EditorCommandBar
-        canUndo={historyPast.length > 0}
-        canRedo={historyFuture.length > 0}
-        canEdit={canEditSubtitle}
-        offsetMs={offsetMs}
-        offsetScope={offsetScope}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        onSplit={handleSplitLine}
-        onMergePrevious={() => handleMergeLine("previous")}
-        onMergeNext={() => handleMergeLine("next")}
-        onOffsetMsChange={setOffsetMs}
-        onOffsetScopeChange={setOffsetScope}
-        onApplyOffset={() => void handleApplyOffset()}
-        onOpenShortcuts={() => setShortcutsOpen(true)}
-      />
+      ) : null}
 
       <RecoveryPanel
         draft={serverDraft}
@@ -2128,80 +2016,188 @@ export function WorkbenchPage() {
         data-layout={layout}
         style={{
           display: "grid",
-          gridTemplateColumns: isNarrow
-            ? "minmax(0, 1fr)"
-            : `minmax(0, 1fr) ${inspectorColumnWidth}px`,
-          gridTemplateRows: isNarrow ? "auto auto" : undefined,
+          gridTemplateRows: "minmax(0, 1fr)",
           minHeight: 0,
           overflow: isNarrow ? "visible" : "hidden",
           position: "relative"
         }}
       >
-        {!isNarrow && !workspaceLayout.inspectorCollapsed ? (
-          <Box
-            role="separator"
-            aria-label={t("workbench.layout.resizeInspector")}
-            aria-orientation="vertical"
-            onPointerDown={handleInspectorResizeStart}
-            onPointerMove={handleInspectorResize}
-            onPointerUp={handleInspectorResizeEnd}
-            onPointerCancel={handleInspectorResizeEnd}
-            onDoubleClick={handleInspectorResizeReset}
-            style={{
-              position: "absolute",
-              top: 0,
-              right: inspectorColumnWidth - 3,
-              bottom: 0,
-              width: 6,
-              cursor: "col-resize",
-              zIndex: 4
-            }}
-          />
-        ) : null}
         <Box
           data-testid="workbench-media-stack"
           style={{
             display: "grid",
             gridTemplateRows: isNarrow
-              ? `${mediaBinTrack} minmax(260px, auto) minmax(260px, auto) auto`
-              : `${mediaBinTrack} ${mediaPreviewTrack} minmax(140px, 1fr) ${timelineDockHeight}px`,
+              ? "minmax(320px, auto) auto auto"
+              : `minmax(0, 1fr) auto ${timelineDockHeight}px`,
+            height: "100%",
             minHeight: 0
           }}
         >
-          {projectMediaBin}
-          <Box p="md" bg={workstationSurfaces.panel} style={{ minHeight: 0 }}>
-            <VideoPreviewPanel
-              emptyDescription={
-                activeProjectId ? t("workbench.noSourceVideo") : t("workbench.noProject")
-              }
-              mediaUrl={mediaUrl}
-              selectedLine={selectedLine}
-              previewStyle={styleDraft}
-              showSafeArea={showSafeArea}
-              seekRequestMs={seekRequestMs}
-              onTimeUpdate={setCurrentTimeMs}
-            />
-          </Box>
-
           <Box
+            data-testid="workbench-preview-inspector-grid"
             style={{
               display: "grid",
-              gridTemplateRows: dataNotice ? "auto minmax(0, 1fr)" : "minmax(0, 1fr)",
-              minHeight: isNarrow ? 260 : 0,
-              overflow: "hidden"
+              gridTemplateColumns: isNarrow
+                ? "minmax(0, 1fr)"
+                : `minmax(0, 1fr) ${inspectorColumnWidth}px`,
+              gridTemplateRows: isNarrow ? "auto auto" : undefined,
+              minHeight: 0,
+              overflow: isNarrow ? "visible" : "hidden",
+              position: "relative"
             }}
           >
-            {dataNotice}
-            <SubtitleGrid
-              lines={subtitleLines}
-              selectedLineId={selectedLineId}
-              activeLineId={activeLineId}
-              timingIssuesByLineId={timingValidation.byLineId}
-              filter={subtitleFilter}
-              onFilterChange={setSubtitleFilter}
-              onSelectLine={handleSelectLine}
-            />
+            {!isNarrow && !workspaceLayout.inspectorCollapsed ? (
+              <Box
+                role="separator"
+                aria-label={t("workbench.layout.resizeInspector")}
+                aria-orientation="vertical"
+                onPointerDown={handleInspectorResizeStart}
+                onPointerMove={handleInspectorResize}
+                onPointerUp={handleInspectorResizeEnd}
+                onPointerCancel={handleInspectorResizeEnd}
+                onDoubleClick={handleInspectorResizeReset}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  right: inspectorColumnWidth - 3,
+                  bottom: 0,
+                  width: 6,
+                  cursor: "col-resize",
+                  zIndex: 4
+                }}
+              />
+            ) : null}
+            <Box
+              data-testid="workbench-preview-zone"
+              style={{
+                display: "grid",
+                gridTemplateRows: dataNotice ? "auto minmax(0, 1fr)" : "minmax(0, 1fr)",
+                minHeight: isNarrow ? 360 : 0,
+                overflow: "hidden"
+              }}
+            >
+              {dataNotice}
+              <Box p="md" bg={workstationSurfaces.panel} style={{ minHeight: 0 }}>
+                <VideoPreviewPanel
+                  emptyDescription={
+                    activeProjectId ? t("workbench.noSourceVideo") : t("workbench.noProject")
+                  }
+                  mediaUrl={mediaUrl}
+                  selectedLine={selectedLine}
+                  previewStyle={styleDraft}
+                  showSafeArea={showSafeArea}
+                  currentTimeMs={currentTimeMs}
+                  durationMs={timelineDurationMs}
+                  seekRequestMs={seekRequestMs}
+                  onTimeUpdate={setCurrentTimeMs}
+                />
+              </Box>
+            </Box>
+
+            {workspaceLayout.inspectorCollapsed && !isNarrow ? (
+              <Box
+                bg={workstationSurfaces.panel}
+                style={{
+                  minHeight: 0,
+                  borderLeft: `1px solid ${workstationSurfaces.outline}`,
+                  display: "grid",
+                  placeItems: "start center",
+                  paddingTop: 8
+                }}
+              >
+                <ActionIcon
+                  type="button"
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  aria-label={t("workbench.layout.expandInspector")}
+                  onClick={() => setWorkspaceLayout(editorWorkspace, { inspectorCollapsed: false })}
+                >
+                  <IconChevronLeft size={16} aria-hidden />
+                </ActionIcon>
+              </Box>
+            ) : (
+              <Box style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
+                {!isNarrow ? (
+                  <ActionIcon
+                    type="button"
+                    variant="subtle"
+                    color="gray"
+                    size="sm"
+                    aria-label={t("workbench.layout.collapseInspector")}
+                    onClick={() => setWorkspaceLayout(editorWorkspace, { inspectorCollapsed: true })}
+                    style={{
+                      position: "absolute",
+                      top: 48,
+                      right: 8,
+                      zIndex: 5
+                    }}
+                  >
+                    <IconChevronRight size={16} aria-hidden />
+                  </ActionIcon>
+                ) : null}
+                <Box
+                  role="tablist"
+                  aria-label={t("workbench.inspectorTabs.label")}
+                  bg={workstationSurfaces.panelAlt}
+                  style={{
+                    minHeight: 42,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    overflowX: "auto",
+                    padding: "6px 8px",
+                    borderLeft: isNarrow ? undefined : `1px solid ${workstationSurfaces.outline}`,
+                    borderBottom: `1px solid ${workstationSurfaces.outline}`
+                  }}
+                >
+                  {inspectorTabs.map((tab) => {
+                    const label = t(tab.key);
+                    const selected = activeInspectorMode === tab.mode;
+
+                    return (
+                      <Button
+                        key={tab.mode}
+                        role="tab"
+                        aria-selected={selected}
+                        color={selected ? "teal" : "gray"}
+                        radius="sm"
+                        size="compact-xs"
+                        variant={selected ? "light" : "subtle"}
+                        onClick={() => handleInspectorTabMode(tab.mode)}
+                      >
+                        {label}
+                      </Button>
+                    );
+                  })}
+                </Box>
+                <InspectorPanel
+                  mode={activeInspectorMode}
+                  layout={isNarrow ? "stacked" : "side"}
+                  onOpenHelp={openInspectorHelp}
+                >
+                  {renderInspectorContent(activeInspectorMode)}
+                </InspectorPanel>
+              </Box>
+            )}
           </Box>
+
+          <EditorCommandBar
+            canUndo={historyPast.length > 0}
+            canRedo={historyFuture.length > 0}
+            canEdit={canEditSubtitle}
+            offsetMs={offsetMs}
+            offsetScope={offsetScope}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onSplit={handleSplitLine}
+            onMergePrevious={() => handleMergeLine("previous")}
+            onMergeNext={() => handleMergeLine("next")}
+            onOffsetMsChange={setOffsetMs}
+            onOffsetScopeChange={setOffsetScope}
+            onApplyOffset={() => void handleApplyOffset()}
+            onOpenShortcuts={() => setShortcutsOpen(true)}
+          />
 
           <Box
             data-testid="timeline-dock"
@@ -2281,58 +2277,6 @@ export function WorkbenchPage() {
             )}
           </Box>
         </Box>
-
-        {workspaceLayout.inspectorCollapsed && !isNarrow ? (
-          <Box
-            bg={workstationSurfaces.panel}
-            style={{
-              minHeight: 0,
-              borderLeft: `1px solid ${workstationSurfaces.outline}`,
-              display: "grid",
-              placeItems: "start center",
-              paddingTop: 8
-            }}
-          >
-            <ActionIcon
-              type="button"
-              variant="subtle"
-              color="gray"
-              size="sm"
-              aria-label={t("workbench.layout.expandInspector")}
-              onClick={() => setWorkspaceLayout(editorWorkspace, { inspectorCollapsed: false })}
-            >
-              <IconChevronLeft size={16} aria-hidden />
-            </ActionIcon>
-          </Box>
-        ) : (
-          <Box style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
-            {!isNarrow ? (
-              <ActionIcon
-                type="button"
-                variant="subtle"
-                color="gray"
-                size="sm"
-                aria-label={t("workbench.layout.collapseInspector")}
-                onClick={() => setWorkspaceLayout(editorWorkspace, { inspectorCollapsed: true })}
-                style={{
-                  position: "absolute",
-                  top: 8,
-                  right: 8,
-                  zIndex: 5
-                }}
-              >
-                <IconChevronRight size={16} aria-hidden />
-              </ActionIcon>
-            ) : null}
-            <InspectorPanel
-              mode={inspectorMode}
-              layout={isNarrow ? "stacked" : "side"}
-              onOpenHelp={openInspectorHelp}
-            >
-              {renderInspectorContent()}
-            </InspectorPanel>
-          </Box>
-        )}
       </Box>
       </Box>
 

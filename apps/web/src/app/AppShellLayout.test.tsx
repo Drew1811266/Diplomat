@@ -1,9 +1,10 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appI18n } from "./i18n";
 import { useUiStore } from "../state/uiStore";
+import { projectFixture } from "../test/fixtures";
 import { renderWithProviders } from "../test/render";
 import { AppShellLayout } from "./AppShellLayout";
 
@@ -48,6 +49,42 @@ afterEach(async () => {
 });
 
 describe("AppShellLayout", () => {
+  it("keeps global system settings as the far-right gear and removes project workflow tabs from the top bar", async () => {
+    useUiStore.getState().setActiveProjectId("project-demo");
+    useUiStore.getState().setPage("workbench");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async (input) => {
+        const url = String(input);
+        if (url.endsWith("/health")) {
+          return jsonResponse({ name: "diplomat-worker", status: "ok", version: "0.41.0" });
+        }
+        if (url.endsWith("/tasks")) {
+          return jsonResponse({ tasks: [] });
+        }
+        if (url.endsWith("/projects/project-demo")) {
+          return jsonResponse(projectFixture);
+        }
+
+        throw new Error(`Unexpected fetch: ${url}`);
+      })
+    );
+
+    renderWithProviders(
+      <AppShellLayout>
+        <div>Shell content</div>
+      </AppShellLayout>
+    );
+
+    expect(await screen.findByRole("banner")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Project workspace tabs" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Transcription" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Translation" })).not.toBeInTheDocument();
+
+    const headerButtons = within(screen.getByRole("banner")).getAllByRole("button");
+    expect(headerButtons.at(-1)).toHaveAccessibleName("Open system settings");
+  });
+
   it("recovers the shell runtime badge after the health endpoint becomes reachable", async () => {
     let healthAttempts = 0;
     vi.stubGlobal(
@@ -63,7 +100,7 @@ describe("AppShellLayout", () => {
           return jsonResponse({
             name: "diplomat-worker",
             status: "ok",
-            version: "0.40.0"
+            version: "0.41.0"
           });
         }
         if (url.endsWith("/tasks")) {

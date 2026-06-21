@@ -15,6 +15,7 @@ from diplomat_worker.asr.chunk_store import (
 )
 from diplomat_worker.asr.merge import merge_chunk_results
 from diplomat_worker.media.audio import AudioChunk, build_fixed_chunks, extract_audio
+from diplomat_worker.pipeline.subtitle_cues import segment_asr_segments_to_cues
 from diplomat_worker.schemas.subtitle import AiOrigin, Speaker, SubtitleDocument, SubtitleLine, SubtitleStyle, WordTiming
 
 SegmentationPlanner = Callable[[int], list[AudioChunk]]
@@ -164,15 +165,16 @@ def run_core_pipeline(
         progress_callback(0.92, "Building subtitle document")
     origin = AiOrigin(engine=asr_result.engine, model=asr_result.model)
 
+    cues = segment_asr_segments_to_cues(asr_result.segments)
     lines = [
         SubtitleLine(
             id=f"line-{index + 1}",
-            start_ms=segment.start_ms,
-            end_ms=segment.end_ms,
+            start_ms=cue.start_ms,
+            end_ms=cue.end_ms,
             speaker_id="speaker-unknown",
             source_language=asr_result.language,
             target_language=request.target_language,
-            source_text=segment.text,
+            source_text=cue.text,
             translated_text="",
             words=[
                 WordTiming(
@@ -181,14 +183,14 @@ def run_core_pipeline(
                     end_ms=word.end_ms,
                     confidence=word.confidence,
                 )
-                for word in segment.words
+                for word in cue.words
             ],
             style_overrides={},
             review_status="draft",
             ai_origin=origin,
             notes="",
         )
-        for index, segment in enumerate(asr_result.segments)
+        for index, cue in enumerate(cues)
     ]
 
     document = SubtitleDocument(

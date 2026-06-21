@@ -8,6 +8,7 @@ export const PROJECT_DEFAULTS_STORAGE_KEY = "diplomat.projectDefaults";
 
 export type AppPage = "projects" | "workbench" | "tasks" | "help" | "settings";
 export type InspectorMode =
+  | "media"
   | "line"
   | "analysis"
   | "translation"

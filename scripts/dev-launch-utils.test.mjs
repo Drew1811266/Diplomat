@@ -188,7 +188,7 @@ test("selectDevelopmentMediaTools prefers project-local ffmpeg tools when presen
 
 test("isDiplomatWorkerHealthPayload recognizes the local runtime health payload", () => {
   assert.equal(
-    isDiplomatWorkerHealthPayload('{"name":"diplomat-worker","status":"ok","version":"0.40.0"}'),
+    isDiplomatWorkerHealthPayload('{"name":"diplomat-worker","status":"ok","version":"0.41.0"}'),
     true
   );
   assert.equal(isDiplomatWorkerHealthPayload('{"name":"other-service"}'), false);

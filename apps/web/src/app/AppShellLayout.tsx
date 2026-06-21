@@ -35,7 +35,7 @@ import { displayTaskMessage } from "../lib/taskMessages";
 import { useProjectQuery } from "../queries/projectQueries";
 import { isTaskActive, useTasksQuery } from "../queries/taskQueries";
 import { useWorkerHealthQuery } from "../queries/workerQueries";
-import { useUiStore, type AppPage, type EditorWorkspace, type InspectorMode } from "../state/uiStore";
+import { useUiStore, type AppPage } from "../state/uiStore";
 import { getUiV2FeatureFlag } from "./featureFlags";
 import { workstationSurfaces } from "./theme";
 
@@ -49,8 +49,6 @@ export function AppShellLayout({ children }: AppShellLayoutProps) {
   const activeProjectId = useUiStore((state) => state.activeProjectId);
   const editorWorkspace = useUiStore((state) => state.editorWorkspace);
   const setPage = useUiStore((state) => state.setPage);
-  const setEditorWorkspace = useUiStore((state) => state.setEditorWorkspace);
-  const setInspectorMode = useUiStore((state) => state.setInspectorMode);
   const setSettingsCategory = useUiStore((state) => state.setSettingsCategory);
   const setCommandOpen = useUiStore((state) => state.setCommandOpen);
   const activeProject = useProjectQuery(activeProjectId);
@@ -76,17 +74,14 @@ export function AppShellLayout({ children }: AppShellLayoutProps) {
   const showProjectLibraryNavigation = currentPage !== "projects";
   const showWorkbenchNavigation = Boolean(activeProjectId) && currentPage !== "workbench";
   const showContextNavigation = showProjectLibraryNavigation || showWorkbenchNavigation;
-  const showProjectWorkspaceNavigation =
-    Boolean(activeProjectId) && currentPage === "workbench" && activeProjectHasMedia;
-
-  function selectWorkspace(workspace: EditorWorkspace) {
-    setEditorWorkspace(workspace);
-    setInspectorMode(workspaceInspectorModes[workspace]);
-    setPage("workbench");
-  }
 
   function openRuntimeSettings() {
     setSettingsCategory("runtime");
+    setPage("settings");
+  }
+
+  function openSystemSettings() {
+    setSettingsCategory("general");
     setPage("settings");
   }
 
@@ -181,31 +176,6 @@ export function AppShellLayout({ children }: AppShellLayoutProps) {
               </Group>
             </>
           ) : null}
-          {showProjectWorkspaceNavigation ? (
-            <>
-              <Divider orientation="vertical" color={workstationSurfaces.outline} />
-              <Group role="navigation" aria-label={t("appShell.projectWorkspacesNav")} gap={4} wrap="nowrap">
-                {projectWorkspaceItems.map(({ workspace, key }) => {
-                  const label = t(key);
-                  const active = editorWorkspace === workspace;
-
-                  return (
-                    <Button
-                      key={workspace}
-                      aria-current={active ? "page" : undefined}
-                      color={active ? "teal" : "gray"}
-                      radius="sm"
-                      size="compact-xs"
-                      variant={active ? "light" : "subtle"}
-                      onClick={() => selectWorkspace(workspace)}
-                    >
-                      {label}
-                    </Button>
-                  );
-                })}
-              </Group>
-            </>
-          ) : null}
           <Group gap="sm" wrap="nowrap" style={{ flex: "0 0 auto", marginLeft: "auto" }}>
             <Group role="navigation" aria-label={t("appShell.systemUtilities")} gap={4} wrap="nowrap">
               <Tooltip label={t("commandPalette.open")} openDelay={400}>
@@ -220,26 +190,19 @@ export function AppShellLayout({ children }: AppShellLayoutProps) {
                   <IconCommand size={17} stroke={1.8} aria-hidden="true" />
                 </ActionIcon>
               </Tooltip>
-              {systemUtilityItems.map(({ page, key, icon: Icon }) => {
-                const label = t(key);
-                const active = currentPage === page;
-
-                return (
-                  <Tooltip key={page} label={label} openDelay={400}>
-                    <ActionIcon
-                      aria-current={active ? "page" : undefined}
-                      aria-label={label}
-                      color={active ? "teal" : "gray"}
-                      radius="sm"
-                      size={28}
-                      variant={active ? "light" : "subtle"}
-                      onClick={() => setPage(page)}
-                    >
-                      <Icon size={17} stroke={1.8} aria-hidden="true" />
-                    </ActionIcon>
-                  </Tooltip>
-                );
-              })}
+              <Tooltip label={t("nav.help")} openDelay={400}>
+                <ActionIcon
+                  aria-current={currentPage === "help" ? "page" : undefined}
+                  aria-label={t("nav.help")}
+                  color={currentPage === "help" ? "teal" : "gray"}
+                  radius="sm"
+                  size={28}
+                  variant={currentPage === "help" ? "light" : "subtle"}
+                  onClick={() => setPage("help")}
+                >
+                  <IconHelpCircle size={17} stroke={1.8} aria-hidden="true" />
+                </ActionIcon>
+              </Tooltip>
             </Group>
             <Divider orientation="vertical" color={workstationSurfaces.outline} />
             <GlobalTaskPopover onOpenTasks={() => setPage("tasks")} />
@@ -254,6 +217,19 @@ export function AppShellLayout({ children }: AppShellLayoutProps) {
             >
               {runtimeStatusText}
             </Button>
+            <Tooltip label={t("appShell.openSystemSettings")} openDelay={400}>
+              <ActionIcon
+                aria-current={currentPage === "settings" ? "page" : undefined}
+                aria-label={t("appShell.openSystemSettings")}
+                color={currentPage === "settings" ? "teal" : "gray"}
+                radius="sm"
+                size={32}
+                variant={currentPage === "settings" ? "light" : "subtle"}
+                onClick={openSystemSettings}
+              >
+                <IconSettings size={18} stroke={1.8} aria-hidden="true" />
+              </ActionIcon>
+            </Tooltip>
           </Group>
         </Group>
       </AppShell.Header>
@@ -705,28 +681,3 @@ function statusColor(status: TaskStatus) {
 function formatProgress(progress: number) {
   return `${Math.round(progress * 100)}%`;
 }
-
-const systemUtilityItems: Array<{
-  page: Extract<AppPage, "settings" | "help">;
-  key: string;
-  icon: typeof IconSettings;
-}> = [
-  { page: "settings", key: "nav.settings", icon: IconSettings },
-  { page: "help", key: "nav.help", icon: IconHelpCircle }
-];
-
-const projectWorkspaceItems: Array<{ workspace: EditorWorkspace; key: string }> = [
-  { workspace: "transcription", key: "editorWorkspaces.transcription" },
-  { workspace: "translation", key: "editorWorkspaces.translation" },
-  { workspace: "timing", key: "editorWorkspaces.timing" },
-  { workspace: "style", key: "editorWorkspaces.style" },
-  { workspace: "delivery", key: "editorWorkspaces.delivery" }
-];
-
-const workspaceInspectorModes: Record<EditorWorkspace, InspectorMode> = {
-  transcription: "analysis",
-  translation: "translation",
-  timing: "line",
-  style: "style",
-  delivery: "export"
-};

@@ -542,7 +542,7 @@ describe("SettingsPage", () => {
 
     await user.click(screen.getByRole("button", { name: "About" }));
     expect(screen.getByRole("heading", { name: "About" })).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Version" })).toHaveTextContent("0.40.0");
+    expect(screen.getByRole("group", { name: "Version" })).toHaveTextContent("0.41.0");
   });
 
   it("edits persistent default project preferences only inside the new project defaults category", async () => {

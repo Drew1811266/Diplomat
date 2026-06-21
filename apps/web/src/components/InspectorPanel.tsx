@@ -13,6 +13,7 @@ type InspectorPanelProps = {
 };
 
 const titleKeyByMode: Record<InspectorMode, string> = {
+  media: "inspector.media",
   line: "inspector.line",
   analysis: "inspector.analysis",
   translation: "inspector.translation",
@@ -22,6 +23,7 @@ const titleKeyByMode: Record<InspectorMode, string> = {
 };
 
 const projectScopedModes = new Set<InspectorMode>([
+  "media",
   "analysis",
   "translation",
   "style",

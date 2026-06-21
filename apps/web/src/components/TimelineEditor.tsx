@@ -30,6 +30,7 @@ const minTrackWidth = 720;
 const pixelsPerMillisecond = 0.16;
 const snapMs = 50;
 const minDurationMs = 300;
+const trackHeaderWidth = 112;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -67,6 +68,16 @@ export function TimelineEditor({
   const safeDurationMs = Math.max(1, durationMs);
   const trackWidth = Math.max(minTrackWidth, safeDurationMs * pixelsPerMillisecond * zoom);
   const playheadPercent = clamp((currentTimeMs / safeDurationMs) * 100, 0, 100);
+  const rulerTicks = useMemo(() => {
+    const tickCount = 8;
+    return Array.from({ length: tickCount + 1 }, (_, index) => {
+      const timeMs = Math.round((safeDurationMs / tickCount) * index);
+      return {
+        timeMs,
+        left: `${(timeMs / safeDurationMs) * 100}%`
+      };
+    });
+  }, [safeDurationMs]);
 
   const waveformBars = useMemo(() => {
     if (!waveform?.peaks.length) {
@@ -170,199 +181,277 @@ export function TimelineEditor({
       </Group>
 
       <Box
-        data-testid="timeline-track"
-        onPointerDown={(event) => {
-          if (event.currentTarget === event.target) {
-            onSeek(timeFromClientX(event.clientX, event.currentTarget));
-          }
-        }}
-        onPointerMove={(event) => updateInteraction(event.clientX, event.currentTarget)}
-        onPointerUp={() => setInteraction(null)}
         style={{
-          minHeight: 104,
-          overflowX: "auto",
-          overflowY: "hidden",
-          position: "relative",
-          border: "1px solid #334155",
+          minHeight: 128,
+          display: "grid",
+          gridTemplateColumns: `${trackHeaderWidth}px minmax(0, 1fr)`,
+          border: "1px solid #cbd5e1",
           borderRadius: 6,
-          background: "#111827"
+          background: "#0f172a",
+          overflow: "hidden"
         }}
       >
         <Box
+          px="xs"
+          py={8}
           style={{
-            position: "relative",
-            width: trackWidth,
-            minHeight: 104
+            borderRight: "1px solid #334155",
+            background: "#111827"
           }}
         >
-          <svg
-            data-testid="timeline-waveform"
-            width={trackWidth}
-            height={92}
-            aria-hidden
-            style={{ display: "block" }}
-          >
-            <line x1={0} x2={trackWidth} y1={46} y2={46} stroke="#334155" strokeWidth={1} />
-            {waveformBars.map((bar) => (
-              <rect
-                key={bar.index}
-                x={bar.x}
-                y={bar.y}
-                width={bar.width}
-                height={bar.height}
-                fill="#38bdf8"
-                opacity={0.75}
-                rx={1}
-              />
-            ))}
-          </svg>
+          <Text size="xs" fw={900} c="gray.2">
+            {t("timelineEditor.subtitleTrack")}
+          </Text>
+          <Text size="xs" c="gray.5" mt={4}>
+            {t("timelineEditor.clipCount", { count: lines.length })}
+          </Text>
+        </Box>
 
+        <Box
+          data-testid="timeline-track"
+          onPointerDown={(event) => {
+            if (event.currentTarget === event.target) {
+              onSeek(timeFromClientX(event.clientX, event.currentTarget));
+            }
+          }}
+          onPointerMove={(event) => updateInteraction(event.clientX, event.currentTarget)}
+          onPointerUp={() => setInteraction(null)}
+          style={{
+            minHeight: 128,
+            overflowX: "auto",
+            overflowY: "hidden",
+            position: "relative",
+            background: "#111827"
+          }}
+        >
           <Box
-            data-testid="timeline-playhead"
             style={{
-              position: "absolute",
-              left: `${playheadPercent}%`,
-              top: 0,
-              bottom: 0,
-              width: 2,
-              background: "#f43f5e",
-              boxShadow: "0 0 0 1px rgba(244, 63, 94, 0.35)"
+              position: "relative",
+              width: trackWidth,
+              minHeight: 128
             }}
-          />
-
-          {lines.map((line, index) => {
-            const selected = line.id === selectedLineId;
-            const active = line.id === activeLineId;
-            const issues = timingIssuesByLineId[line.id] ?? [];
-            const left = `${(line.startMs / safeDurationMs) * 100}%`;
-            const width = `${Math.max(
-              0.4,
-              ((line.endMs - line.startMs) / safeDurationMs) * 100
-            )}%`;
-            const top = 58 + (index % 2) * 19;
-            return (
-              <Box
-                key={line.id}
-                role="button"
-                tabIndex={0}
-                aria-label={t("timelineEditor.blockLabel", { id: line.id })}
-                data-testid={`timeline-block-${line.id}`}
-                data-active={active ? "true" : undefined}
-                data-selected={selected ? "true" : undefined}
-                data-has-issues={issues.length > 0 ? "true" : undefined}
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                  capturePointer(event.currentTarget, event.pointerId);
-                  onSelectLine(line.id);
-                  setInteraction({ mode: "move", line, startClientX: event.clientX });
-                }}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSeek(line.startMs);
-                }}
-                style={{
-                  position: "absolute",
-                  left,
-                  top,
-                  width,
-                  height: 22,
-                  minWidth: 18,
-                  cursor: "grab",
-                  borderRadius: 4,
-                  border: issues.length
-                    ? "1px solid #f87171"
-                    : selected
-                      ? "1px solid #5eead4"
-                      : "1px solid #64748b",
-                  background: selected ? "#0f766e" : active ? "#134e4a" : "#1f2937",
-                  color: "#f8fafc",
-                  overflow: "hidden",
-                  boxShadow: selected ? "0 0 0 2px rgba(94, 234, 212, 0.18)" : undefined
-                }}
-              >
-                <button
-                  type="button"
-                  aria-label={t("timelineEditor.resizeStart", { id: line.id })}
-                  onPointerDown={(event) => {
-                    event.stopPropagation();
-                    capturePointer(event.currentTarget, event.pointerId);
-                    onSelectLine(line.id);
-                    setInteraction({
-                      mode: "resize-start",
-                      line,
-                      startClientX: event.clientX
-                    });
-                  }}
+          >
+            <Box
+              data-testid="timeline-ruler"
+              aria-hidden
+              style={{
+                position: "relative",
+                height: 28,
+                borderBottom: "1px solid #334155",
+                background: "#0f172a"
+              }}
+            >
+              {rulerTicks.map((tick) => (
+                <Box
+                  key={tick.timeMs}
                   style={{
                     position: "absolute",
-                    left: 0,
+                    left: tick.left,
                     top: 0,
                     bottom: 0,
-                    width: 8,
-                    minHeight: 0,
-                    padding: 0,
-                    border: 0,
-                    borderRadius: 0,
-                    background: "rgba(255,255,255,0.28)",
-                    cursor: "ew-resize"
+                    width: 1,
+                    background: "#475569"
                   }}
-                />
-                <Text
-                  size="xs"
-                  fw={800}
-                  truncate
-                  px={12}
-                  lh="22px"
-                  style={{ pointerEvents: "none" }}
                 >
-                  {line.id}
-                </Text>
-                {issues.length ? (
-                  <Badge
+                  <Text
                     size="xs"
-                    color="red"
-                    variant="filled"
+                    c="gray.5"
+                    ff="monospace"
                     style={{
                       position: "absolute",
-                      right: 10,
-                      top: 3,
-                      height: 16,
-                      pointerEvents: "none"
+                      left: 4,
+                      top: 5,
+                      whiteSpace: "nowrap"
                     }}
                   >
-                    {issues.length}
-                  </Badge>
-                ) : null}
-                <button
-                  type="button"
-                  aria-label={t("timelineEditor.resizeEnd", { id: line.id })}
+                    {formatTime(tick.timeMs)}
+                  </Text>
+                </Box>
+              ))}
+            </Box>
+
+            <svg
+              data-testid="timeline-waveform"
+              width={trackWidth}
+              height={96}
+              aria-hidden
+              style={{ display: "block" }}
+            >
+              <line x1={0} x2={trackWidth} y1={48} y2={48} stroke="#334155" strokeWidth={1} />
+              {waveformBars.map((bar) => (
+                <rect
+                  key={bar.index}
+                  x={bar.x}
+                  y={bar.y + 2}
+                  width={bar.width}
+                  height={bar.height}
+                  fill="#38bdf8"
+                  opacity={0.75}
+                  rx={1}
+                />
+              ))}
+            </svg>
+
+            <Box
+              data-testid="timeline-playhead"
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                left: `${playheadPercent}%`,
+                top: 0,
+                bottom: 0,
+                width: 2,
+                background: "#f43f5e",
+                boxShadow: "0 0 0 1px rgba(244, 63, 94, 0.35)"
+              }}
+            >
+              <Box
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: -5,
+                  width: 12,
+                  height: 12,
+                  borderRadius: 3,
+                  background: "#f43f5e"
+                }}
+              />
+            </Box>
+
+            {lines.map((line, index) => {
+              const selected = line.id === selectedLineId;
+              const active = line.id === activeLineId;
+              const issues = timingIssuesByLineId[line.id] ?? [];
+              const left = `${(line.startMs / safeDurationMs) * 100}%`;
+              const width = `${Math.max(
+                0.4,
+                ((line.endMs - line.startMs) / safeDurationMs) * 100
+              )}%`;
+              const top = 74 + (index % 2) * 24;
+              return (
+                <Box
+                  key={line.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={t("timelineEditor.blockLabel", { id: line.id })}
+                  data-testid={`timeline-block-${line.id}`}
+                  data-active={active ? "true" : undefined}
+                  data-selected={selected ? "true" : undefined}
+                  data-has-issues={issues.length > 0 ? "true" : undefined}
                   onPointerDown={(event) => {
                     event.stopPropagation();
                     capturePointer(event.currentTarget, event.pointerId);
                     onSelectLine(line.id);
-                    setInteraction({
-                      mode: "resize-end",
-                      line,
-                      startClientX: event.clientX
-                    });
+                    setInteraction({ mode: "move", line, startClientX: event.clientX });
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSeek(line.startMs);
                   }}
                   style={{
                     position: "absolute",
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: 8,
-                    minHeight: 0,
-                    padding: 0,
-                    border: 0,
-                    borderRadius: 0,
-                    background: "rgba(255,255,255,0.28)",
-                    cursor: "ew-resize"
+                    left,
+                    top,
+                    width,
+                    height: 26,
+                    minWidth: 18,
+                    cursor: "grab",
+                    borderRadius: 5,
+                    border: issues.length
+                      ? "1px solid #f87171"
+                      : selected
+                        ? "1px solid #5eead4"
+                        : "1px solid #64748b",
+                    background: selected ? "#0f766e" : active ? "#134e4a" : "#1f2937",
+                    color: "#f8fafc",
+                    overflow: "hidden",
+                    boxShadow: selected ? "0 0 0 2px rgba(94, 234, 212, 0.18)" : undefined
                   }}
-                />
-              </Box>
-            );
-          })}
+                >
+                  <button
+                    type="button"
+                    aria-label={t("timelineEditor.resizeStart", { id: line.id })}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      capturePointer(event.currentTarget, event.pointerId);
+                      onSelectLine(line.id);
+                      setInteraction({
+                        mode: "resize-start",
+                        line,
+                        startClientX: event.clientX
+                      });
+                    }}
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 8,
+                      minHeight: 0,
+                      padding: 0,
+                      border: 0,
+                      borderRadius: 0,
+                      background: "rgba(255,255,255,0.28)",
+                      cursor: "ew-resize"
+                    }}
+                  />
+                  <Text
+                    size="xs"
+                    fw={800}
+                    truncate
+                    px={12}
+                    lh="26px"
+                    style={{ pointerEvents: "none" }}
+                  >
+                    {line.sourceText.trim() || line.id}
+                  </Text>
+                  {issues.length ? (
+                    <Badge
+                      size="xs"
+                      color="red"
+                      variant="filled"
+                      style={{
+                        position: "absolute",
+                        right: 10,
+                        top: 5,
+                        height: 16,
+                        pointerEvents: "none"
+                      }}
+                    >
+                      {issues.length}
+                    </Badge>
+                  ) : null}
+                  <button
+                    type="button"
+                    aria-label={t("timelineEditor.resizeEnd", { id: line.id })}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      capturePointer(event.currentTarget, event.pointerId);
+                      onSelectLine(line.id);
+                      setInteraction({
+                        mode: "resize-end",
+                        line,
+                        startClientX: event.clientX
+                      });
+                    }}
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 8,
+                      minHeight: 0,
+                      padding: 0,
+                      border: 0,
+                      borderRadius: 0,
+                      background: "rgba(255,255,255,0.28)",
+                      cursor: "ew-resize"
+                    }}
+                  />
+                </Box>
+              );
+            })}
+          </Box>
         </Box>
       </Box>
     </Box>

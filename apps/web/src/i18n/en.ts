@@ -22,6 +22,7 @@ export const en = {
     openCurrentPage: "Open current page",
     openProjectContext: "Open project context",
     openRuntimeSettings: "Open runtime settings",
+    openSystemSettings: "Open system settings",
     runtime: {
       ready: "Ready",
       checking: "Checking",
@@ -256,6 +257,16 @@ export const en = {
     timeline: {
       subtitleRows: "{{count}} subtitle rows"
     },
+    inspectorTabs: {
+      label: "Workbench inspector tabs",
+      media: "Media",
+      project: "Project",
+      analysis: "Transcribe",
+      translation: "Translate",
+      subtitles: "Subtitles",
+      style: "Style",
+      export: "Export"
+    },
     media: {
       title: "Project media",
       count: "{{count}} videos",
@@ -341,10 +352,18 @@ export const en = {
     region: "Timeline editor",
     title: "Timeline",
     zoom: "Zoom timeline",
+    subtitleTrack: "Subtitles",
+    clipCount: "{{count}} clips",
     blockLabel: "Timeline block {{id}}",
     resizeStart: "Resize start for {{id}}",
     resizeEnd: "Resize end for {{id}}",
     generateWaveform: "Generate waveform"
+  },
+  videoPreview: {
+    play: "Play preview",
+    pause: "Pause preview",
+    scrubber: "Preview scrubber",
+    toggleFit: "Toggle preview fit"
   },
   editorCommands: {
     toolbar: "Editor commands",
@@ -382,6 +401,7 @@ export const en = {
     redo: "Redo edit"
   },
   inspector: {
+    media: "Project media",
     line: "Subtitle line",
     analysis: "Project analysis settings",
     translation: "Project translation settings",

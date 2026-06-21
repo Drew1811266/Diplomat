@@ -132,6 +132,10 @@ const waveformFixture: WaveformResponse = {
   ]
 };
 
+async function expectTextVisibleAtLeastOnce(text: string) {
+  expect(await screen.findAllByText(text)).not.toHaveLength(0);
+}
+
 const queuedWaveformTaskFixture: TaskResponse = {
   taskId: "waveform-task-1",
   projectId: "project-demo",
@@ -726,7 +730,7 @@ afterEach(async () => {
 });
 
 describe("WorkbenchPage", () => {
-  it("labels the editor surface with the selected workspace", async () => {
+  it("marks the editor surface with the selected workspace", async () => {
     stubMatchMedia(false);
     useUiStore.getState().setActiveProjectId("project-demo");
     useUiStore.getState().setEditorWorkspace("translation");
@@ -739,7 +743,6 @@ describe("WorkbenchPage", () => {
     expect(
       within(workbench).getByRole("heading", { level: 1, name: "Workbench" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Translation workspace")).toBeVisible();
   });
 
   it("shows an empty workbench state when no active project is selected", () => {
@@ -783,7 +786,7 @@ describe("WorkbenchPage", () => {
     expect(screen.queryByText("No subtitle rows are available to export.")).not.toBeInTheDocument();
   });
 
-  it("renders the media-centered workbench regions", async () => {
+  it("renders the preview-first workbench with right inspector tabs and bottom timeline", async () => {
     stubActiveProjectFetch();
 
     renderWithProviders(<WorkbenchPage />);
@@ -794,12 +797,41 @@ describe("WorkbenchPage", () => {
       "src",
       "http://127.0.0.1:8765/projects/project-demo/media/source"
     );
+    expect(screen.getByTestId("workbench-preview-inspector-grid")).toHaveStyle({
+      gridTemplateColumns: "minmax(0, 1fr) 336px"
+    });
+    expect(screen.getByRole("tablist", { name: "Workbench inspector tabs" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Subtitles" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByLabelText("Subtitle Grid")).toBeInTheDocument();
     expect(screen.getByLabelText("Inspector")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Timeline editor" })).toBeInTheDocument();
   });
 
-  it("shows the current production stage with a direct inspector action", async () => {
+  it("does not render the redundant project context band above the preview", async () => {
+    stubActiveProjectFetch();
+
+    renderWithProviders(<WorkbenchPage />);
+
+    expect(await screen.findByTestId("workbench-preview-inspector-grid")).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Project context" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Media" }));
+    expect(screen.getByRole("region", { name: "Project media" })).toBeInTheDocument();
+  });
+
+  it("uses app-native preview controls instead of browser video chrome", async () => {
+    stubActiveProjectFetch();
+
+    renderWithProviders(<WorkbenchPage />);
+
+    const media = await screen.findByLabelText("Video preview media");
+    const preview = screen.getByRole("region", { name: "Video preview" });
+    expect(media).not.toHaveAttribute("controls");
+    expect(screen.getByRole("button", { name: "Play preview" })).toBeVisible();
+    expect(screen.getByRole("slider", { name: "Preview scrubber" })).toBeVisible();
+    expect(within(preview).getByText(/00:00\.000 \/ 00:12\.000/)).toBeVisible();
+  });
+
+  it("switches project workflow controls through right-side inspector tabs", async () => {
     const user = userEvent.setup();
     useUiStore.getState().setEditorWorkspace("translation");
     useUiStore.getState().setInspectorMode("line");
@@ -807,20 +839,20 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    const productionStage = await screen.findByRole("region", {
-      name: "Current production stage"
+    const inspectorTabs = await screen.findByRole("tablist", {
+      name: "Workbench inspector tabs"
     });
-    expect(within(productionStage).getByText("Translation")).toBeVisible();
-    expect(within(productionStage).getByText("Fill missing translations")).toBeVisible();
-
-    await user.click(
-      within(productionStage).getByRole("button", { name: "Open translation controls" })
+    expect(within(inspectorTabs).getByRole("tab", { name: "Subtitles" })).toHaveAttribute(
+      "aria-selected",
+      "true"
     );
+
+    await user.click(within(inspectorTabs).getByRole("tab", { name: "Translate" }));
 
     expect(screen.getByRole("heading", { name: "Project translation settings" })).toBeVisible();
   });
 
-  it("shows a source-video empty state when a project is open without imported media", async () => {
+  it("opens empty projects in the full workbench with media import inside the inspector", async () => {
     const emptyProject: ProjectResponse = {
       ...projectFixture,
       sourceVideoPath: null,
@@ -836,19 +868,25 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    await screen.findByTestId("workbench-media-start");
-    expect(screen.queryByLabelText("Video preview")).not.toBeInTheDocument();
+    await screen.findByTestId("workbench-body");
+    expect(screen.queryByTestId("workbench-media-start")).not.toBeInTheDocument();
+    expect(screen.getByRole("toolbar", { name: "Project tools" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Project context")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Video preview")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Timeline" })).toBeInTheDocument();
     expect(screen.queryByText("No project selected")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Media" })).toHaveAttribute("aria-selected", "true")
+    );
     const mediaBin = await screen.findByRole("region", { name: "Project media" });
     expect(within(mediaBin).getByRole("button", { name: "Import video" })).toBeInTheDocument();
     expect(within(mediaBin).getByText("Drop videos here")).toBeInTheDocument();
     expect(screen.getByTestId("project-media-empty-dropzone")).toHaveStyle({
-      minHeight: "320px"
+      minHeight: "220px"
     });
-    expect(screen.queryByTestId("workbench-media-stack")).not.toBeInTheDocument();
   });
 
-  it("opens empty project containers on a media import start surface instead of disabled editor panels", async () => {
+  it("keeps editor panels available for empty project containers", async () => {
     const emptyProject: ProjectResponse = {
       ...projectFixture,
       sourceVideoPath: null,
@@ -864,18 +902,17 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    await screen.findByTestId("workbench-media-start");
+    await screen.findByTestId("workbench-body");
     const mediaBin = await screen.findByRole("region", { name: "Project media" });
     expect(within(mediaBin).getByText("Drop videos here")).toBeVisible();
     expect(within(mediaBin).getByRole("button", { name: "Import video" })).toBeVisible();
-    expect(screen.queryByRole("toolbar", { name: "Project tools" })).not.toBeInTheDocument();
+    expect(screen.getByRole("toolbar", { name: "Project tools" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Project context")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Video preview")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Subtitle Grid")).not.toBeInTheDocument();
-    expect(screen.queryByRole("toolbar", { name: "Editor commands" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Timeline editor" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Video preview")).toBeInTheDocument();
+    expect(screen.getByRole("toolbar", { name: "Editor commands" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Timeline" })).toBeInTheDocument();
     expect(screen.getByTestId("project-media-empty-dropzone")).toHaveStyle({
-      minHeight: "320px"
+      minHeight: "220px"
     });
   });
 
@@ -897,8 +934,8 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    await screen.findByTestId("workbench-media-start");
-    expect(screen.queryByLabelText("Video preview")).not.toBeInTheDocument();
+    await screen.findByTestId("workbench-body");
+    expect(screen.getByLabelText("Video preview")).toBeInTheDocument();
     const mediaBin = await screen.findByRole("region", { name: "Project media" });
     await user.click(within(mediaBin).getByRole("button", { name: "Import video" }));
 
@@ -938,14 +975,15 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    await screen.findByTestId("workbench-media-start");
+    await screen.findByTestId("workbench-body");
     const mediaBin = await screen.findByRole("region", { name: "Project media" });
     await user.click(within(mediaBin).getByRole("button", { name: "Import video" }));
 
     expect(
       await screen.findByText("Unable to probe source video: FFprobe executable not found: ffprobe")
     ).toBeVisible();
-    expect(screen.getByTestId("workbench-media-start")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-media-start")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Media" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("imports a selected video into the current project from the workbench", async () => {
@@ -966,7 +1004,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    await screen.findByTestId("workbench-media-start");
+    await screen.findByTestId("workbench-body");
     const mediaBin = await screen.findByRole("region", { name: "Project media" });
     await user.click(within(mediaBin).getByRole("button", { name: "Import video" }));
 
@@ -1009,7 +1047,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    await screen.findByTestId("workbench-media-start");
+    await screen.findByTestId("workbench-body");
     const mediaBin = await screen.findByRole("region", { name: "Project media" });
     await user.click(within(mediaBin).getByRole("button", { name: "Import video" }));
 
@@ -1104,6 +1142,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
+    await user.click(await screen.findByRole("tab", { name: "Media" }));
     const mediaBin = await screen.findByRole("region", { name: "Project media" });
     expect(await within(mediaBin).findByText("clip-a.mp4")).toBeVisible();
     expect(await within(mediaBin).findByText("clip-b.mp4")).toBeVisible();
@@ -1206,6 +1245,22 @@ describe("WorkbenchPage", () => {
     expect(screen.getByText("00:01.250")).toBeInTheDocument();
   });
 
+  it("renders a professional timeline ruler, track header, and readable subtitle clips", async () => {
+    stubActiveProjectFetch({
+      subtitleDocuments: [twoLineSubtitleDocument],
+      waveform: waveformFixture
+    });
+
+    renderWithProviders(<WorkbenchPage />);
+
+    const timeline = await screen.findByRole("region", { name: "Timeline editor" });
+    expect(timeline).toBeVisible();
+    expect(screen.getByTestId("timeline-ruler")).toBeVisible();
+    expect(within(timeline).getByText("Subtitles")).toBeVisible();
+    expect(screen.getByTestId("timeline-playhead")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByTestId("timeline-block-line-1")).toHaveTextContent("First subtitle text");
+  });
+
   it("stacks the inspector below media panes on narrow screens", () => {
     stubMatchMedia(true);
     stubActiveProjectFetch();
@@ -1221,7 +1276,7 @@ describe("WorkbenchPage", () => {
     renderWithProviders(<WorkbenchPage />);
 
     expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
-      gridTemplateRows: "auto minmax(200px, 30vh) minmax(140px, 1fr) 210px"
+      gridTemplateRows: "minmax(0, 1fr) auto 210px"
     });
     expect(screen.getByTestId("subtitle-grid-body")).toHaveStyle({ overflow: "auto" });
     expect(screen.getByTestId("inspector-body")).toHaveStyle({ overflow: "auto" });
@@ -1237,11 +1292,11 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(screen.getByTestId("workbench-body")).toHaveStyle({
+    expect(screen.getByTestId("workbench-preview-inspector-grid")).toHaveStyle({
       gridTemplateColumns: "minmax(0, 1fr) 384px"
     });
     expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
-      gridTemplateRows: "auto minmax(200px, 30vh) minmax(140px, 1fr) 260px"
+      gridTemplateRows: "minmax(0, 1fr) auto 260px"
     });
   });
 
@@ -1257,7 +1312,7 @@ describe("WorkbenchPage", () => {
     fireEvent.pointerUp(inspectorResize, { pointerId: 1 });
 
     expect(useUiStore.getState().workspaceLayouts.translation.inspectorWidth).toBe(376);
-    expect(screen.getByTestId("workbench-body")).toHaveStyle({
+    expect(screen.getByTestId("workbench-preview-inspector-grid")).toHaveStyle({
       gridTemplateColumns: "minmax(0, 1fr) 376px"
     });
 
@@ -1268,7 +1323,7 @@ describe("WorkbenchPage", () => {
 
     expect(useUiStore.getState().workspaceLayouts.translation.bottomDockHeight).toBe(250);
     expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
-      gridTemplateRows: "auto minmax(200px, 30vh) minmax(140px, 1fr) 250px"
+      gridTemplateRows: "minmax(0, 1fr) auto 250px"
     });
   });
 
@@ -1283,7 +1338,7 @@ describe("WorkbenchPage", () => {
     fireEvent.pointerMove(inspectorResize, { clientX: 960, pointerId: 1 });
 
     expect(useUiStore.getState().workspaceLayouts.translation.inspectorWidth).toBe(376);
-    expect(screen.getByTestId("workbench-body")).toHaveStyle({
+    expect(screen.getByTestId("workbench-preview-inspector-grid")).toHaveStyle({
       gridTemplateColumns: "minmax(0, 1fr) 376px"
     });
     expect(localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY)).toBeNull();
@@ -1303,7 +1358,7 @@ describe("WorkbenchPage", () => {
 
     expect(useUiStore.getState().workspaceLayouts.translation.bottomDockHeight).toBe(250);
     expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
-      gridTemplateRows: "auto minmax(200px, 30vh) minmax(140px, 1fr) 250px"
+      gridTemplateRows: "minmax(0, 1fr) auto 250px"
     });
     expect(localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY)).toBeNull();
 
@@ -1327,14 +1382,14 @@ describe("WorkbenchPage", () => {
 
     fireEvent.doubleClick(screen.getByRole("separator", { name: "Resize inspector panel" }));
     expect(useUiStore.getState().workspaceLayouts.translation.inspectorWidth).toBe(336);
-    expect(screen.getByTestId("workbench-body")).toHaveStyle({
+    expect(screen.getByTestId("workbench-preview-inspector-grid")).toHaveStyle({
       gridTemplateColumns: "minmax(0, 1fr) 336px"
     });
 
     fireEvent.doubleClick(screen.getByRole("separator", { name: "Resize timeline panel" }));
     expect(useUiStore.getState().workspaceLayouts.translation.bottomDockHeight).toBe(210);
     expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
-      gridTemplateRows: "auto minmax(200px, 30vh) minmax(140px, 1fr) 210px"
+      gridTemplateRows: "minmax(0, 1fr) auto 210px"
     });
   });
 
@@ -1348,7 +1403,7 @@ describe("WorkbenchPage", () => {
 
     expect(useUiStore.getState().workspaceLayouts.translation.inspectorCollapsed).toBe(true);
     expect(screen.queryByLabelText("Inspector")).not.toBeInTheDocument();
-    expect(screen.getByTestId("workbench-body")).toHaveStyle({
+    expect(screen.getByTestId("workbench-preview-inspector-grid")).toHaveStyle({
       gridTemplateColumns: "minmax(0, 1fr) 32px"
     });
 
@@ -1360,7 +1415,7 @@ describe("WorkbenchPage", () => {
 
     expect(useUiStore.getState().workspaceLayouts.translation.bottomCollapsed).toBe(true);
     expect(screen.getByTestId("workbench-media-stack")).toHaveStyle({
-      gridTemplateRows: "auto minmax(200px, 30vh) minmax(140px, 1fr) 32px"
+      gridTemplateRows: "minmax(0, 1fr) auto 32px"
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Expand timeline" }));
@@ -1374,7 +1429,8 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await user.click(await screen.findByRole("tab", { name: "Subtitles" }));
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
     await user.click(screen.getByRole("button", { name: "Select line line-1" }));
 
     expect(screen.getByRole("heading", { name: "Subtitle line" })).toBeInTheDocument();
@@ -1388,7 +1444,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
 
     const projectTools = screen.getByRole("toolbar", { name: "Project tools" });
     expect(within(projectTools).queryByRole("button", { name: "Analyze" })).not.toBeInTheDocument();
@@ -1401,7 +1457,10 @@ describe("WorkbenchPage", () => {
 
     await user.click(within(projectTools).getByRole("button", { name: "Export" }));
     expect(screen.getByRole("heading", { name: "Project export settings" })).toBeInTheDocument();
-    expect(screen.getByText("Delivery workspace")).toBeInTheDocument();
+    expect(screen.getByRole("main", { name: "Workbench" })).toHaveAttribute(
+      "data-editor-workspace",
+      "delivery"
+    );
     expect(screen.getByRole("combobox", { name: "Export mode" })).toBeInTheDocument();
   });
 
@@ -1411,10 +1470,9 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
     const inspector = screen.getByRole("region", { name: "Inspector" });
+    expect(await within(inspector).findByRole("heading", { name: "Project style settings" })).toBeInTheDocument();
 
-    expect(within(inspector).getByRole("heading", { name: "Project style settings" })).toBeInTheDocument();
     expect(within(inspector).getByLabelText("Font family")).toBeInTheDocument();
     expect(within(inspector).getByLabelText("Safe area")).toBeInTheDocument();
     expect(within(inspector).queryByRole("combobox", { name: "Format" })).not.toBeInTheDocument();
@@ -1450,9 +1508,8 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
     const inspector = screen.getByRole("region", { name: "Inspector" });
-    expect(within(inspector).getByRole("heading", { name: heading })).toBeInTheDocument();
+    expect(await within(inspector).findByRole("heading", { name: heading })).toBeInTheDocument();
     expect(within(inspector).getByText("Current project")).toBeInTheDocument();
     expect(
       within(inspector).getByText("Applies only to the open project. System defaults stay in Settings.")
@@ -1512,7 +1569,7 @@ describe("WorkbenchPage", () => {
     );
   });
 
-  it("opens current project settings from the project context without entering system settings", async () => {
+  it("opens current project settings from the right inspector tabs without entering system settings", async () => {
     const user = userEvent.setup();
     const fetchMock = stubActiveProjectFetch({
       translationSettings: {
@@ -1524,12 +1581,8 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
-    await user.click(
-      within(screen.getByRole("region", { name: "Project context" })).getByRole("button", {
-        name: "Project settings"
-      })
-    );
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
+    await user.click(screen.getByRole("tab", { name: "Project" }));
 
     const inspector = screen.getByRole("region", { name: "Inspector" });
     expect(within(inspector).getByRole("heading", { name: "Current project settings" })).toBeInTheDocument();
@@ -1569,7 +1622,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
     await user.click(screen.getByRole("button", { name: "Select line line-1" }));
     await user.clear(screen.getByLabelText("Source text"));
     await user.type(screen.getByLabelText("Source text"), "Edited source");
@@ -1599,7 +1652,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
 
     await user.click(screen.getByRole("button", { name: "Select line line-1" }));
     expect(screen.getByLabelText("Source text")).toHaveValue("查询字幕文本");
@@ -1652,7 +1705,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    await screen.findByText("查询字幕文本");
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
     fireEvent.click(screen.getByRole("button", { name: "Select line line-1" }));
     fireEvent.change(screen.getByLabelText("Source text"), {
       target: { value: "Autosaved source" }
@@ -1675,7 +1728,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    await screen.findByText("查询字幕文本");
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
     await user.click(screen.getByRole("button", { name: "Select line line-1" }));
     fireEvent.change(screen.getByLabelText("Source text"), {
       target: { value: "Stable saved source" }
@@ -1710,7 +1763,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    await screen.findByText("查询字幕文本");
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
     await user.click(screen.getByRole("button", { name: "Select line line-1" }));
     fireEvent.change(screen.getByLabelText("Source text"), {
       target: { value: "Undo target" }
@@ -1729,7 +1782,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    await screen.findByText("查询字幕文本");
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
     await user.click(screen.getByRole("button", { name: "Select line line-1" }));
     await user.click(screen.getByRole("button", { name: "Split line" }));
 
@@ -1742,7 +1795,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("First subtitle text")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("First subtitle text");
     await user.click(screen.getByRole("button", { name: "Select line line-1" }));
     await user.click(screen.getByRole("button", { name: "Merge next" }));
 
@@ -1755,7 +1808,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    await screen.findByText("查询字幕文本");
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
     await user.click(screen.getByRole("button", { name: "Select line line-1" }));
     const offsetInput = screen.getByRole("textbox", { name: "Offset milliseconds" });
     await user.clear(offsetInput);
@@ -1823,7 +1876,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    await screen.findByText("查询字幕文本");
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
     fireEvent.click(screen.getByRole("button", { name: "Select line line-1" }));
     fireEvent.keyDown(screen.getByLabelText("Source text"), { key: "s", code: "KeyS" });
     expect(screen.queryByRole("button", { name: "Select line line-1-split-1" })).not.toBeInTheDocument();
@@ -1837,7 +1890,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    await screen.findByText("查询字幕文本");
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
     fireEvent.click(screen.getByRole("button", { name: "Select line line-1" }));
     fireEvent.change(screen.getByLabelText("Source text"), {
       target: { value: "Keyboard undo target" }
@@ -1861,7 +1914,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
     await user.click(screen.getByRole("button", { name: "Select line line-1" }));
     await user.clear(screen.getByLabelText("Source text"));
     await user.type(screen.getByLabelText("Source text"), "Local draft survives refetch");
@@ -1884,6 +1937,7 @@ describe("WorkbenchPage", () => {
       ).toHaveLength(2)
     );
 
+    await user.click(screen.getByRole("tab", { name: "Subtitles" }));
     await user.click(screen.getByRole("button", { name: "Select line line-1" }));
     expect(screen.getByLabelText("Source text")).toHaveValue("Local draft survives refetch");
     expect(screen.queryByText("Server refreshed subtitle")).not.toBeInTheDocument();
@@ -1895,7 +1949,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
     await user.click(screen.getByRole("button", { name: "Select line line-1" }));
     await user.clear(screen.getByLabelText("Source text"));
     await user.type(screen.getByLabelText("Source text"), "Unsaved after failed PUT");
@@ -1917,7 +1971,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
 
     openWorkbenchInspector("analysis");
     await user.selectOptions(
@@ -1989,7 +2043,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
 
     await user.click(screen.getByRole("button", { name: "Export" }));
     await user.selectOptions(
@@ -2021,7 +2075,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
 
     await user.click(screen.getByRole("button", { name: "Export" }));
     await user.click(within(screen.getByLabelText("Inspector")).getByRole("button", { name: "Render video" }));
@@ -2053,7 +2107,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("First subtitle text")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("First subtitle text");
 
     await user.click(screen.getByRole("button", { name: "Export" }));
 
@@ -2070,7 +2124,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Project style settings" })).toBeInTheDocument();
 
     await user.click(within(screen.getByLabelText("Inspector")).getByLabelText("Safe area"));
     expect(screen.getByTestId("subtitle-safe-area")).toBeInTheDocument();
@@ -2091,7 +2145,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
 
     openWorkbenchInspector("analysis");
     await user.selectOptions(
@@ -2135,7 +2189,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
 
     openWorkbenchInspector("analysis");
     await user.selectOptions(
@@ -2175,7 +2229,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
 
     openWorkbenchInspector("analysis");
     await user.selectOptions(
@@ -2202,7 +2256,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
 
     openWorkbenchInspector("analysis");
     const inspector = screen.getByLabelText("Inspector");
@@ -2259,7 +2313,7 @@ describe("WorkbenchPage", () => {
 
     renderWithProviders(<WorkbenchPage />);
 
-    expect(await screen.findByText("查询字幕文本")).toBeInTheDocument();
+    await expectTextVisibleAtLeastOnce("查询字幕文本");
 
     openWorkbenchInspector("analysis");
     await user.selectOptions(

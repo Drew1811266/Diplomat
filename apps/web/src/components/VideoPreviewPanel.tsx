@@ -1,6 +1,7 @@
-import { Box, Button, Center, Stack, Text } from "@mantine/core";
+import { ActionIcon, Box, Button, Center, Group, Stack, Text } from "@mantine/core";
 import type { SubtitleLine, SubtitleStyle } from "@diplomat/shared";
-import { useEffect, useRef, type ReactNode } from "react";
+import { IconArrowsMaximize, IconPlayerPause, IconPlayerPlay } from "@tabler/icons-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   previewContainerStyle,
@@ -18,10 +19,25 @@ type VideoPreviewPanelProps = {
   selectedLine: SubtitleLine | null;
   previewStyle?: SubtitleStyle | null;
   showSafeArea?: boolean;
+  currentTimeMs?: number;
+  durationMs?: number;
   seekRequestMs?: number | null;
   onEmptyAction?: () => void;
   onTimeUpdate?: (timeMs: number) => void;
 };
+
+type PreviewFitMode = "fit" | "fill";
+
+function formatTimecode(ms: number) {
+  const safeMs = Math.max(0, Math.round(ms));
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const milliseconds = safeMs % 1000;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(
+    milliseconds
+  ).padStart(3, "0")}`;
+}
 
 export function VideoPreviewPanel({
   emptyDescription,
@@ -32,14 +48,22 @@ export function VideoPreviewPanel({
   selectedLine,
   previewStyle = null,
   showSafeArea = false,
+  currentTimeMs = 0,
+  durationMs = 0,
   seekRequestMs = null,
   onEmptyAction,
   onTimeUpdate
 }: VideoPreviewPanelProps) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [localTimeMs, setLocalTimeMs] = useState(currentTimeMs);
+  const [localDurationMs, setLocalDurationMs] = useState(durationMs);
+  const [playing, setPlaying] = useState(false);
+  const [fitMode, setFitMode] = useState<PreviewFitMode>("fit");
   const resolvedMediaUrl = mediaUrl ?? sourceVideoPath ?? null;
   const normalizedStyle = subtitleStyleWithDefaults(previewStyle);
+  const displayedDurationMs = Math.max(durationMs, localDurationMs, 0);
+  const displayedTimeMs = Math.min(Math.max(localTimeMs, 0), displayedDurationMs || localTimeMs);
   const orderedPreviewLines =
     normalizedStyle.bilingualLayout.replace("-", "_") === "target_top" ||
     normalizedStyle.bilingualLayout === "target-above-source"
@@ -56,8 +80,46 @@ export function VideoPreviewPanel({
     if (seekRequestMs === null || !videoRef.current) {
       return;
     }
-    videoRef.current.currentTime = Math.max(0, seekRequestMs) / 1000;
+    const nextTimeMs = Math.max(0, seekRequestMs);
+    videoRef.current.currentTime = nextTimeMs / 1000;
+    setLocalTimeMs(nextTimeMs);
   }, [seekRequestMs]);
+
+  useEffect(() => {
+    setLocalTimeMs(currentTimeMs);
+  }, [currentTimeMs]);
+
+  useEffect(() => {
+    setLocalDurationMs(durationMs);
+  }, [durationMs]);
+
+  async function togglePlayback() {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    if (video.paused) {
+      try {
+        await video.play();
+        setPlaying(true);
+      } catch {
+        setPlaying(false);
+      }
+      return;
+    }
+    video.pause();
+    setPlaying(false);
+  }
+
+  function seekTo(nextTimeMs: number) {
+    const video = videoRef.current;
+    const safeTimeMs = Math.max(0, Math.min(nextTimeMs, displayedDurationMs || nextTimeMs));
+    if (video) {
+      video.currentTime = safeTimeMs / 1000;
+    }
+    setLocalTimeMs(safeTimeMs);
+    onTimeUpdate?.(safeTimeMs);
+  }
 
   return (
     <Box
@@ -81,16 +143,25 @@ export function VideoPreviewPanel({
           ref={videoRef}
           aria-label={t("workbench.labels.videoPreviewMedia")}
           src={resolvedMediaUrl}
-          controls
-          onTimeUpdate={(event) =>
-            onTimeUpdate?.(Math.round(event.currentTarget.currentTime * 1000))
-          }
+          onLoadedMetadata={(event) => {
+            const nextDurationMs = Number.isFinite(event.currentTarget.duration)
+              ? Math.round(event.currentTarget.duration * 1000)
+              : durationMs;
+            setLocalDurationMs(nextDurationMs);
+          }}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onTimeUpdate={(event) => {
+            const nextTimeMs = Math.round(event.currentTarget.currentTime * 1000);
+            setLocalTimeMs(nextTimeMs);
+            onTimeUpdate?.(nextTimeMs);
+          }}
           style={{
             display: "block",
             width: "100%",
             height: "100%",
             background: "#000",
-            objectFit: "contain"
+            objectFit: fitMode === "fit" ? "contain" : "cover"
           }}
         />
       ) : (
@@ -157,6 +228,61 @@ export function VideoPreviewPanel({
               ))}
           </Stack>
         </Box>
+      ) : null}
+
+      {resolvedMediaUrl ? (
+        <Group
+          gap="xs"
+          wrap="nowrap"
+          px="sm"
+          py={8}
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "linear-gradient(180deg, rgba(3,7,18,0), rgba(3,7,18,0.84))"
+          }}
+        >
+          <ActionIcon
+            type="button"
+            variant="filled"
+            color="teal"
+            size="md"
+            aria-label={playing ? t("videoPreview.pause") : t("videoPreview.play")}
+            onClick={() => void togglePlayback()}
+          >
+            {playing ? (
+              <IconPlayerPause size={16} aria-hidden />
+            ) : (
+              <IconPlayerPlay size={16} aria-hidden />
+            )}
+          </ActionIcon>
+          <Text size="xs" ff="monospace" c="white" style={{ minWidth: 132 }}>
+            {formatTimecode(displayedTimeMs)} / {formatTimecode(displayedDurationMs)}
+          </Text>
+          <input
+            type="range"
+            min={0}
+            max={Math.max(1, displayedDurationMs)}
+            step={50}
+            value={Math.min(displayedTimeMs, Math.max(1, displayedDurationMs))}
+            aria-label={t("videoPreview.scrubber")}
+            onChange={(event) => seekTo(Number(event.currentTarget.value))}
+            style={{ flex: 1, minWidth: 80 }}
+          />
+          <ActionIcon
+            type="button"
+            variant="subtle"
+            color="gray"
+            size="md"
+            aria-label={t("videoPreview.toggleFit")}
+            onClick={() => setFitMode((mode) => (mode === "fit" ? "fill" : "fit"))}
+            style={{ color: "#f8fafc" }}
+          >
+            <IconArrowsMaximize size={16} aria-hidden />
+          </ActionIcon>
+        </Group>
       ) : null}
     </Box>
   );
